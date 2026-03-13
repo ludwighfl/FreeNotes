@@ -1,0 +1,12 @@
+/* dark_theme.qss – aufgeteilt in Teilmodule
+ *
+ * Dieser Inhalt wurde aufgeteilt in:
+ *   styles/base.qss
+ *   styles/toolbar.qss
+ *   styles/formatting_bar.qss
+ *   styles/textbox.qss
+ *
+ * Laden via: from styles.loader import load_stylesheet
+ *
+ * Diese Datei bleibt aus Kompatibilitätsgründen leer.
+ */

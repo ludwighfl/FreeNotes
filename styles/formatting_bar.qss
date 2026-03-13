@@ -1,0 +1,198 @@
+/* ============================================================
+   FLOATING FORMATTING BAR
+   ============================================================ */
+
+QWidget#FormattingBar {
+    background: transparent;
+}
+
+QToolButton#formatBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 2px 4px;
+    min-width: 28px;
+    min-height: 28px;
+}
+QToolButton#formatBtn:checked {
+    background: #2d2d2d;
+    border-color: #3B7BF5;
+    color: #ffffff;
+}
+QToolButton#formatBtn:hover:!checked {
+    background: #2a2a2a;
+    color: #ffffff;
+}
+
+/* ── Font Combo ── */
+QComboBox#fontCombo {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #cccccc;
+    padding: 0px 10px 0px 6px;
+    font-size: 13px;
+    min-height: 28px;
+    max-height: 28px;
+    margin-top: 2px;
+}
+QComboBox#fontCombo:hover {
+    background: #2a2a2a;
+    color: #ffffff;
+}
+QComboBox#fontCombo::drop-down {
+    border: none;
+    background: transparent;
+    width: 0px;
+}
+QComboBox#fontCombo::down-arrow {
+    image: none;
+    border: none;
+    background: transparent;
+    width: 0px;
+    height: 0px;
+}
+QComboBox#fontCombo QAbstractItemView {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    color: #cccccc;
+    selection-background-color: #3B7BF5;
+    selection-color: #ffffff;
+}
+
+/* ── FontSizeWidget (Unified Frame) ── */
+QFrame#fontSizeFrame {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    margin-top: 2px;
+}
+QFrame#fontSizeFrame:hover {
+    background: #2a2a2a;
+}
+QFrame#fontSizeFrame[focused="true"] {
+    border-color: #3B7BF5;
+    background: #2d2d2d;
+}
+
+QFrame#sizeSeparator {
+    max-width: 0px;
+    border: none;
+}
+QFrame#fontSizeFrame[focused="true"] QFrame#sizeSeparator {
+    background: transparent;
+}
+
+QLineEdit#sizeEdit {
+    background: transparent;
+    border: none;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 0px;
+    margin: 0px;
+    selection-background-color: #3B7BF5;
+}
+
+QLineEdit#sizeEdit:focus {
+    color: #ffffff;
+    border: none !important;
+    background: transparent !important;
+    outline: none;
+}
+
+QToolButton#sizeArrowUp, QToolButton#sizeArrowDown {
+    background: transparent;
+    border: none;
+    color: #aaaaaa;
+    padding: 0px;
+    margin: 0px;
+    min-width: 21px; /* 22px frame - 1px separator */
+    max-height: 14px;
+}
+QToolButton#sizeArrowUp {
+    border-top-right-radius: 3px;
+}
+QToolButton#sizeArrowDown {
+    border-bottom-right-radius: 3px;
+}
+QToolButton#sizeArrowUp:hover, QToolButton#sizeArrowDown:hover {
+    background: transparent;
+    color: #ffffff;
+}
+QToolButton#sizeArrowUp:pressed, QToolButton#sizeArrowDown:pressed {
+    background: transparent;
+    color: #3B7BF5;
+}
+
+/* ── Listen-Dropdown Button ── */
+QToolButton#listDropBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #cccccc;
+    padding: 2px 4px;
+    min-width: 28px;
+    min-height: 28px;
+}
+QToolButton#listDropBtn:checked,
+QToolButton#listDropBtn:hover {
+    background: #2d2d2d;
+    border-color: #3B7BF5;
+    color: #ffffff;
+}
+QToolButton#listDropBtn::menu-arrow {
+    image: none;
+    width: 6px;
+    height: 6px;
+}
+
+/* ── Listen-Menü ── */
+QMenu#listMenu {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 4px;
+    color: #cccccc;
+    font-size: 13px;
+}
+QMenu#listMenu::item {
+    padding: 6px 16px;
+    border-radius: 4px;
+}
+QMenu#listMenu::item:selected {
+    background: #3B7BF5;
+    color: #ffffff;
+}
+QMenu#listMenu::separator {
+    height: 1px;
+    background: #3a3a3a;
+    margin: 4px 8px;
+}
+
+/* ── Width-Buttons disabled (Text Tool) ── */
+QToolButton#widthBtn:disabled {
+    color: #3a3a3a;
+    background: transparent;
+    border-color: transparent;
+    opacity: 0.35;
+}
+
+QFrame#FormatSeparator {
+    background: #3a3a3a;
+    max-width: 1px;
+    border: none;
+    margin-top: 3px;
+}
+
+/* ── Format-Button Stil Fallback ── */
+QToolButton#formatBtn[text="B"] { font-weight: bold; }
+QToolButton#formatBtn[text="I"] { font-style: italic; }
+
+/* ── List Button: hide dropdown arrow ── */
+QToolButton#listDropBtn::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
+}

@@ -1,0 +1,366 @@
+/* ── Farbpalette ──────────────────────────────
+   App-BG:       #1a1a1a
+   Panels:       #242424
+   Cards:        #2d2d2d
+   Hover:        #333333
+   Active/Blau:  #3B7BF5
+   Text primär:  #ffffff
+   Text sekundär:#888888
+   Divider:      #3a3a3a
+─────────────────────────────────────────────── */
+
+/* --- Global --- */
+QWidget {
+    background-color: #1a1a1a;
+    color: #ffffff;
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* --- Main Window --- */
+QMainWindow {
+    background-color: #1a1a1a;
+}
+
+/* --- Stacked Widget --- */
+QStackedWidget {
+    background-color: #1a1a1a;
+}
+
+/* ============================================================
+   MANAGER VIEW
+   ============================================================ */
+
+#managerView {
+    background-color: #1a1a1a;
+}
+
+#managerSidebar {
+    background-color: #242424;
+    border-right: 1px solid #3a3a3a;
+}
+
+#managerContent {
+    background-color: #1a1a1a;
+}
+
+#managerScroll {
+    background-color: #1a1a1a;
+    border: none;
+}
+
+#folderList {
+    background-color: #242424;
+    border: none;
+    outline: none;
+}
+
+#folderList::item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    color: #cccccc;
+}
+
+#folderList::item:hover {
+    background-color: #333333;
+}
+
+#folderList::item:selected {
+    background-color: #3B7BF5;
+    color: #ffffff;
+}
+
+/* Create / Import button */
+#createBtn {
+    background-color: #3B7BF5;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-weight: bold;
+}
+
+#createBtn:hover {
+    background-color: #4a8aff;
+}
+
+#createBtn:pressed {
+    background-color: #2e6be0;
+}
+
+/* PDF Cards */
+#pdfCard {
+    background-color: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+}
+
+#pdfCard:hover {
+    background-color: #333333;
+    border-color: #555555;
+}
+
+#pdfCardThumb {
+    background-color: #3a3a3a;
+    border-radius: 4px;
+}
+
+/* Manager separator */
+#managerSeparator {
+    color: #3a3a3a;
+}
+
+/* ============================================================
+   VIEWER WINDOW
+   ============================================================ */
+
+#viewerWindow {
+    background-color: #1a1a1a;
+}
+
+#viewerTopBar {
+    background-color: #1a1a1a;
+}
+
+#viewerHeader {
+    background-color: #1a1a1a;
+}
+
+/* Back button */
+#backBtn {
+    background-color: transparent;
+    border: none;
+    color: #cccccc;
+    border-radius: 6px;
+}
+
+#backBtn:hover {
+    background-color: #333333;
+}
+
+/* Page input */
+#pageInput {
+    background-color: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #ffffff;
+    padding: 2px 4px;
+}
+
+#pageInput:focus {
+    border-color: #3B7BF5;
+}
+
+/* Separators */
+#viewerSeparator {
+    color: #3a3a3a;
+    max-height: 1px;
+}
+
+#viewerSidebarSep {
+    color: #3a3a3a;
+    max-width: 1px;
+}
+
+/* ============================================================
+   SIDEBAR WIDGET
+   ============================================================ */
+
+#sidebarWidget {
+    background-color: #242424;
+    border: none;
+}
+
+#sidebarColumn {
+    background-color: #242424;
+}
+
+#pageCounterBar {
+    background-color: #242424;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+#thumbnailCard {
+    background-color: #242424;
+    border: 2px solid transparent;
+    border-radius: 4px;
+}
+
+#thumbnailCard:hover {
+    background-color: #2d2d2d;
+}
+
+/* ============================================================
+   PAGE VIEW (QGraphicsView)
+   ============================================================ */
+
+QGraphicsView {
+    background-color: #1a1a1a;
+    border: none;
+}
+
+/* ============================================================
+   SCROLLBARS – slim, rounded, 8px wide
+   ============================================================ */
+
+QScrollBar:vertical {
+    background-color: #242424;
+    width: 8px;
+    margin: 0;
+    border: none;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #444444;
+    min-height: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #555555;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background-color: #242424;
+    height: 8px;
+    margin: 0;
+    border: none;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #444444;
+    min-width: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #555555;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ============================================================
+   TOOLTIPS
+   ============================================================ */
+
+QToolTip {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border: 1px solid #3a3a3a;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+/* ============================================================
+   LABELS (no extra background)
+   ============================================================ */
+
+QLabel {
+    background-color: transparent;
+}
+
+/* ============================================================
+   LINE EDITS
+   ============================================================ */
+
+QLineEdit {
+    background-color: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #ffffff;
+    padding: 4px 8px;
+    selection-background-color: #3B7BF5;
+}
+
+QLineEdit:focus {
+    border-color: #3B7BF5;
+}
+
+/* ============================================================
+   PUSH BUTTONS (generic)
+   ============================================================ */
+
+QPushButton {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 6px 14px;
+}
+
+QPushButton:hover {
+    background-color: #333333;
+}
+
+QPushButton:pressed {
+    background-color: #444444;
+}
+
+/* ============================================================
+   COLOR PICKER POPUP HEADER BUTTONS
+   ============================================================ */
+
+QPushButton[class="picker-action"] {
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: #2d2d2d;
+    color: #aaaaaa;
+    border: none;
+}
+
+QPushButton[class="picker-action"]:hover {
+    background: #3a3a3a;
+    color: #ffffff;
+}
+
+/* ============================================================
+   SLIDERS (Color Picker)
+   ============================================================ */
+
+QSlider::groove:horizontal {
+    height: 8px;
+    border-radius: 4px;
+    background: #333333;
+}
+
+QSlider::handle:horizontal {
+    width: 18px;
+    height: 18px;
+    margin: -5px 0;
+    border-radius: 9px;
+    background: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+QSlider::sub-page:horizontal {
+    background: transparent;
+}
+
+/* ============================================================
+   FRAMES (dividers)
+   ============================================================ */
+
+QFrame[frameShape="4"],  /* HLine */
+QFrame[frameShape="5"] { /* VLine */
+    color: #3a3a3a;
+}

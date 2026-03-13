@@ -1,0 +1,12 @@
+/* ============================================================
+   TEXTBOX OPTIONS POPUP
+   ============================================================ */
+
+/* Placeholder — TextBox popup styles are currently defined
+   inline in Python. Add future TextBox-related QSS here:
+   - QWidget#TextBoxOptionsPopup
+   - QToolButton#popupBtn
+   - QToolButton#popupDeleteBtn
+   - QFrame#PopupSeparator
+   - Handle-related styles
+*/

@@ -1,0 +1,284 @@
+/* ============================================================
+   TOOLBAR
+   ============================================================ */
+
+#toolbarWidget {
+    background-color: #1a1a1a;
+}
+
+/* Tool Buttons */
+QToolButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #cccccc;
+    padding: 4px;
+}
+
+QToolButton:hover {
+    background-color: #333333;
+}
+
+QToolButton:checked {
+    background-color: #3B7BF5;
+    color: #ffffff;
+}
+
+QToolButton:disabled {
+    color: #555555;
+}
+
+/* ── Color Chip Buttons ── */
+#colorChip {
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 0px;
+    background-color: transparent;
+}
+
+#colorChip:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+#colorChip:checked {
+    border: 2px solid #ffffff;
+    background-color: transparent;
+}
+
+/* ── Pen Width Buttons ── */
+#widthBtn {
+    border-radius: 4px;
+    background-color: transparent;
+    border: none;
+}
+
+#widthBtn:hover {
+    background-color: #333333;
+}
+
+#widthBtn:checked {
+    background-color: #2d2d2d;
+}
+
+/* ── Add Color Button ── */
+#addColorBtn {
+    background-color: #2d2d2d;
+    border: 2px dashed #555555;
+    border-radius: 14px;
+    color: #888888;
+}
+
+#addColorBtn:hover {
+    border-color: #888888;
+}
+
+/* Toolbar separator */
+#toolbarSeparator {
+    color: #3a3a3a;
+    margin: 0 8px;
+}
+
+/* ============================================================
+   ERASER MODE TOGGLE
+   ============================================================ */
+
+#eraserModeBtn {
+    border-radius: 4px;
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    color: #888888;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+#eraserModeBtn:checked {
+    background: #3B7BF5;
+    border-color: #3B7BF5;
+    color: #ffffff;
+}
+
+#eraserModeBtn:hover:!checked {
+    background: #333333;
+    color: #cccccc;
+}
+
+/* ── Undo/Redo Buttons ── */
+#undoBtn, #redoBtn {
+    background: transparent;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 6px;
+}
+
+#undoBtn:enabled, #redoBtn:enabled {
+    border-color: #555555;
+}
+
+#undoBtn:enabled:hover, #redoBtn:enabled:hover {
+    background: #383838;
+    border-color: #666666;
+}
+
+#undoBtn:enabled:pressed, #redoBtn:enabled:pressed {
+    background: #2a2a2a;
+    border-color: #555555;
+}
+
+#undoBtn:disabled, #redoBtn:disabled {
+    border-color: #2a2a2a;
+    opacity: 0.4;
+}
+
+/* ── Font Controls (Text Tool in Toolbar) ── */
+#fontSelector {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #cccccc;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+#fontSelector:hover {
+    border-color: #555555;
+}
+#fontSelector QAbstractItemView {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    color: #cccccc;
+    selection-background-color: #3B7BF5;
+}
+
+#fontSizeSpin {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #cccccc;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+#fontSizeSpin:hover {
+    border-color: #555555;
+}
+#fontSizeSpin::up-button, #fontSizeSpin::down-button {
+    width: 14px;
+    background: #3a3a3a;
+    border-radius: 2px;
+}
+
+#boldBtn, #italicBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #888888;
+    font-size: 13px;
+    padding: 2px 6px;
+    min-width: 24px;
+}
+#boldBtn:checked, #italicBtn:checked {
+    background: #2d2d2d;
+    border-color: #3B7BF5;
+    color: #ffffff;
+}
+#boldBtn:hover:!checked, #italicBtn:hover:!checked {
+    background: #2d2d2d;
+    color: #cccccc;
+}
+
+/* ── Shape Tool Dropdown ── */
+QToolButton#shapeToolBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #cccccc;
+    padding: 4px;
+}
+
+QToolButton#shapeToolBtn:hover {
+    background-color: #333333;
+}
+
+QToolButton#shapeToolBtn:checked {
+    background-color: #3B7BF5;
+    color: #ffffff;
+}
+
+QToolButton#shapeToolBtn::menu-button {
+    width: 12px;
+    border-left: 1px solid #3a3a3a;
+    background: transparent;
+    border-radius: 0 4px 4px 0;
+}
+
+QToolButton#shapeToolBtn::menu-arrow {
+    image: none;
+    width: 0;
+}
+
+QMenu#shapeMenu {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 4px;
+    color: #cccccc;
+}
+
+QMenu#shapeMenu::item {
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+QMenu#shapeMenu::item:selected {
+    background: #3B7BF5;
+    color: #ffffff;
+}
+
+/* ============================================================
+   THREE-DOT MENU
+   ============================================================ */
+
+QToolButton#threeDotBtn {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #cccccc;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+QToolButton#threeDotBtn:hover {
+    background: #333333;
+    border-color: #555555;
+}
+QToolButton#threeDotBtn:pressed {
+    background: #222222;
+}
+QToolButton#threeDotBtn::menu-indicator {
+    width: 0;
+    height: 0;
+}
+
+QMenu#threeDotMenu {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 4px;
+    color: #cccccc;
+    font-size: 13px;
+}
+QMenu#threeDotMenu::item {
+    padding: 8px 20px;
+    border-radius: 4px;
+}
+QMenu#threeDotMenu::item:selected {
+    background: #3B7BF5;
+    color: #ffffff;
+}
+QMenu#threeDotMenu::item:disabled {
+    color: #555555;
+}
+QMenu#threeDotMenu::separator {
+    height: 1px;
+    background: #3a3a3a;
+    margin: 4px 8px;
+}
