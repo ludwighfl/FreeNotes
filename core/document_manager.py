@@ -114,14 +114,59 @@ class DocumentManager:
         return (rect.width, rect.height)
 
     def reorder_pages(self, new_order: list[int]) -> None:
-        """Reorder pages in the open document.
-
-        Args:
-            new_order: List where new_order[new_pos] = old_page_index.
-        """
+        """Reorder pages in the open document."""
         if self._document is None:
             return
         self._document.select(new_order)
+        self._cache.clear()
+
+    def insert_page(
+        self, at_index: int, source_idx: int | None = None
+    ) -> None:
+        """Insert a page at the given index.
+
+        Args:
+            at_index: Position to insert at.
+            source_idx: If None, insert a blank A4 page.
+                        If int, copy that page.
+        """
+        if self._document is None:
+            return
+        if source_idx is None:
+            self._document.insert_page(at_index, width=595, height=842)
+        else:
+            # copy_page inserts after source, so we use fullcopy + move
+            self._document.copy_page(source_idx, at_index)
+        self._cache.clear()
+
+    def remove_page(self, page_idx: int) -> None:
+        """Delete a page from the document."""
+        if self._document is None:
+            return
+        self._document.delete_page(page_idx)
+        self._cache.clear()
+
+    def save_page_bytes(self, page_idx: int) -> bytes:
+        """Save a single page as PDF bytes (for undo)."""
+        import fitz
+        if self._document is None:
+            return b""
+        temp = fitz.open()
+        temp.insert_pdf(
+            self._document, from_page=page_idx, to_page=page_idx)
+        data = temp.tobytes()
+        temp.close()
+        return data
+
+    def restore_page(self, at_index: int, page_bytes: bytes) -> None:
+        """Restore a previously saved page from bytes."""
+        import fitz
+        if self._document is None or not page_bytes:
+            return
+        temp = fitz.open("pdf", page_bytes)
+        self._document.insert_pdf(
+            temp, from_page=0, to_page=0, start_at=at_index)
+        temp.close()
         self._cache.clear()
 
     @property

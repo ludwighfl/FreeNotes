@@ -381,6 +381,97 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
                     ))
 
     # ------------------------------------------------------------------
+    # Page insert / remove
+    # ------------------------------------------------------------------
+
+    def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
+        """Insert an empty annotation slot at at_index.
+
+        Shifts all annotation indices >= at_index up by 1.
+        """
+        for d in (self._stroke_items, self._highlight_items,
+                  self._text_box_items, self._shape_items):
+            new_d: dict = {}
+            for idx, items in d.items():
+                new_idx = idx + 1 if idx >= at_index else idx
+                for item in items:
+                    if hasattr(item, '_page_index') and item._page_index >= at_index:
+                        item._page_index += 1
+                new_d[new_idx] = items
+            d.clear()
+            d.update(new_d)
+
+    def remove_page(self, page_idx: int, doc_manager: DocumentManager) -> None:
+        """Remove all annotations on page_idx and shift indices down."""
+        for d in (self._stroke_items, self._highlight_items,
+                  self._text_box_items, self._shape_items):
+            # Remove items on the deleted page from scene
+            for item in d.get(page_idx, []):
+                self.removeItem(item)
+            # Re-index
+            new_d: dict = {}
+            for idx, items in d.items():
+                if idx == page_idx:
+                    continue
+                new_idx = idx - 1 if idx > page_idx else idx
+                for item in items:
+                    if hasattr(item, '_page_index') and item._page_index > page_idx:
+                        item._page_index -= 1
+                new_d[new_idx] = items
+            d.clear()
+            d.update(new_d)
+
+    def clone_page_annotations(
+        self, source_idx: int, target_idx: int
+    ) -> None:
+        """Deep-copy annotations from source_idx to target_idx."""
+        mapping = [
+            (self._stroke_items, StrokeItem),
+            (self._highlight_items, HighlightItem),
+            (self._text_box_items, TextBoxItem),
+            (self._shape_items, ShapeItem),
+        ]
+        for d, item_cls in mapping:
+            for item in d.get(source_idx, []):
+                try:
+                    data = item.to_dict()
+                    new_item = item_cls.from_dict(data)
+                    new_item._page_index = target_idx
+                    d.setdefault(target_idx, []).append(new_item)
+                    self.addItem(new_item)
+                except Exception:
+                    pass  # skip items that can't be cloned
+
+    def save_page_annotations(self, page_idx: int) -> dict:
+        """Save annotation item references for undo (removes from scene)."""
+        saved: dict = {
+            "strokes": list(self._stroke_items.get(page_idx, [])),
+            "highlights": list(self._highlight_items.get(page_idx, [])),
+            "textboxes": list(self._text_box_items.get(page_idx, [])),
+            "shapes": list(self._shape_items.get(page_idx, [])),
+        }
+        return saved
+
+    def restore_page_annotations(
+        self, page_idx: int, saved: dict
+    ) -> None:
+        """Restore previously saved annotation items to page_idx."""
+        mapping = {
+            "strokes": self._stroke_items,
+            "highlights": self._highlight_items,
+            "textboxes": self._text_box_items,
+            "shapes": self._shape_items,
+        }
+        for key, items in saved.items():
+            d = mapping[key]
+            d.setdefault(page_idx, [])
+            for item in items:
+                item._page_index = page_idx
+                if item.scene() is None:
+                    self.addItem(item)
+                d[page_idx].append(item)
+
+    # ------------------------------------------------------------------
     # Eraser cursor visibility
     # ------------------------------------------------------------------
 

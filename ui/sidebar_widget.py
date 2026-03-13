@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Signal, QTimer, QRectF, QMimeData, QPoint
 from PySide6.QtGui import (
     QPixmap, QPainter, QFont, QColor, QPen, QBrush, QDrag,
-    QMouseEvent,
+    QMouseEvent, QContextMenuEvent, QAction,
 )
 from PySide6.QtWidgets import (
     QScrollArea,
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QFrame,
+    QMenu,
 )
 
 from core.document_manager import DocumentManager
@@ -362,6 +363,86 @@ class SidebarWidget(QScrollArea):
         self._cards = new_cards
         self._loaded_pages.clear()
         QTimer.singleShot(50, self._load_visible_thumbnails)
+
+    def rebuild_all(self, doc_manager: DocumentManager | None = None) -> None:
+        """Clear and recreate all thumbnail cards from scratch."""
+        dm = doc_manager or self._doc_manager
+        if dm is None or self._scene is None:
+            return
+
+        self._loaded_pages.clear()
+        old_active = self._active_index
+        self._active_index = -1
+
+        for card in self._cards:
+            self._layout.removeWidget(card)
+            card.deleteLater()
+        self._cards.clear()
+
+        page_count = dm.get_page_count()
+        for i in range(page_count):
+            card = ThumbnailCard(i)
+            card.clicked.connect(self._on_card_clicked)
+            self._layout.addWidget(card)
+            self._cards.append(card)
+
+        # Restore active page
+        new_active = min(old_active, page_count - 1)
+        if new_active >= 0:
+            self.set_active_page(new_active)
+
+        QTimer.singleShot(50, self._load_visible_thumbnails)
+
+    # ------------------------------------------------------------------
+    # Context menu
+    # ------------------------------------------------------------------
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """Show page context menu on right-click."""
+        if not self._cards or self._viewer is None:
+            return
+
+        # Find which card was clicked
+        pos_in_container = self._container.mapFrom(
+            self.viewport(),
+            self.viewport().mapFrom(self, event.pos()),
+        )
+        clicked_idx = -1
+        for i, card in enumerate(self._cards):
+            if card.geometry().contains(pos_in_container):
+                clicked_idx = i
+                break
+        if clicked_idx < 0:
+            return
+
+        menu = QMenu(self)
+        menu.setObjectName("pageContextMenu")
+
+        act_add_above = QAction("Leere Seite davor einfügen", self)
+        act_add_below = QAction("Leere Seite danach einfügen", self)
+        act_duplicate = QAction("Seite duplizieren", self)
+        act_delete = QAction("Seite löschen", self)
+        act_delete.setEnabled(len(self._cards) > 1)
+
+        menu.addAction(act_add_above)
+        menu.addAction(act_add_below)
+        menu.addSeparator()
+        menu.addAction(act_duplicate)
+        menu.addSeparator()
+        menu.addAction(act_delete)
+
+        viewer = self._viewer
+        idx = clicked_idx
+        act_add_above.triggered.connect(
+            lambda: viewer.add_page(idx, "before"))
+        act_add_below.triggered.connect(
+            lambda: viewer.add_page(idx, "after"))
+        act_duplicate.triggered.connect(
+            lambda: viewer.duplicate_page(idx))
+        act_delete.triggered.connect(
+            lambda: viewer.delete_page(idx))
+
+        menu.exec(event.globalPos())
 
     def set_active_page(self, page_index: int) -> None:
         """Highlight the given page in the sidebar.

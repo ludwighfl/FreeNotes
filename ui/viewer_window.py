@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.app_state import AppState
 from core.document_manager import DocumentManager
+from core import undo_stack
 from ui.page_scene import PageScene
 from ui.page_view import PageView
 from ui.sidebar_widget import SidebarWidget
@@ -269,3 +270,47 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._reposition_formatting_bar()
+
+    # ------------------------------------------------------------------
+    # Page management
+    # ------------------------------------------------------------------
+
+    def add_page(self, near_idx: int, position: str) -> None:
+        """Insert a blank page before or after near_idx."""
+        insert_at = near_idx if position == "before" else near_idx + 1
+        from commands.add_page_command import AddPageCommand
+        cmd = AddPageCommand(
+            insert_at=insert_at,
+            source_page_idx=None,
+            scene=self._page_scene,
+            doc_manager=self._doc_manager,
+            sidebar=self._sidebar,
+            label="Leere Seite einfügen",
+        )
+        undo_stack.push(cmd)
+
+    def duplicate_page(self, page_idx: int) -> None:
+        """Duplicate a page (including annotations)."""
+        from commands.add_page_command import AddPageCommand
+        cmd = AddPageCommand(
+            insert_at=page_idx + 1,
+            source_page_idx=page_idx,
+            scene=self._page_scene,
+            doc_manager=self._doc_manager,
+            sidebar=self._sidebar,
+            label="Seite duplizieren",
+        )
+        undo_stack.push(cmd)
+
+    def delete_page(self, page_idx: int) -> None:
+        """Delete a page (undoable)."""
+        if self._doc_manager.get_page_count() <= 1:
+            return  # Can't delete last page
+        from commands.delete_page_command import DeletePageCommand
+        cmd = DeletePageCommand(
+            page_idx=page_idx,
+            scene=self._page_scene,
+            doc_manager=self._doc_manager,
+            sidebar=self._sidebar,
+        )
+        undo_stack.push(cmd)
