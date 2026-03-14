@@ -210,7 +210,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
         shape_entries = [
             ("Rechteck",          ShapeType.RECT),
-            ("Abgerundetes Rect", ShapeType.ROUNDED_RECT),
+            ("Abgerundetes Rechteck", ShapeType.ROUNDED_RECT),
             ("Ellipse / Kreis",   ShapeType.ELLIPSE),
             ("Linie",             ShapeType.LINE),
             ("Pfeil",             ShapeType.ARROW),

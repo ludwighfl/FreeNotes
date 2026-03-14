@@ -30,14 +30,14 @@ class PdfExporter:
 
     def export(
         self,
-        source_pdf: str,
+        doc_manager: DocumentManager,
         target_pdf: str,
         progress_callback: Callable[[int], None] | None = None,
     ) -> None:
-        """Export annotations to *target_pdf*, starting from *source_pdf*.
+        """Export annotations to *target_pdf*, starting from the current document state.
 
         Args:
-            source_pdf: Path to the original (clean) PDF.
+            doc_manager: The active DocumentManager holding the loaded PDF.
             target_pdf: Path to write the annotated PDF.
             progress_callback: Optional callback receiving 0–100 progress.
         """
@@ -45,7 +45,11 @@ class PdfExporter:
         from core.pdf_shape_exporter import PdfShapeExporter
         from core.pdf_text_exporter import PdfTextExporter
 
-        doc = fitz.open(str(source_pdf))
+        doc_bytes = doc_manager.get_document_bytes()
+        if not doc_bytes:
+            raise ValueError("Kein Dokument geöffnet oder Fehler beim Auslesen des PDFs.")
+            
+        doc = fitz.open("pdf", doc_bytes)
         total_pages = doc.page_count
 
         for page_idx in range(total_pages):

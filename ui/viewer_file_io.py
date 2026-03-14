@@ -142,11 +142,10 @@ class ViewerFileIOMixin:
     def _save_to(self, path: str) -> None:
         """Execute the save operation."""
         try:
-            pdf_path = str(self._app_state.current_pdf_path or "")
             FreenotesStore.save(
                 path=path,
                 scene=self._page_scene,
-                pdf_path=pdf_path,
+                doc_manager=self._doc_manager,
             )
             self._app_state.freenotes_path = path
             self._app_state.is_modified = False
@@ -163,7 +162,7 @@ class ViewerFileIOMixin:
             return
         base, ext = os.path.splitext(str(pdf_path))
         default_target = f"{base}_annotiert{ext}"
-        self._run_export(str(pdf_path), default_target)
+        self._run_export(default_target)
 
     def _on_export_as(self) -> None:
         """Slot for Export As action from ThreeDotMenu."""
@@ -179,9 +178,9 @@ class ViewerFileIOMixin:
         )
         if not target:
             return
-        self._run_export(str(pdf_path), target)
+        self._run_export(target)
 
-    def _run_export(self, source: str, target: str) -> None:
+    def _run_export(self, target: str) -> None:
         """Execute the export operation with a progress dialog."""
         progress = QProgressDialog(
             "PDF wird exportiert …", "Abbrechen", 0, 100, self,  # type: ignore
@@ -197,7 +196,7 @@ class ViewerFileIOMixin:
         try:
             exporter = PdfExporter(self._page_scene)
             exporter.export(
-                source_pdf=source,
+                doc_manager=self._doc_manager,
                 target_pdf=target,
                 progress_callback=on_progress,
             )
