@@ -22,7 +22,7 @@ class AppState(QObject):
     zoom_changed = Signal(float)
     tool_changed = Signal(str)
     style_changed = Signal(object)  # ToolStyle (object for QObject signal compat)
-    total_pages_changed = Signal(int)
+    library_ready = Signal()
 
     _instance: "AppState | None" = None
 
@@ -56,6 +56,20 @@ class AppState(QObject):
         # Save/load state
         self.freenotes_path: str | None = None
         self.is_modified: bool = False
+
+        # Library manager
+        self._library_manager: object | None = None
+        self.current_folder: Path | None = None
+
+    @property
+    def library_manager(self) -> object | None:
+        return self._library_manager
+
+    @library_manager.setter
+    def library_manager(self, lm: object | None) -> None:
+        self._library_manager = lm
+        if lm is not None:
+            self.library_ready.emit()
 
     # --- current_pdf_path ---
     @property
@@ -95,9 +109,7 @@ class AppState(QObject):
 
     @total_pages.setter
     def total_pages(self, value: int) -> None:
-        if self._total_pages != value:
-            self._total_pages = value
-            self.total_pages_changed.emit(value)
+        self._total_pages = value
 
     # --- active_tool_name ---
     @property

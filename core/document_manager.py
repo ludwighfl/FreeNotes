@@ -55,27 +55,6 @@ class DocumentManager:
         self._path = None
         self._cache.clear()
 
-    def save_document_copy(self, path: str) -> bool:
-        """Save a complete structural copy of the current document state to path."""
-        if self._document is None:
-            return False
-        try:
-            self._document.save(path, garbage=4, deflate=True)
-            return True
-        except Exception as e:
-            print(f"Failed to save document copy to {path}: {e}")
-            return False
-
-    def get_document_bytes(self) -> bytes | None:
-        """Return the complete structural document state as bytes."""
-        if self._document is None:
-            return None
-        try:
-            return self._document.write(garbage=4, deflate=True)
-        except Exception as e:
-            print(f"Failed to write document bytes: {e}")
-            return None
-
     def get_page_count(self) -> int:
         """Return the number of pages in the open document (0 if none)."""
         if self._document is None:

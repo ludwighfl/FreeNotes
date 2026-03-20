@@ -239,6 +239,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         sep1.setFrameShape(QFrame.Shape.VLine)
         sep1.setObjectName("toolbarSeparator")
         sep1.setFixedHeight(28)
+        sep1.setFixedWidth(1)
         main_layout.addWidget(sep1)
 
         # --- 10 Color chips (single-click = select, double-click = edit) ---
@@ -271,6 +272,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         sep2.setFrameShape(QFrame.Shape.VLine)
         sep2.setObjectName("toolbarSeparator")
         sep2.setFixedHeight(28)
+        sep2.setFixedWidth(1)
         main_layout.addWidget(sep2)
 
         # --- Pen width buttons (5 levels) ---

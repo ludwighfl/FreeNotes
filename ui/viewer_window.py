@@ -201,7 +201,6 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._sidebar.page_clicked.connect(self._on_sidebar_page_clicked)
         self._page_view.visible_page_changed.connect(self._on_visible_page_changed)
         self._app_state.page_changed.connect(self._on_page_changed)
-        self._app_state.total_pages_changed.connect(self._on_total_pages_changed)
         self._page_input.returnPressed.connect(self._on_page_input_entered)
         self._toolbar.tool_changed.connect(self._on_tool_changed)
         self._toolbar.style_changed.connect(self._on_style_changed)
@@ -238,11 +237,6 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
     def _on_page_changed(self, page_index: int) -> None:
         self._page_input.setText(str(page_index + 1))
-
-    def _on_total_pages_changed(self, page_count: int) -> None:
-        from PySide6.QtGui import QIntValidator
-        self._total_pages_label.setText(str(page_count))
-        self._page_input.setValidator(QIntValidator(1, page_count, self))
 
     def _on_page_input_entered(self) -> None:
         text = self._page_input.text().strip()

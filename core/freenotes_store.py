@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QPainterPath, QColor
 
-from core.document_manager import DocumentManager
 from core.tool_style import ToolStyle
 from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
@@ -28,22 +27,11 @@ class FreenotesStore:
     # ------------------------------------------------------------------
 
     @classmethod
-    def save(cls, path: str, scene: PageScene, doc_manager: DocumentManager) -> None:
+    def save(cls, path: str, scene: PageScene, pdf_path: str) -> None:
         """Save all annotations from *scene* to a .freenotes JSON file."""
-        
-        pdf_path = ""
-        # Save a companion PDF so structural changes (pages added/removed/reordered) are persisted.
-        pdf_filename = os.path.basename(path).replace(".freenotes", ".pdf")
-        if pdf_filename == os.path.basename(path):
-            pdf_filename += ".pdf"
-            
-        companion_pdf_path = os.path.join(os.path.dirname(path), pdf_filename)
-        if doc_manager.save_document_copy(companion_pdf_path):
-            pdf_path = companion_pdf_path
-            
         data: dict = {
             "version": 1,
-            "pdf_path": pdf_path,
+            "pdf_path": pdf_path or "",
             "pages": {},
         }
 

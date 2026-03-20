@@ -1,5 +1,6 @@
 """Path resolving utilities for handling PyInstaller MEIPASS."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,3 +14,14 @@ def get_app_path() -> Path:
         return Path(sys._MEIPASS)
     # Dev mode: assumes this file is in app_src/utils/path_helpers.py
     return Path(__file__).parent.parent
+
+
+def get_default_annotations_root() -> Path:
+    """Return the platform-specific default annotations root folder."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", str(Path.home())))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path.home() / ".local" / "share"
+    return base / "FreeNotes" / "Annotations"

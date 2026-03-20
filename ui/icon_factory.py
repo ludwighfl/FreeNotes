@@ -297,6 +297,32 @@ def _register_builtins() -> None:
         'a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     )
 
+    # FolderOpen – Lucide "FolderOpen"
+    r(
+        "folder_open",
+        '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20'
+        'a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95'
+        ' 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2h3.9'
+        'a2 2 0 0 1 1.69.9l.81 1.2A2 2 0 0 0 12.11 6H18'
+        'a2 2 0 0 1 2 2v2"/>',
+    )
+
+    # Clock – Lucide "Clock"
+    r(
+        "clock",
+        '<circle cx="12" cy="12" r="10"/>'
+        '<polyline points="12 6 12 12 16 14"/>',
+    )
+
+    # LayoutGrid – Lucide "LayoutGrid"
+    r(
+        "layout_grid",
+        '<rect width="7" height="7" x="3" y="3" rx="1"/>'
+        '<rect width="7" height="7" x="14" y="3" rx="1"/>'
+        '<rect width="7" height="7" x="14" y="14" rx="1"/>'
+        '<rect width="7" height="7" x="3" y="14" rx="1"/>',
+    )
+
     # File – Lucide "File"
     r(
         "file",

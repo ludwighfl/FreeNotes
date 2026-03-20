@@ -10,8 +10,10 @@ pdf_annotator/
 ├── app/                     # Application state
 │   └── app_state.py         # Singleton AppState (current tool, style, page, zoom)
 ├── core/                    # Domain logic (no Qt widgets)
+│   ├── app_settings.py      # App configuration and preferences
 │   ├── document_manager.py  # PDF loading via PyMuPDF (fitz)
 │   ├── freenotes_store.py   # State persistence for internal data
+│   ├── library_manager.py   # File system scanning and library management
 │   ├── pdf_exporter.py      # Main orchestrator for PDF export
 │   ├── pdf_text_exporter.py # Renders TextBoxItems to PDF
 │   ├── pdf_shape_exporter.py# Renders ShapeItems to PDF
@@ -19,7 +21,8 @@ pdf_annotator/
 │   ├── pdf_renderer.py      # Page → QPixmap rendering with DPI scaling
 │   ├── shape_style.py       # Styling classes for geometric shapes
 │   ├── tool_style.py        # ToolStyle dataclass (color, width, font, etc.)
-│   └── undo_stack.py        # Global undo stack (thin wrapper around list)
+│   ├── undo_stack.py        # Global undo stack (thin wrapper around list)
+│   └── zip_exporter.py      # Exporting projects as ZIP archives
 ├── items/                   # QGraphicsItem subclasses (annotations on canvas)
 │   ├── text_box_item.py     # TextBoxItem — rich-text annotation (uses mixins below)
 │   ├── text_box_formatting.py  # TextBoxFormattingMixin — bold/italic/font/color
@@ -54,11 +57,14 @@ pdf_annotator/
 │   ├── resize_highlight_command.py
 │   ├── rotate_textbox_command.py
 │   ├── cut_textbox_command.py, delete_items_command.py
-│   └── paste_items_command.py
+│   ├── paste_items_command.py
+│   └── delete_page_command.py  # Deleting single pages
 ├── ui/                      # Qt widgets (windows, toolbars, popups)
 │   ├── main_window.py       # Main QMainWindow (thin shell)
 │   ├── splash_screen.py     # Startup splash screen overlay
 │   ├── manager_view.py      # File manager / landing page
+│   ├── pdf_card.py          # PDF thumbnail item for the manager
+│   ├── sidebar_item.py      # Folder/file entry for manager sidebar
 │   ├── viewer_window.py     # PDF viewer with toolbar + sidebar (uses mixins)
 │   ├── viewer_file_io.py    # ViewerFileIOMixin — Load, save, export
 │   ├── viewer_tool_manager.py # ViewerToolManagerMixin — Tool & style handling
@@ -126,7 +132,7 @@ Pure-Python mixins break down large classes while preserving their public API. M
 | Class | Mixins | Qt Base |
 |-------|--------|---------|
 | `TextBoxItem` | `TextBoxInputMixin`, `TextBoxFormattingMixin`, `TextBoxPseudoListMixin` | `QGraphicsObject` |
-| `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin` | `QGraphicsScene` |
+| `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin`, `SceneSelectionMixin`, `ScenePageManagerMixin` | `QGraphicsScene` |
 | `ToolbarWidget` | `ToolbarModePopupsMixin` | `QWidget` |
 | `ViewerWindow` | `ViewerFileIOMixin`, `ViewerToolManagerMixin` | `QWidget` |
 

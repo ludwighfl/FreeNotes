@@ -18,8 +18,11 @@ from items.text_box_item import TextBoxItem
 from items.selection_overlay_item import SelectionOverlayItem
 from items.bounding_box_handle_manager import BoundingBoxHandleManager
 from items.shape_item import ShapeItem
+
 from ui.scene_registry import SceneRegistryMixin
 from ui.scene_clipboard import SceneClipboardMixin
+from ui.scene_selection import SceneSelectionMixin
+from ui.scene_page_manager import ScenePageManagerMixin
 
 # TYPE_CHECKING import to avoid circular dependency
 from typing import TYPE_CHECKING
@@ -28,7 +31,13 @@ if TYPE_CHECKING:
     from tools.base_tool import BaseTool
 
 
-class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
+class PageScene(
+    SceneRegistryMixin,
+    SceneClipboardMixin,
+    SceneSelectionMixin,
+    ScenePageManagerMixin,
+    QGraphicsScene,
+):
     """QGraphicsScene that holds all PDF pages stacked vertically.
 
     Each page is a QGraphicsPixmapItem placed below the previous one
@@ -38,8 +47,10 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
     Also dispatches mouse events to the active tool for drawing.
 
     Functionality is split across mixins:
-        SceneRegistryMixin  – per-page item tracking (strokes, highlights, textboxes)
-        SceneClipboardMixin – delete/copy/cut/paste + serialization
+        SceneRegistryMixin    – per-page item tracking (strokes, highlights, textboxes, shapes)
+        SceneClipboardMixin   – copy/cut/paste + serialization
+        SceneSelectionMixin   – multi-selection and bounding box overlay
+        ScenePageManagerMixin – page reordering, insertion, cloning
     """
 
     PAGE_GAP: int = 20
@@ -60,7 +71,7 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
         # Disable BSP tree for dynamic item compatibility (fixes zoom ghosts)
         self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
 
-        # Central selection state
+        # Central selection state (used by SceneSelectionMixin)
         self._selected_items: set = set()
         self._selection_overlay: SelectionOverlayItem = SelectionOverlayItem()
         self.addItem(self._selection_overlay)
@@ -271,207 +282,6 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
         return len(self._page_items)
 
     # ------------------------------------------------------------------
-    # Page reorder
-    # ------------------------------------------------------------------
-
-    def reorder_annotations(self, new_order: list[int]) -> None:
-        """Remap annotation dicts according to new_order.
-
-        new_order[new_pos] = old_page_index.
-        Must be called BEFORE doc_manager.reorder_pages().
-        """
-
-        def remap(d: dict) -> dict:
-            new_d: dict = {}
-            for new_pos, old_idx in enumerate(new_order):
-                if old_idx in d:
-                    items = d[old_idx]
-                    new_d[new_pos] = items
-                    for item in items:
-                        if hasattr(item, '_page_index'):
-                            item._page_index = new_pos
-            return new_d
-
-        self._stroke_items = remap(self._stroke_items)
-        self._highlight_items = remap(self._highlight_items)
-        self._text_box_items = remap(self._text_box_items)
-        self._shape_items = remap(self._shape_items)
-
-    def rebuild_after_reorder(self, doc_manager: DocumentManager) -> None:
-        """Rebuild page pixmaps and reposition annotations after reorder.
-
-        Must be called AFTER doc_manager.reorder_pages().
-        """
-        page_count = doc_manager.get_page_count()
-        if page_count == 0:
-            return
-
-        # Collect all annotation items and temporarily remove from scene
-        all_annotations: dict[int, list] = {}
-        for idx in range(page_count):
-            items = []
-            for d in (self._stroke_items, self._highlight_items,
-                      self._text_box_items, self._shape_items):
-                items.extend(d.get(idx, []))
-            all_annotations[idx] = items
-
-        # Store old page rects for offset calculation
-        old_page_rects = list(self._page_rects)
-
-        # Remove old page pixmap items
-        for pix_item in self._page_items:
-            self.removeItem(pix_item)
-        self._page_items.clear()
-        self._page_rects.clear()
-
-        # Re-render pages in new order
-        y_offset: float = self.PAGE_GAP
-        for i in range(page_count):
-            pixmap = doc_manager.get_page_pixmap(i)
-            item = QGraphicsPixmapItem(pixmap)
-            item.setTransformationMode(
-                Qt.TransformationMode.SmoothTransformation)
-
-            dpr = pixmap.devicePixelRatio()
-            logical_w = pixmap.width() / dpr
-            logical_h = pixmap.height() / dpr
-
-            item.setPos(0, y_offset)
-            self._page_items.append(item)
-            self.addItem(item)
-
-            page_rect = QRectF(0, y_offset, logical_w, logical_h)
-            self._page_rects.append(page_rect)
-            y_offset += logical_h + self.PAGE_GAP
-
-        # Center horizontally
-        if self._page_items:
-            max_width = max(
-                it.pixmap().width() / it.pixmap().devicePixelRatio()
-                for it in self._page_items
-            )
-            for i, it in enumerate(self._page_items):
-                pix = it.pixmap()
-                lw = pix.width() / pix.devicePixelRatio()
-                lh = pix.height() / pix.devicePixelRatio()
-                x_off = (max_width - lw) / 2.0
-                it.setPos(x_off, it.pos().y())
-                self._page_rects[i] = QRectF(
-                    x_off, it.pos().y(), lw, lh)
-
-        # Reposition annotation items to new page y-offsets
-        for idx in range(page_count):
-            if idx >= len(self._page_rects):
-                break
-            new_rect = self._page_rects[idx]
-            # Get old rect for this page's annotations (use old_page_rects if available)
-            for item in all_annotations.get(idx, []):
-                old_pos = item.pos()
-                # Find which old page this item was on based on its old _page_index
-                old_page_idx = idx  # annotations already remapped
-                if old_page_idx < len(old_page_rects):
-                    old_rect = old_page_rects[old_page_idx]
-                    # Compute relative position within old page
-                    rel_x = old_pos.x() - old_rect.x()
-                    rel_y = old_pos.y() - old_rect.y()
-                    # Apply to new page position
-                    item.setPos(QPointF(
-                        new_rect.x() + rel_x,
-                        new_rect.y() + rel_y,
-                    ))
-
-    # ------------------------------------------------------------------
-    # Page insert / remove
-    # ------------------------------------------------------------------
-
-    def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
-        """Insert an empty annotation slot at at_index.
-
-        Shifts all annotation indices >= at_index up by 1.
-        """
-        for d in (self._stroke_items, self._highlight_items,
-                  self._text_box_items, self._shape_items):
-            new_d: dict = {}
-            for idx, items in d.items():
-                new_idx = idx + 1 if idx >= at_index else idx
-                for item in items:
-                    if hasattr(item, '_page_index') and item._page_index >= at_index:
-                        item._page_index += 1
-                new_d[new_idx] = items
-            d.clear()
-            d.update(new_d)
-
-    def remove_page(self, page_idx: int, doc_manager: DocumentManager) -> None:
-        """Remove all annotations on page_idx and shift indices down."""
-        for d in (self._stroke_items, self._highlight_items,
-                  self._text_box_items, self._shape_items):
-            # Remove items on the deleted page from scene
-            for item in d.get(page_idx, []):
-                self.removeItem(item)
-            # Re-index
-            new_d: dict = {}
-            for idx, items in d.items():
-                if idx == page_idx:
-                    continue
-                new_idx = idx - 1 if idx > page_idx else idx
-                for item in items:
-                    if hasattr(item, '_page_index') and item._page_index > page_idx:
-                        item._page_index -= 1
-                new_d[new_idx] = items
-            d.clear()
-            d.update(new_d)
-
-    def clone_page_annotations(
-        self, source_idx: int, target_idx: int
-    ) -> None:
-        """Deep-copy annotations from source_idx to target_idx."""
-        mapping = [
-            (self._stroke_items, StrokeItem),
-            (self._highlight_items, HighlightItem),
-            (self._text_box_items, TextBoxItem),
-            (self._shape_items, ShapeItem),
-        ]
-        for d, item_cls in mapping:
-            for item in d.get(source_idx, []):
-                try:
-                    data = item.to_dict()
-                    new_item = item_cls.from_dict(data)
-                    new_item._page_index = target_idx
-                    d.setdefault(target_idx, []).append(new_item)
-                    self.addItem(new_item)
-                except Exception:
-                    pass  # skip items that can't be cloned
-
-    def save_page_annotations(self, page_idx: int) -> dict:
-        """Save annotation item references for undo (removes from scene)."""
-        saved: dict = {
-            "strokes": list(self._stroke_items.get(page_idx, [])),
-            "highlights": list(self._highlight_items.get(page_idx, [])),
-            "textboxes": list(self._text_box_items.get(page_idx, [])),
-            "shapes": list(self._shape_items.get(page_idx, [])),
-        }
-        return saved
-
-    def restore_page_annotations(
-        self, page_idx: int, saved: dict
-    ) -> None:
-        """Restore previously saved annotation items to page_idx."""
-        mapping = {
-            "strokes": self._stroke_items,
-            "highlights": self._highlight_items,
-            "textboxes": self._text_box_items,
-            "shapes": self._shape_items,
-        }
-        for key, items in saved.items():
-            d = mapping[key]
-            d.setdefault(page_idx, [])
-            for item in items:
-                item._page_index = page_idx
-                if item.scene() is None:
-                    self.addItem(item)
-                d[page_idx].append(item)
-
-    # ------------------------------------------------------------------
     # Eraser cursor visibility
     # ------------------------------------------------------------------
 
@@ -485,7 +295,7 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
     def get_ephemeral_items(self) -> list:
         """Return a list of UI graphics items that shouldn't be rendered in exporting or thumbnails."""
         items = []
-        
+
         # Active tool cursor (e.g. eraser circle)
         from tools.eraser_tool import EraserTool
         if isinstance(self._active_tool, EraserTool):
@@ -495,132 +305,7 @@ class PageScene(SceneRegistryMixin, SceneClipboardMixin, QGraphicsScene):
                         items.append(self._active_tool._cursor_item)
                 except RuntimeError:
                     pass
-                
+
         # TextBox selection frames are handled in their respective paint methods dynamically.
-        
+
         return items
-
-    # ------------------------------------------------------------------
-    # Central selection management
-    # ------------------------------------------------------------------
-
-    def set_selection(self, items: list) -> None:
-        """Replace the entire selection with *items*."""
-        old = set(self._selected_items)
-        self._selected_items.clear()
-        for item in old:
-            self._deselect_item(item)
-        for item in items:
-            self._select_item(item)
-            self._selected_items.add(item)
-        self._update_selection_overlay()
-        self.selection_changed.emit()
-
-    def add_to_selection(self, item) -> None:
-        """Add a single item to the selection."""
-        if item not in self._selected_items:
-            self._select_item(item)
-            self._selected_items.add(item)
-            self._update_selection_overlay()
-            self.selection_changed.emit()
-
-    def remove_from_selection(self, item) -> None:
-        """Remove a single item from the selection."""
-        if item in self._selected_items:
-            self._deselect_item(item)
-            self._selected_items.discard(item)
-            self._update_selection_overlay()
-            self.selection_changed.emit()
-
-    def clear_selection(self) -> None:
-        """Deselect everything."""
-        for item in set(self._selected_items):
-            self._deselect_item(item)
-        self._selected_items.clear()
-        self._ensure_overlay().setVisible(False)
-        self.selection_changed.emit()
-
-    def get_selected_items(self) -> list:
-        """Return a snapshot of the current selection."""
-        return list(self._selected_items)
-
-    def _select_item(self, item) -> None:
-        """Mark *item* as selected (visual feedback) if it is the ONLY selected item.
-        If there are multiple selected items, individual markers are hidden."""
-        if len(self._selected_items) >= 2:
-            return  # Will be hidden by _on_selection_changed
-            
-        if isinstance(item, TextBoxItem):
-            item.set_selected_custom(True)
-        elif isinstance(item, ShapeItem):
-            item.set_selected_custom(True)
-        elif isinstance(item, (StrokeItem, HighlightItem)):
-            item.set_selected(True)
-
-    def _deselect_item(self, item) -> None:
-        """Remove selection visual from *item*."""
-        if isinstance(item, TextBoxItem):
-            item.set_selected_custom(False)
-        elif isinstance(item, ShapeItem):
-            item.set_selected_custom(False)
-        elif isinstance(item, (StrokeItem, HighlightItem)):
-            item.set_selected(False)
-
-    def _ensure_overlay(self) -> SelectionOverlayItem:
-        """Return the selection overlay, recreating it if the C++ side was deleted."""
-        try:
-            self._selection_overlay.isVisible()  # probe C++ object
-        except RuntimeError:
-            self._selection_overlay = SelectionOverlayItem()
-            self.addItem(self._selection_overlay)
-            self._selection_overlay.setVisible(False)
-        return self._selection_overlay
-
-    def _update_selection_overlay(self) -> None:
-        """Refresh the multi-selection overlay bounding box."""
-        self._ensure_overlay().update_from_items(
-            self._selected_items, self)
-        self._bbox_handle_manager.reposition()
-
-    def _on_selection_changed(self) -> None:
-        """React to selection changes: update individual visuals and bounding box resize handles."""
-        items = list(self._selected_items)
-        count = len(items)
-
-        # 1. Update individual item visuals based on selection count
-        if count >= 2:
-            # Hide individual borders/handles, the Overlay will show the combined box
-            for item in items:
-                if isinstance(item, TextBoxItem):
-                    item.set_selected_custom(False)
-                elif isinstance(item, ShapeItem):
-                    item.set_selected_custom(False)
-                elif isinstance(item, (StrokeItem, HighlightItem)):
-                    item.set_selected(False)
-        elif count == 1:
-            # Show individual border/handles for the single selected item
-            item = items[0]
-            if isinstance(item, TextBoxItem):
-                item.set_selected_custom(True)
-            elif isinstance(item, ShapeItem):
-                item.set_selected_custom(True)
-            elif isinstance(item, (StrokeItem, HighlightItem)):
-                item.set_selected(True)
-
-        # 2. Attach or detach the common bounding box resize handles
-        if count == 0:
-            self._bbox_handle_manager.detach()
-        elif count == 1:
-            # ShapeItem has its own handle system
-            if isinstance(items[0], (StrokeItem, HighlightItem)):
-                self._bbox_handle_manager.attach_to(items[0])
-            else:
-                self._bbox_handle_manager.detach()
-        elif count >= 2:
-            # Only allow resizing of multiple items if NO TextBoxItem is selected
-            has_textbox = any(isinstance(i, TextBoxItem) for i in items)
-            if not has_textbox:
-                overlay = self._ensure_overlay()
-                self._bbox_handle_manager.attach_to(overlay)
-            else:
-                self._bbox_handle_manager.detach()
