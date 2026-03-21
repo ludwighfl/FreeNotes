@@ -401,3 +401,150 @@ QFrame[frameShape="4"],  /* HLine */
 QFrame[frameShape="5"] { /* VLine */
     color: #3a3a3a;
 }
+
+/* ============================================================
+   SETTINGS VIEW
+   ============================================================ */
+
+QWidget#settingsView {
+    background: #1a1a1a;
+}
+
+QWidget#settingsSidebar {
+    background: #242424;
+}
+
+QWidget#settingsHeader {
+    background: #1a1a1a;
+}
+
+QFrame#settingsSeparator {
+    color: #3a3a3a;
+    max-height: 1px;
+}
+
+QStackedWidget#settingsStack {
+    background: #1a1a1a;
+}
+
+/* Settings Pages */
+QWidget#settingsPage {
+    background: #1a1a1a;
+}
+
+/* Sidebar Buttons */
+QToolButton#settingsSidebarBtn {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 4px 8px;
+    text-align: left;
+}
+QToolButton#settingsSidebarBtn:hover {
+    background: #2d2d2d;
+}
+QToolButton#settingsSidebarBtn:checked {
+    background: #3B7BF5;
+    color: #ffffff;
+}
+
+/* Mode / Lang Buttons */
+QToolButton#modeBtn,
+QToolButton#langBtn {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 6px 12px;
+}
+QToolButton#modeBtn:checked,
+QToolButton#langBtn:checked {
+    background: #3B7BF5;
+    border-color: #3B7BF5;
+    color: #ffffff;
+}
+QToolButton#modeBtn:hover:!checked,
+QToolButton#langBtn:hover:!checked {
+    background: #333333;
+}
+
+/* Action Buttons */
+QPushButton#settingsActionBtn {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #cccccc;
+    padding: 8px 16px;
+    font-size: 13px;
+}
+QPushButton#settingsActionBtn:hover {
+    background: #333333;
+    border-color: #555555;
+}
+
+/* Settings Path Label */
+QLabel#settingsPathLabel {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #cccccc;
+    font-size: 12px;
+    padding: 8px;
+}
+
+/* Manager Search */
+QLineEdit#managerSearch {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    color: #cccccc;
+    font-size: 13px;
+    padding: 4px 10px;
+}
+QLineEdit#managerSearch:focus {
+    border-color: #3B7BF5;
+}
+
+/* ============================================================
+   SEARCH BAR (PDF Viewer)
+   ============================================================ */
+
+QWidget#searchBar {
+    background: transparent;
+}
+QLineEdit#searchInput {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 13px;
+    padding: 4px 8px;
+    selection-background-color: #3B7BF5;
+}
+QLineEdit#searchInput:focus {
+    border-color: #3B7BF5;
+}
+QLabel#searchCount {
+    color: #888888;
+    font-size: 12px;
+    background: transparent;
+}
+QToolButton#searchNavBtn {
+    background: transparent;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+}
+QToolButton#searchNavBtn:hover {
+    background: #333333;
+}
+QToolButton#searchCloseBtn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+}
+QToolButton#searchCloseBtn:hover {
+    background: #3a3a3a;
+}

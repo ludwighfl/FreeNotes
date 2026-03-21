@@ -36,7 +36,11 @@ class ReorderPagesCommand(QUndoCommand):
         self._first_redo = True
 
     def undo(self) -> None:
-        self._apply_order(self._old_order)
+        # compute inverse permutation of self._new_order
+        inv_order = [0] * len(self._new_order)
+        for i, original_index in enumerate(self._new_order):
+            inv_order[original_index] = i
+        self._apply_order(inv_order)
 
     def redo(self) -> None:
         if self._first_redo:

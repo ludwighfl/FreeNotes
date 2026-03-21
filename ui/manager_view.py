@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QPoint
 from PySide6.QtGui import QFont, QAction
 from PySide6.QtWidgets import (
     QWidget,
@@ -14,18 +14,16 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QFrame,
     QLabel,
+    QLineEdit,
     QPushButton,
     QFileDialog,
     QMenu,
     QToolButton,
     QInputDialog,
     QMessageBox,
-    QProgressDialog,
-    QApplication,
 )
 
 from ui.icon_factory import IconFactory
-from ui.sidebar_item import SidebarItem
 from ui.pdf_card import PdfCard
 
 
@@ -33,14 +31,17 @@ class ManagerView(QWidget):
     """File manager screen with folder sidebar and PDF card grid."""
 
     open_pdf_requested = Signal(Path)
+    settings_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("managerView")
         self._cards: list[PdfCard] = []
-        self._sidebar_items: list[SidebarItem] = []
-        self._active_sidebar_item: SidebarItem | None = None
+        self._all_docs: list[dict] = []
+        self._sidebar_widgets: list[QWidget] = []
         self._expanded_folders: set[Path] = set()
+        self._active_folder: Path | None = None
+        self._active_mode: str = "folder"  # "folder" | "recent"
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -103,13 +104,33 @@ class ManagerView(QWidget):
         header.addWidget(self._folder_title)
         header.addStretch()
 
-        # Create button with dropdown
+        # Search input with Lucide icon
+        self._search_input = QLineEdit()
+        self._search_input.setObjectName("managerSearch")
+        self._search_input.setPlaceholderText("Dokument suchen …")
+        self._search_input.setFixedWidth(220)
+        self._search_input.setFixedHeight(32)
+        self._search_input.addAction(
+            IconFactory.create("search", color="#666666", size=14),
+            QLineEdit.ActionPosition.LeadingPosition)
+        self._search_input.textChanged.connect(self._on_search_changed)
+        header.addWidget(self._search_input)
+
+        # Create button with Lucide file_plus icon
         create_btn = QToolButton()
-        create_btn.setText("+ Erstellen")
+        create_btn.setIcon(
+            IconFactory.create("file_plus", color="#ffffff", size=16))
+        create_btn.setIconSize(QSize(16, 16))
+        create_btn.setText(" Erstellen")
+        create_btn.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         create_btn.setObjectName("createBtn")
         create_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         create_btn.setPopupMode(
             QToolButton.ToolButtonPopupMode.InstantPopup)
+        create_btn.setStyleSheet(
+            create_btn.styleSheet()
+            + " QToolButton::menu-indicator { image: none; }")
 
         create_menu = QMenu(create_btn)
         create_menu.setObjectName("pageContextMenu")
@@ -131,30 +152,8 @@ class ManagerView(QWidget):
         settings_btn.setObjectName("settingsBtn")
         settings_btn.setFixedSize(36, 36)
         settings_btn.setToolTip("Einstellungen")
-        settings_btn.setPopupMode(
-            QToolButton.ToolButtonPopupMode.InstantPopup)
-
-        settings_menu = QMenu(settings_btn)
-        settings_menu.setObjectName("settingsMenu")
-
-        act_export_pdf = QAction(
-            "Bibliothek als PDFs exportieren …", self)
-        act_export_backup = QAction(
-            "Bibliothek als Backup exportieren …", self)
-        act_change_path = QAction(
-            "Verzeichnis-Pfad ändern …", self)
-
-        settings_menu.addAction(act_export_pdf)
-        settings_menu.addAction(act_export_backup)
-        settings_menu.addSeparator()
-        settings_menu.addAction(act_change_path)
-        settings_btn.setMenu(settings_menu)
-
-        act_export_pdf.triggered.connect(
-            lambda: self._on_export("pdf"))
-        act_export_backup.triggered.connect(
-            lambda: self._on_export("backup"))
-        act_change_path.triggered.connect(self._on_change_path)
+        settings_btn.clicked.connect(
+            self.settings_requested.emit)
         header.addWidget(settings_btn)
 
         content_layout.addLayout(header)
@@ -185,20 +184,20 @@ class ManagerView(QWidget):
         self._scroll.verticalScrollBar().valueChanged.connect(
             lambda: self._lazy_timer.start())
 
-        # Init with library data if ready, or wait for signal
+        # Init with library data if ready
         from app.app_state import AppState
         if AppState().library_manager is not None:
             self.load_sidebar()
-            self.load_folder(None)
+            self._select_folder(None)
         else:
             AppState().library_ready.connect(self._on_library_ready)
 
     def _on_library_ready(self) -> None:
         self.load_sidebar()
-        self.load_folder(None)
+        self._select_folder(None)
 
     # ------------------------------------------------------------------
-    # Sidebar
+    # Sidebar – folders only
     # ------------------------------------------------------------------
 
     def load_sidebar(self) -> None:
@@ -209,134 +208,170 @@ class ManagerView(QWidget):
             return
 
         # Clear existing items
-        for item in self._sidebar_items:
-            self._sidebar_layout.removeWidget(item)
-            item.deleteLater()
-        self._sidebar_items.clear()
-        self._active_sidebar_item = None
+        for w in self._sidebar_widgets:
+            self._sidebar_layout.removeWidget(w)
+            w.deleteLater()
+        self._sidebar_widgets.clear()
 
         # "Alle Dokumente"
-        all_item = SidebarItem(
-            icon_name="layout_grid", text="Alle Dokumente")
-        all_item.clicked.connect(
-            lambda: self._on_sidebar_clicked(None, all_item))
+        all_item = self._make_sidebar_item(
+            icon_name="layout_grid",
+            text="Alle Dokumente",
+            indent=0,
+            active=(self._active_folder is None
+                    and self._active_mode != "recent"),
+            on_click=lambda: self._select_folder(None))
         self._sidebar_layout.insertWidget(
             self._sidebar_layout.count() - 1, all_item)
-        self._sidebar_items.append(all_item)
+        self._sidebar_widgets.append(all_item)
 
         # "Zuletzt geöffnet"
         from core.app_settings import AppSettings
         if AppSettings.get_last_opened():
-            recent_item = SidebarItem(
-                icon_name="clock", text="Zuletzt geöffnet")
-            recent_item.clicked.connect(
-                lambda: self._on_sidebar_clicked("recent", recent_item))
+            recent_item = self._make_sidebar_item(
+                icon_name="clock",
+                text="Zuletzt geöffnet",
+                indent=0,
+                active=(self._active_mode == "recent"),
+                on_click=self._select_recent)
             self._sidebar_layout.insertWidget(
                 self._sidebar_layout.count() - 1, recent_item)
-            self._sidebar_items.append(recent_item)
+            self._sidebar_widgets.append(recent_item)
 
         # Recursive folder tree
         self._add_folders_to_sidebar(lm.root, depth=0)
 
-        # Activate first item
-        if self._sidebar_items:
-            self._set_active_sidebar(self._sidebar_items[0])
-
     def _add_folders_to_sidebar(
-        self, parent_folder: Path, depth: int
+        self, parent: Path, depth: int
     ) -> None:
-        """Recursively add folders and files to sidebar."""
         from app.app_state import AppState
         lm = AppState().library_manager
         if lm is None:
             return
 
-        for subfolder in lm.get_folders(parent_folder):
-            is_expanded = subfolder in self._expanded_folders
-            icon = "folder_open" if is_expanded else "folder"
+        for folder in lm.get_folders(parent):
+            is_expanded = folder in self._expanded_folders
+            is_active = folder == self._active_folder
+
             chevron = "▼ " if is_expanded else "▶ "
-            item = SidebarItem(
-                icon_name=icon,
-                text=f"{chevron}{subfolder.name}",
-                indent=depth)
-            item.clicked.connect(
-                lambda f=subfolder, it=item: self._on_folder_toggled(f, it))
+            icon_name = "folder_open" if is_expanded else "folder"
+
+            item = self._make_sidebar_item(
+                icon_name=icon_name,
+                text=f"{chevron}{folder.name}",
+                indent=depth,
+                active=is_active,
+                on_click=lambda f=folder: self._toggle_folder(f))
             self._sidebar_layout.insertWidget(
                 self._sidebar_layout.count() - 1, item)
-            self._sidebar_items.append(item)
+            self._sidebar_widgets.append(item)
 
             if is_expanded:
-                # Show documents inside this folder
-                for doc in lm.get_documents(subfolder):
-                    doc_item = SidebarItem(
-                        icon_name="file",
-                        text=doc["name"],
-                        indent=depth + 1)
-                    doc_item.clicked.connect(
-                        lambda d=doc: self._on_doc_sidebar_clicked(d))
-                    self._sidebar_layout.insertWidget(
-                        self._sidebar_layout.count() - 1, doc_item)
-                    self._sidebar_items.append(doc_item)
-                # Recurse into sub-folders
-                self._add_folders_to_sidebar(subfolder, depth + 1)
+                self._add_folders_to_sidebar(folder, depth + 1)
 
-    def _on_sidebar_clicked(
-        self, data: object, item: SidebarItem
-    ) -> None:
-        self._set_active_sidebar(item)
-        if data == "recent":
-            self._load_recent_documents()
+    def _make_sidebar_item(
+        self,
+        icon_name: str,
+        text: str,
+        indent: int,
+        active: bool,
+        on_click: object,
+    ) -> QWidget:
+        """Create a clickable sidebar item widget."""
+        item = QWidget()
+        item.setObjectName("sidebarItem")
+        item.setFixedHeight(32)
+        item.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        layout = QHBoxLayout(item)
+        layout.setContentsMargins(8 + indent * 16, 4, 8, 4)
+        layout.setSpacing(8)
+
+        icon_lbl = QLabel()
+        color = "#ffffff" if active else "#cccccc"
+        icon_lbl.setPixmap(
+            IconFactory.create(icon_name, color=color, size=16).pixmap(16, 16))
+        icon_lbl.setFixedSize(16, 16)
+        icon_lbl.setStyleSheet("background: transparent;")
+
+        text_lbl = QLabel(text)
+        text_lbl.setStyleSheet(
+            f"color: {'#ffffff' if active else '#cccccc'};"
+            " font-size: 13px;"
+            " background: transparent;")
+
+        layout.addWidget(icon_lbl)
+        layout.addWidget(text_lbl, 1)
+
+        if active:
+            item.setStyleSheet(
+                "QWidget#sidebarItem {"
+                " background: #3B7BF5;"
+                " border-radius: 6px; }")
         else:
-            self.load_folder(data)
+            item.setStyleSheet(
+                "QWidget#sidebarItem {"
+                " background: transparent;"
+                " border-radius: 6px; }"
+                "QWidget#sidebarItem:hover {"
+                " background: #2d2d2d; }")
 
-    def _on_folder_toggled(
-        self, folder: Path, item: SidebarItem
-    ) -> None:
+        item.mousePressEvent = lambda e, fn=on_click: fn()
+        return item
+
+    # ------------------------------------------------------------------
+    # Sidebar actions
+    # ------------------------------------------------------------------
+
+    def _toggle_folder(self, folder: Path) -> None:
         if folder in self._expanded_folders:
             self._expanded_folders.discard(folder)
         else:
             self._expanded_folders.add(folder)
+        self._select_folder(folder)
+
+    def _select_folder(self, folder: Path | None) -> None:
+        self._active_folder = folder
+        self._active_mode = "folder"
         self.load_sidebar()
-        self.load_folder(folder)
+        self.load_grid(folder)
 
-    def _on_doc_sidebar_clicked(self, doc: dict) -> None:
-        pdf_path = doc.get("pdf")
-        if pdf_path and pdf_path.exists():
-            fn = doc.get("freenotes")
-            if fn:
-                from core.app_settings import AppSettings
-                AppSettings.add_last_opened(str(fn))
-            self.open_pdf_requested.emit(pdf_path)
-
-    def _set_active_sidebar(self, item: SidebarItem) -> None:
-        if self._active_sidebar_item:
-            self._active_sidebar_item.set_active(False)
-        item.set_active(True)
-        self._active_sidebar_item = item
+    def _select_recent(self) -> None:
+        self._active_mode = "recent"
+        self._active_folder = None
+        self.load_sidebar()
+        self._load_recent_grid()
 
     # ------------------------------------------------------------------
-    # Grid loading
+    # Grid – recursive loading
     # ------------------------------------------------------------------
 
-    def load_folder(self, folder: Path | None) -> None:
+    def load_grid(self, folder: Path | None) -> None:
         from app.app_state import AppState
         lm = AppState().library_manager
         if lm is None:
             return
 
         AppState().current_folder = folder
-        target = folder or lm.root
-        self._folder_title.setText(
-            target.name if folder else "Alle Dokumente")
 
+        if folder is None:
+            self._folder_title.setText("Alle Dokumente")
+        else:
+            self._folder_title.setText(folder.name)
+
+        docs = lm.get_documents_recursive(folder)
+        self._search_input.clear()
+        self._all_docs = docs
+        self._display_docs(docs)
+
+    def _display_docs(self, docs: list[dict]) -> None:
         self._clear_grid()
-        docs = lm.get_documents(target)
 
         if not docs:
             self._show_empty_state()
             return
-
         self._hide_empty_state()
+
         for i, doc in enumerate(docs):
             card = PdfCard(
                 pdf_path=doc["pdf"],
@@ -355,34 +390,40 @@ class ManagerView(QWidget):
 
         QTimer.singleShot(50, self._check_visible_cards)
 
-    def _load_recent_documents(self) -> None:
+    def _load_recent_grid(self) -> None:
         from core.app_settings import AppSettings
+
         self._folder_title.setText("Zuletzt geöffnet")
-        self._clear_grid()
+        self._search_input.clear()
 
         paths = AppSettings.get_last_opened()
-        if not paths:
-            self._show_empty_state()
-            return
-
-        self._hide_empty_state()
-        for i, fn_path_str in enumerate(paths):
-            fn_path = Path(fn_path_str)
-            if not fn_path.exists():
+        docs: list[dict] = []
+        for p_str in paths:
+            p = Path(p_str)
+            if not p.exists():
                 continue
-            pdf_path = fn_path.with_suffix(".pdf")
-            card = PdfCard(
-                pdf_path=pdf_path if pdf_path.exists() else None,
-                freenotes_path=fn_path,
-                name=fn_path.stem,
-                modified=fn_path.stat().st_mtime)
-            card.double_clicked.connect(self._on_card_double_clicked)
-            row = i // 4
-            col = i % 4
-            self._grid_layout.addWidget(card, row, col)
-            self._cards.append(card)
+            pdf = p.with_suffix(".pdf")
+            docs.append({
+                "pdf": pdf if pdf.exists() else None,
+                "freenotes": p,
+                "name": p.stem,
+                "modified": p.stat().st_mtime,
+                "folder": p.parent,
+            })
+        self._all_docs = docs
+        self._display_docs(docs)
 
-        QTimer.singleShot(50, self._check_visible_cards)
+    # ------------------------------------------------------------------
+    # Live search
+    # ------------------------------------------------------------------
+
+    def _on_search_changed(self, text: str) -> None:
+        if not text.strip():
+            self._display_docs(self._all_docs)
+            return
+        query = text.strip().lower()
+        filtered = [d for d in self._all_docs if query in d["name"].lower()]
+        self._display_docs(filtered)
 
     # ------------------------------------------------------------------
     # Grid helpers
@@ -395,32 +436,73 @@ class ManagerView(QWidget):
         self._cards.clear()
 
     def _check_visible_cards(self) -> None:
+        """Check which cards are visible and start progressive rendering."""
+        if not self._cards:
+            return
         viewport_rect = self._scroll.viewport().rect()
+        vp_global = self._scroll.viewport().mapToGlobal(QPoint(0, 0))
+
         for card in self._cards:
-            mapped = self._grid_container.mapTo(
-                self._scroll.viewport(), card.geometry().topLeft())
-            visible_rect = card.rect().translated(mapped)
-            if viewport_rect.intersects(visible_rect):
+            if card._rendered:
+                continue
+            card_global = card.mapToGlobal(QPoint(0, 0))
+            rel = card_global - vp_global
+            card_rect = card.rect().translated(rel.x(), rel.y())
+            if viewport_rect.intersects(card_rect):
                 card.render_if_needed()
+                # Yield to event loop after each render for smooth UI
+                QTimer.singleShot(0, self._check_visible_cards)
+                return
 
     def _show_empty_state(self) -> None:
-        if not hasattr(self, "_empty_label"):
-            self._empty_label = QLabel(
-                "📂\n\nKeine Dokumente\n\n"
-                "Importiere ein PDF über '+ Erstellen'")
-            self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._empty_label.setStyleSheet(
-                "color: #555555; font-size: 14px;")
-            self._grid_layout.addWidget(self._empty_label, 0, 0, 1, 4)
-        self._empty_label.setVisible(True)
+        if not hasattr(self, "_empty_container"):
+            # Create overlay widget parented to scroll viewport
+            self._empty_container = QWidget(self._scroll.viewport())
+            self._empty_container.setObjectName("emptyState")
+            self._empty_container.setStyleSheet(
+                "QWidget#emptyState { background: transparent; }")
+            empty_layout = QVBoxLayout(self._empty_container)
+            empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_layout.setSpacing(12)
+
+            icon_lbl = QLabel()
+            icon_lbl.setPixmap(
+                IconFactory.create_pixmap(
+                    "folder_x", color="#444444", size=64))
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_lbl.setStyleSheet("background: transparent;")
+            empty_layout.addWidget(icon_lbl)
+
+            title_lbl = QLabel("Keine Dokumente")
+            title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            title_lbl.setStyleSheet(
+                "color: #555555; font-size: 18px; font-weight: bold;"
+                " background: transparent;")
+            empty_layout.addWidget(title_lbl)
+
+            desc_lbl = QLabel("Importiere ein PDF über 'Erstellen'")
+            desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            desc_lbl.setStyleSheet(
+                "color: #444444; font-size: 13px;"
+                " background: transparent;")
+            empty_layout.addWidget(desc_lbl)
+        # Size to fill the entire viewport and raise above grid
+        vp = self._scroll.viewport()
+        self._empty_container.setGeometry(vp.rect())
+        self._empty_container.raise_()
+        self._empty_container.setVisible(True)
 
     def _hide_empty_state(self) -> None:
-        if hasattr(self, "_empty_label"):
-            self._empty_label.setVisible(False)
+        if hasattr(self, "_empty_container"):
+            self._empty_container.setVisible(False)
 
-    # ------------------------------------------------------------------
-    # Event handlers
-    # ------------------------------------------------------------------
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        self._lazy_timer.start()
+        # Keep empty state centered on resize
+        if hasattr(self, "_empty_container") and self._empty_container.isVisible():
+            vp = self._scroll.viewport()
+            self._empty_container.setGeometry(vp.rect())
 
     def _on_card_double_clicked(self, doc: dict) -> None:
         pdf_path = doc.get("pdf")
@@ -441,8 +523,7 @@ class ManagerView(QWidget):
         folder = AppState().current_folder
         for f in files:
             lm.import_pdf(Path(f), folder)
-        self.load_folder(folder)
-        self.load_sidebar()
+        self._select_folder(folder)
 
     def _on_create_folder(self) -> None:
         from app.app_state import AppState
@@ -460,92 +541,18 @@ class ManagerView(QWidget):
         lm = AppState().library_manager
         if lm:
             lm.rename_document(doc, new_name)
-            self.load_folder(AppState().current_folder)
+            self.load_grid(AppState().current_folder)
 
     def _on_delete(self, doc: dict) -> None:
         from app.app_state import AppState
         lm = AppState().library_manager
         if lm:
             lm.delete_document(doc, trash=True)
-            self.load_folder(AppState().current_folder)
+            self.load_grid(AppState().current_folder)
 
-    # ------------------------------------------------------------------
-    # Export (direct from settings menu)
-    # ------------------------------------------------------------------
+    # Backward compatibility alias
+    def load_folder(self, folder: Path | None) -> None:
+        """Alias for load_grid (backward compatibility)."""
+        self.load_grid(folder)
 
-    def _on_export(self, mode: str) -> None:
-        from app.app_state import AppState
-        lm = AppState().library_manager
-        if lm is None:
-            return
 
-        target, _ = QFileDialog.getSaveFileName(
-            self, "ZIP speichern unter", "",
-            "ZIP-Archiv (*.zip)")
-        if not target:
-            return
-        if not target.endswith(".zip"):
-            target += ".zip"
-
-        progress = QProgressDialog(
-            "Exportiere …", "Abbrechen", 0, 100, self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(300)
-        progress.show()
-
-        def on_progress(pct: int, name: str) -> None:
-            progress.setValue(pct)
-            progress.setLabelText(f"Exportiere: {name}")
-            QApplication.processEvents()
-
-        from core.zip_exporter import ZipExporter
-        exporter = ZipExporter(lm)
-        try:
-            if mode == "pdf":
-                exporter.export_annotated_pdfs(
-                    Path(target), on_progress)
-            else:
-                exporter.export_backup(
-                    Path(target), on_progress)
-            progress.close()
-            QMessageBox.information(
-                self, "Export erfolgreich",
-                f"ZIP gespeichert:\n{target}")
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(
-                self, "Export fehlgeschlagen", str(e))
-
-    # ------------------------------------------------------------------
-    # Change annotations path
-    # ------------------------------------------------------------------
-
-    def _on_change_path(self) -> None:
-        from core.app_settings import AppSettings
-        from core.library_manager import LibraryManager
-        from app.app_state import AppState
-
-        current = str(AppSettings.get_annotations_root() or "")
-        chosen = QFileDialog.getExistingDirectory(
-            self, "Neues Verzeichnis wählen", current)
-        if not chosen:
-            return
-
-        reply = QMessageBox.question(
-            self, "Verzeichnis ändern",
-            f"FreeNotes verwendet ab jetzt:\n{chosen}\n\n"
-            "Bestehende Dokumente werden nicht verschoben.",
-            QMessageBox.StandardButton.Ok
-            | QMessageBox.StandardButton.Cancel)
-        if reply != QMessageBox.StandardButton.Ok:
-            return
-
-        new_root = Path(chosen)
-        AppSettings.set_annotations_root(new_root)
-        AppState().library_manager = LibraryManager(new_root)
-        self.load_sidebar()
-        self.load_folder(None)
-
-    def resizeEvent(self, event: object) -> None:
-        super().resizeEvent(event)
-        self._lazy_timer.start()

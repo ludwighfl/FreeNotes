@@ -252,14 +252,16 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
             self._options_handle.update_position(self._rect)
 
     def _set_handles_visible(self, visible: bool) -> None:
+        from shiboken6 import isValid  # noqa: E402
         for handle in self._handles.values():
-            handle.setVisible(visible)
-        if hasattr(self, '_move_handle'):
+            if isValid(handle):
+                handle.setVisible(visible)
+        if hasattr(self, '_move_handle') and isValid(self._move_handle):
             self._move_handle.setVisible(visible)
-        if hasattr(self, '_rotate_handle'):
+        if hasattr(self, '_rotate_handle') and isValid(self._rotate_handle):
             self._rotate_handle.setVisible(visible)
         # Options handle is toggled separately via right-click; hide when handles hide
-        if hasattr(self, '_options_handle') and not visible:
+        if hasattr(self, '_options_handle') and not visible and isValid(self._options_handle):
             self._options_handle.hide()
 
     # ==================================================================

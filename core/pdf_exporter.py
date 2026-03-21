@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor
 
 if TYPE_CHECKING:
     from ui.page_scene import PageScene
+    from core.document_manager import DocumentManager
 
 
 class PdfExporter:
@@ -21,8 +22,9 @@ class PdfExporter:
     - PdfTextExporter (Text boxes)
     """
 
-    def __init__(self, scene: PageScene) -> None:
+    def __init__(self, scene: PageScene, doc_manager: DocumentManager) -> None:
         self._scene = scene
+        self._doc_manager = doc_manager
 
     # ------------------------------------------------------------------
     # Public
@@ -45,7 +47,12 @@ class PdfExporter:
         from core.pdf_shape_exporter import PdfShapeExporter
         from core.pdf_text_exporter import PdfTextExporter
 
-        doc = fitz.open(str(source_pdf))
+        # Clone the in-memory document so we don't modify the one actively viewed
+        if self._doc_manager._document is None:
+            raise RuntimeError("No document is currently open.")
+            
+        doc_bytes = self._doc_manager._document.write()
+        doc = fitz.open("pdf", doc_bytes)
         total_pages = doc.page_count
 
         for page_idx in range(total_pages):

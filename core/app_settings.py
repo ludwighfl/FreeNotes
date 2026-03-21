@@ -51,3 +51,103 @@ class AppSettings:
     def is_first_run(cls) -> bool:
         """True if no annotations root has been configured yet."""
         return cls.get_annotations_root() is None
+
+    # ------------------------------------------------------------------
+    # Theme
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_theme(cls) -> str:
+        return cls._get().value("theme", "dark")
+
+    @classmethod
+    def set_theme(cls, theme: str) -> None:
+        cls._get().setValue("theme", theme)
+
+    # ------------------------------------------------------------------
+    # Default font size
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_default_font_size(cls) -> int:
+        return int(cls._get().value("default_font_size", 12))
+
+    @classmethod
+    def set_default_font_size(cls, size: int) -> None:
+        cls._get().setValue("default_font_size", size)
+
+    # ------------------------------------------------------------------
+    # Pen
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_pen_colors(cls) -> list[str]:
+        defaults = [
+            "#1a1a1a", "#555555", "#aaaaaa", "#ffffff",
+            "#3B7BF5", "#e53935", "#43a047", "#fdd835",
+            "#00bcd4", "#6d4c41",
+        ]
+        val = cls._get().value("pen_colors", defaults)
+        return val if isinstance(val, list) else defaults
+
+    @classmethod
+    def set_pen_colors(cls, colors: list[str]) -> None:
+        cls._get().setValue("pen_colors", colors)
+
+    @classmethod
+    def get_pen_default_color(cls) -> str:
+        return cls._get().value("pen_default_color", "#1a1a1a")
+
+    @classmethod
+    def set_pen_default_color(cls, color: str) -> None:
+        cls._get().setValue("pen_default_color", color)
+
+    @classmethod
+    def get_pen_width(cls) -> float:
+        return float(cls._get().value("pen_width", 3.0))
+
+    @classmethod
+    def set_pen_width(cls, width: float) -> None:
+        cls._get().setValue("pen_width", width)
+
+    # ------------------------------------------------------------------
+    # Language
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_language(cls) -> str:
+        return cls._get().value("language", "de")
+
+    @classmethod
+    def set_language(cls, code: str) -> None:
+        cls._get().setValue("language", code)
+
+    # ------------------------------------------------------------------
+    # Per-PDF zoom
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_zoom(cls, pdf_path: str) -> float | None:
+        import hashlib
+        key = "zoom_" + hashlib.md5(pdf_path.encode()).hexdigest()[:8]
+        val = cls._get().value(key, None)
+        return float(val) if val is not None else None
+
+    @classmethod
+    def set_zoom(cls, pdf_path: str, zoom: float) -> None:
+        import hashlib
+        key = "zoom_" + hashlib.md5(pdf_path.encode()).hexdigest()[:8]
+        cls._get().setValue(key, zoom)
+
+    # ------------------------------------------------------------------
+    # Last opened document
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_last_opened_doc(cls) -> str | None:
+        val = cls._get().value("last_opened_doc", None)
+        return val if val else None
+
+    @classmethod
+    def set_last_opened_doc(cls, path: str) -> None:
+        cls._get().setValue("last_opened_doc", path)

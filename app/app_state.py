@@ -23,6 +23,7 @@ class AppState(QObject):
     tool_changed = Signal(str)
     style_changed = Signal(object)  # ToolStyle (object for QObject signal compat)
     library_ready = Signal()
+    total_pages_changed = Signal(int)
 
     _instance: "AppState | None" = None
 
@@ -109,7 +110,9 @@ class AppState(QObject):
 
     @total_pages.setter
     def total_pages(self, value: int) -> None:
-        self._total_pages = value
+        if self._total_pages != value:
+            self._total_pages = value
+            self.total_pages_changed.emit(value)
 
     # --- active_tool_name ---
     @property

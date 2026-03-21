@@ -17,6 +17,7 @@ from items.shape_item import ShapeItem
 
 if TYPE_CHECKING:
     from ui.page_scene import PageScene
+    from core.document_manager import DocumentManager
 
 
 class FreenotesStore:
@@ -27,11 +28,12 @@ class FreenotesStore:
     # ------------------------------------------------------------------
 
     @classmethod
-    def save(cls, path: str, scene: PageScene, pdf_path: str) -> None:
+    def save(cls, path: str, scene: PageScene, pdf_path: str, doc_manager: DocumentManager) -> None:
         """Save all annotations from *scene* to a .freenotes JSON file."""
         data: dict = {
             "version": 1,
             "pdf_path": pdf_path or "",
+            "page_map": getattr(doc_manager, "page_map", []),
             "pages": {},
         }
 
@@ -74,15 +76,25 @@ class FreenotesStore:
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, path: str, scene: PageScene) -> str:
+    def load(cls, path: str, scene: PageScene, doc_manager: DocumentManager) -> tuple[str, bool]:
         """Load annotations from a .freenotes file into *scene*.
 
-        Returns the stored pdf_path.
+        Returns (pdf_path, structural_modified).
         """
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         pdf_path: str = data.get("pdf_path", "")
+        page_map: list[int] = data.get("page_map", [])
+
+        structural_modified = False
+        if page_map and isinstance(page_map, list) and doc_manager:
+            try:
+                doc_manager.apply_page_map(page_map)
+                scene.rebuild_after_reorder(doc_manager)
+                structural_modified = True
+            except Exception as e:
+                print(f"Warning: Failed to apply page map: {e}")
 
         # Clear existing annotations
         cls._clear_scene_annotations(scene)
@@ -122,7 +134,7 @@ class FreenotesStore:
                 except Exception as e:
                     print(f"Warning: Shape laden fehlgeschlagen: {e}")
 
-        return pdf_path
+        return pdf_path, structural_modified
 
     # ------------------------------------------------------------------
     # Clear

@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from ui.page_scene import PageScene
     from ui.sidebar_widget import SidebarWidget
 
+from app.app_state import AppState
+
 
 class AddPageCommand(QUndoCommand):
     """Insert a blank or duplicated page at a given index."""
@@ -49,6 +51,7 @@ class AddPageCommand(QUndoCommand):
         doc_mgr.remove_page(self._insert_at)
         scene.rebuild_after_reorder(doc_mgr)
         sidebar.rebuild_all(doc_mgr)
+        AppState().total_pages = doc_mgr.get_page_count()
 
     def redo(self) -> None:
         scene = self._scene_ref()
@@ -71,6 +74,7 @@ class AddPageCommand(QUndoCommand):
 
             scene.rebuild_after_reorder(doc_mgr)
             sidebar.rebuild_all(doc_mgr)
+            AppState().total_pages = doc_mgr.get_page_count()
             return
 
         # Subsequent redos
@@ -82,3 +86,4 @@ class AddPageCommand(QUndoCommand):
                 self._insert_at, self._saved_annotations)
         scene.rebuild_after_reorder(doc_mgr)
         sidebar.rebuild_all(doc_mgr)
+        AppState().total_pages = doc_mgr.get_page_count()

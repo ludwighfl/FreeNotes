@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, QPointF, Signal, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QBrush, QColor, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
+    QGraphicsRectItem,
     QGraphicsSceneMouseEvent,
 )
 
@@ -29,6 +30,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tools.base_tool import BaseTool
+    from PySide6.QtWidgets import QGraphicsItem
 
 
 class PageScene(
@@ -40,11 +42,9 @@ class PageScene(
 ):
     """QGraphicsScene that holds all PDF pages stacked vertically.
 
-    Each page is a QGraphicsPixmapItem placed below the previous one
-    with a 20px gap between pages. Supports HiDPI pixmaps via
-    devicePixelRatio – layout uses logical sizes.
-
-    Also dispatches mouse events to the active tool for drawing.
+    Uses virtual rendering: pages start as gray placeholders and are
+    rendered on demand when they become visible in the viewport.
+    Far-away pages are unloaded to conserve memory.
 
     Functionality is split across mixins:
         SceneRegistryMixin    – per-page item tracking (strokes, highlights, textboxes, shapes)
@@ -54,6 +54,7 @@ class PageScene(
     """
 
     PAGE_GAP: int = 20
+    RENDER_DPI: int = 150
 
     tool_switch_requested = Signal(str)
     selection_changed = Signal()
@@ -62,6 +63,10 @@ class PageScene(
         super().__init__(parent)
         self._page_items: list[QGraphicsPixmapItem] = []
         self._page_rects: list[QRectF] = []
+        self._page_states: list[str] = []  # "placeholder" or "rendered"
+        self._page_y_offsets: list[float] = []  # sorted Y starts for binary search
+        self._rendered_set: set[int] = set()  # fast lookup for unload iteration
+        self._doc_manager: DocumentManager | None = None
         self._active_tool: BaseTool | None = None
         self._stroke_items: dict[int, list[StrokeItem]] = {}
         self._highlight_items: dict[int, list[HighlightItem]] = {}
@@ -81,8 +86,21 @@ class PageScene(
         self._bbox_handle_manager = BoundingBoxHandleManager(self)
         self.selection_changed.connect(self._on_selection_changed)
 
+        # Shared placeholder pixmap (tiny, gets stretched by item size)
+        self._placeholder_pm: QPixmap | None = None
+
+    def _get_placeholder_pixmap(self) -> QPixmap:
+        """Return a shared tiny gray placeholder pixmap."""
+        if self._placeholder_pm is None:
+            self._placeholder_pm = QPixmap(2, 2)
+            self._placeholder_pm.fill(QColor("#2a2a2a"))
+        return self._placeholder_pm
+
     def load_document(self, doc_manager: DocumentManager) -> None:
-        """Load all pages from the document manager into the scene.
+        """Load pages as placeholders (virtual rendering).
+
+        All pages use QGraphicsPixmapItem. Render/unload just swap
+        the pixmap content — no scene item add/remove needed.
 
         Args:
             doc_manager: An open DocumentManager instance.
@@ -90,10 +108,14 @@ class PageScene(
         self.clear()
         self._page_items.clear()
         self._page_rects.clear()
+        self._page_states.clear()
+        self._page_y_offsets.clear()
+        self._rendered_set.clear()
         self._stroke_items.clear()
         self._highlight_items.clear()
         self._text_box_items.clear()
         self._selected_items.clear()
+        self._doc_manager = doc_manager
 
         # Recreate overlay (self.clear() destroys all scene items)
         self._selection_overlay = SelectionOverlayItem()
@@ -104,42 +126,167 @@ class PageScene(
         if page_count == 0:
             return
 
+        scale = self.RENDER_DPI / 72.0
         y_offset: float = self.PAGE_GAP
+        placeholder = self._get_placeholder_pixmap()
 
         for i in range(page_count):
-            pixmap = doc_manager.get_page_pixmap(i)
-            item = QGraphicsPixmapItem(pixmap)
-            item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+            w_pt, h_pt = doc_manager.get_page_size(i)
+            log_w = w_pt * scale
+            log_h = h_pt * scale
 
-            # Use logical size for layout (accounts for devicePixelRatio)
-            dpr = pixmap.devicePixelRatio()
-            logical_w = pixmap.width() / dpr
-            logical_h = pixmap.height() / dpr
-
+            item = QGraphicsPixmapItem(placeholder)
+            item.setTransformationMode(
+                Qt.TransformationMode.SmoothTransformation)
+            # Scale the 2px placeholder to fill the logical page size
+            item.setScale(log_w / 2.0)
             item.setPos(0, y_offset)
-            self._page_items.append(item)
+            item.setZValue(0)
             self.addItem(item)
 
-            page_rect = QRectF(0, y_offset, logical_w, logical_h)
-            self._page_rects.append(page_rect)
+            self._page_items.append(item)
+            self._page_rects.append(
+                QRectF(0, y_offset, log_w, log_h))
+            self._page_states.append("placeholder")
+            self._page_y_offsets.append(y_offset)
 
-            y_offset += logical_h + self.PAGE_GAP
+            y_offset += log_h + self.PAGE_GAP
 
         # Center all pages horizontally
-        if self._page_items:
-            max_width = max(
-                item.pixmap().width() / item.pixmap().devicePixelRatio()
-                for item in self._page_items
-            )
-            for i, item in enumerate(self._page_items):
-                pix = item.pixmap()
-                logical_w = pix.width() / pix.devicePixelRatio()
-                logical_h = pix.height() / pix.devicePixelRatio()
-                x_offset = (max_width - logical_w) / 2.0
-                item.setPos(x_offset, item.pos().y())
-                self._page_rects[i] = QRectF(
-                    x_offset, item.pos().y(), logical_w, logical_h
-                )
+        self._center_pages()
+
+        # Render first few pages immediately
+        self._render_range(0, min(3, page_count - 1))
+
+        # Force viewport repaint (MinimalViewportUpdate won't auto-repaint)
+        self.update(self.sceneRect())
+
+    # ------------------------------------------------------------------
+    # Virtual rendering
+    # ------------------------------------------------------------------
+
+    def _center_pages(self) -> None:
+        """Center all pages horizontally based on widest page."""
+        if not self._page_items:
+            return
+        max_w = max(r.width() for r in self._page_rects)
+        for i, item in enumerate(self._page_items):
+            r = self._page_rects[i]
+            x_off = (max_w - r.width()) / 2.0
+            item.setPos(x_off, item.pos().y())
+            self._page_rects[i] = QRectF(
+                x_off, item.pos().y(), r.width(), r.height())
+
+    def _render_page(self, i: int) -> None:
+        """Render a single page — just swap pixmap content, no item changes."""
+        if self._doc_manager is None:
+            return
+        if i < 0 or i >= len(self._page_items):
+            return
+        if self._page_states[i] == "rendered":
+            return
+
+        pixmap = self._doc_manager.get_page_pixmap(i, self.RENDER_DPI)
+        if pixmap.isNull():
+            return
+
+        item = self._page_items[i]
+        item.setScale(1.0)  # Reset scale from placeholder
+        item.setPixmap(pixmap)
+        self._page_states[i] = "rendered"
+        self._rendered_set.add(i)
+
+    def _unload_page(self, i: int) -> None:
+        """Unload a rendered page — swap pixmap back to tiny placeholder."""
+        if self._page_states[i] != "rendered":
+            return
+
+        rect = self._page_rects[i]
+        item = self._page_items[i]
+        item.setPixmap(self._get_placeholder_pixmap())
+        item.setScale(rect.width() / 2.0)  # Stretch to page size
+        self._page_states[i] = "placeholder"
+        self._rendered_set.discard(i)
+
+    def _render_range(self, first: int, last: int) -> None:
+        """Render all pages in the given range."""
+        for i in range(first, last + 1):
+            self._render_page(i)
+
+    def _find_visible_range(self, viewport_rect: QRectF) -> tuple[int, int]:
+        """Binary search for the range of pages intersecting viewport_rect.
+
+        Returns (first, last) inclusive, or (-1, -1) if none visible.
+        """
+        if not self._page_y_offsets:
+            return (-1, -1)
+
+        vp_top = viewport_rect.top()
+        vp_bottom = viewport_rect.bottom()
+        n = len(self._page_y_offsets)
+
+        # Binary search: find first page whose bottom edge >= vp_top
+        lo, hi = 0, n - 1
+        first = n
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            page_bottom = self._page_y_offsets[mid] + self._page_rects[mid].height()
+            if page_bottom >= vp_top:
+                first = mid
+                hi = mid - 1
+            else:
+                lo = mid + 1
+
+        if first >= n:
+            return (-1, -1)
+
+        # Find last page whose top edge <= vp_bottom
+        lo, hi = first, n - 1
+        last = first
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if self._page_y_offsets[mid] <= vp_bottom:
+                last = mid
+                lo = mid + 1
+            else:
+                hi = mid - 1
+
+        return (first, last)
+
+    def update_visible_pages(
+        self, viewport_rect: QRectF, buffer: int = 2
+    ) -> None:
+        """Render visible pages and unload far-away pages.
+
+        Uses binary search for O(log n) visible detection.
+
+        Args:
+            viewport_rect: The visible area in scene coordinates.
+            buffer: Number of extra pages to pre-render above/below.
+        """
+        if not self._page_states:
+            return
+
+        vis_first, vis_last = self._find_visible_range(viewport_rect)
+        if vis_first < 0:
+            return
+
+        first = max(0, vis_first - buffer)
+        last = min(len(self._page_rects) - 1, vis_last + buffer)
+
+        # Render pages in the visible + buffer range
+        for i in range(first, last + 1):
+            if self._page_states[i] == "placeholder":
+                self._render_page(i)
+
+        # Unload far-away rendered pages (iterate only rendered set)
+        unload_threshold = buffer + 5
+        to_unload = [
+            i for i in self._rendered_set
+            if i < first - unload_threshold or i > last + unload_threshold
+        ]
+        for i in to_unload:
+            self._unload_page(i)
 
     # ------------------------------------------------------------------
     # Tool management

@@ -41,8 +41,10 @@ class ScenePageManagerMixin:
                 if old_idx in d:
                     items = d[old_idx]
                     new_d[new_pos] = items
+                    # We store the old_page_index so rebuild_after_reorder knows where it came from
                     for item in items:
                         if hasattr(item, '_page_index'):
+                            item._old_page_index = getattr(item, '_old_page_index', item._page_index)
                             item._page_index = new_pos
             return new_d
 
@@ -77,6 +79,10 @@ class ScenePageManagerMixin:
             self.removeItem(pix_item)
         self._page_items.clear()
         self._page_rects.clear()
+        # Also clear virtual rendering state
+        self._page_states.clear()
+        self._page_y_offsets.clear()
+        self._rendered_set.clear()
 
         # Re-render pages in new order
         y_offset: float = self.PAGE_GAP
@@ -96,6 +102,9 @@ class ScenePageManagerMixin:
 
             page_rect = QRectF(0, y_offset, logical_w, logical_h)
             self._page_rects.append(page_rect)
+            self._page_states.append("rendered")
+            self._page_y_offsets.append(y_offset)
+            self._rendered_set.add(i)
             y_offset += logical_h + self.PAGE_GAP
 
         # Center horizontally
@@ -122,7 +131,7 @@ class ScenePageManagerMixin:
             for item in all_annotations.get(idx, []):
                 old_pos = item.pos()
                 # Find which old page this item was on based on its old _page_index
-                old_page_idx = idx  # annotations already remapped
+                old_page_idx = getattr(item, '_old_page_index', idx)
                 if old_page_idx < len(old_page_rects):
                     old_rect = old_page_rects[old_page_idx]
                     # Compute relative position within old page
@@ -133,6 +142,9 @@ class ScenePageManagerMixin:
                         new_rect.x() + rel_x,
                         new_rect.y() + rel_y,
                     ))
+                # clear temporary old page index marker
+                if hasattr(item, '_old_page_index'):
+                    delattr(item, '_old_page_index')
 
     def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
         """Insert an empty annotation slot at at_index.
@@ -145,8 +157,10 @@ class ScenePageManagerMixin:
             for idx, items in d.items():
                 new_idx = idx + 1 if idx >= at_index else idx
                 for item in items:
-                    if hasattr(item, '_page_index') and item._page_index >= at_index:
-                        item._page_index += 1
+                    if hasattr(item, '_page_index'):
+                        item._old_page_index = getattr(item, '_old_page_index', item._page_index)
+                        if item._page_index >= at_index:
+                            item._page_index += 1
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
@@ -165,8 +179,10 @@ class ScenePageManagerMixin:
                     continue
                 new_idx = idx - 1 if idx > page_idx else idx
                 for item in items:
-                    if hasattr(item, '_page_index') and item._page_index > page_idx:
-                        item._page_index -= 1
+                    if hasattr(item, '_page_index'):
+                        item._old_page_index = getattr(item, '_old_page_index', item._page_index)
+                        if item._page_index > page_idx:
+                            item._page_index -= 1
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
@@ -187,6 +203,7 @@ class ScenePageManagerMixin:
                     data = item.to_dict()
                     new_item = item_cls.from_dict(data)
                     new_item._page_index = target_idx
+                    new_item._old_page_index = source_idx  # Keep absolute tracking!
                     d.setdefault(target_idx, []).append(new_item)
                     self.addItem(new_item)
                 except Exception:

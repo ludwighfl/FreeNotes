@@ -469,16 +469,22 @@ class SidebarWidget(QScrollArea):
             return
 
         for rect in rects:
-            # Find which page this rect belongs to
             page_index = self._scene.get_page_index_at(rect.center())
-            if page_index != -1 and page_index in self._loaded_pages:
-                self._loaded_pages.remove(page_index)
-                
-        # Trigger lazy load to re-render invalidated visible pages
+            if page_index != -1:
+                self.invalidate_thumb(page_index)
+
+    def invalidate_thumb(self, page_idx: int) -> None:
+        """Mark a thumbnail as needing re-render. Re-renders if visible."""
+        self._loaded_pages.discard(page_idx)
         self._lazy_timer.start()
 
     def _load_visible_thumbnails(self) -> None:
-        """Load thumbnails for visible cards + 2 buffer pages."""
+        """Load thumbnails for visible cards + 2 buffer pages.
+
+        Uses doc_manager.get_page_pixmap(dpi=72) directly instead of
+        scene.render() to avoid capturing gray placeholders from virtual
+        rendering.
+        """
         if self._doc_manager is None or not self._cards:
             return
 
@@ -489,11 +495,11 @@ class SidebarWidget(QScrollArea):
         last_visible = -1
 
         for i, card in enumerate(self._cards):
-            card_pos = card.mapTo(self._container, card.rect().topLeft())
-            container_pos = self._container.mapTo(self.viewport(), card_pos)
-            if viewport_rect.intersects(
-                card.rect().translated(container_pos)
-            ):
+            card_global = card.mapToGlobal(QPoint(0, 0))
+            vp_global = self.viewport().mapToGlobal(QPoint(0, 0))
+            rel = card_global - vp_global
+            card_rect = card.rect().translated(rel.x(), rel.y())
+            if viewport_rect.intersects(card_rect):
                 if first_visible == -1:
                     first_visible = i
                 last_visible = i
@@ -502,51 +508,13 @@ class SidebarWidget(QScrollArea):
             first_visible = 0
             last_visible = min(4, len(self._cards) - 1)
 
-        # Gather items to temporarily hide from the thumbnail
-        ephemeral_items = self._scene.get_ephemeral_items()
-        for item in ephemeral_items:
-            item.hide()
-            
-        # Tell items that draw their own selection borders to skip drawing
-        # them during this render pass.
-        self._scene._is_rendering_thumbnail = True
-
         start = max(0, first_visible - buffer)
         end = min(len(self._cards) - 1, last_visible + buffer)
 
         for i in range(start, end + 1):
             if i not in self._loaded_pages:
-                # Render the scene portion for this page
-                page_rect = self._scene.get_page_rect(i)
-                if not page_rect.isEmpty():
-                    # Calculate physical target size at THUMBNAIL_DPI
-                    logical_w = page_rect.width()
-                    logical_h = page_rect.height()
-                    dpr = self.devicePixelRatioF()
-                    
-                    target_w = int(logical_w * (self.THUMBNAIL_DPI / 72.0) * dpr)
-                    target_h = int(logical_h * (self.THUMBNAIL_DPI / 72.0) * dpr)
-                    
-                    pixmap = QPixmap(target_w, target_h)
-                    pixmap.setDevicePixelRatio(dpr)
-                    pixmap.fill(Qt.GlobalColor.white)
-                    
-                    painter = QPainter(pixmap)
-                    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-                    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-                    
-                    # Target rect in logical coordinates (since QPainter respects devicePixelRatio)
-                    target_rect = QRectF(0, 0, logical_w * (self.THUMBNAIL_DPI / 72.0), logical_h * (self.THUMBNAIL_DPI / 72.0))
-                    
-                    self._scene.render(painter, target_rect, page_rect)
-                    painter.end()
-                    
+                pixmap = self._doc_manager.get_page_pixmap(
+                    i, dpi=self.THUMBNAIL_DPI)
+                if not pixmap.isNull():
                     self._cards[i].set_thumbnail(pixmap)
-                
                 self._loaded_pages.add(i)
-
-        # Restore original visibility
-        for item in ephemeral_items:
-            item.show()
-            
-        self._scene._is_rendering_thumbnail = False

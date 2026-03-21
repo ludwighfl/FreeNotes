@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QIntValidator
+from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtGui import QFont, QIntValidator, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -87,7 +87,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._back_btn.setObjectName("backBtn")
         self._back_btn.setFixedSize(32, 32)
         self._back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._back_btn.clicked.connect(self.back_requested.emit)
+        self._back_btn.clicked.connect(self._on_back_clicked)
         header_layout.addWidget(self._back_btn)
 
         # Document title
@@ -201,6 +201,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._sidebar.page_clicked.connect(self._on_sidebar_page_clicked)
         self._page_view.visible_page_changed.connect(self._on_visible_page_changed)
         self._app_state.page_changed.connect(self._on_page_changed)
+        self._app_state.total_pages_changed.connect(self._on_total_pages_changed)
         self._page_input.returnPressed.connect(self._on_page_input_entered)
         self._toolbar.tool_changed.connect(self._on_tool_changed)
         self._toolbar.style_changed.connect(self._on_style_changed)
@@ -222,8 +223,23 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         # Tool switch requested from page_scene (e.g. clicking TextBox with hand tool)
         self._page_scene.tool_switch_requested.connect(self._on_tool_switch_requested)
 
-        # Keyboard shortcuts are handled in PageScene.keyPressEvent to prevent interception
-        # of key events when Editing TextBoxes.
+        # --- Search ---
+        from ui.search_bar import SearchBar
+        self._search_bar = SearchBar(parent=self)
+        self._search_bar.search_changed.connect(self._on_search)
+        self._search_bar.navigate_prev.connect(self._search_prev)
+        self._search_bar.navigate_next.connect(self._search_next)
+        self._search_bar.closed.connect(self._clear_search)
+
+        from items.search_highlight_item import SearchHighlightItem
+        self._search_hits: list[dict] = []
+        self._search_items: list[SearchHighlightItem] = []
+        self._search_current: int = -1
+
+        # Ctrl+F shortcut
+        self._search_shortcut = QShortcut(
+            QKeySequence("Ctrl+F"), self)
+        self._search_shortcut.activated.connect(self._show_search)
 
     # ------------------------------------------------------------------
     # Slots
@@ -237,6 +253,13 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
     def _on_page_changed(self, page_index: int) -> None:
         self._page_input.setText(str(page_index + 1))
+
+    def _on_total_pages_changed(self, total: int) -> None:
+        self._total_pages_label.setText(str(total))
+        from PySide6.QtGui import QIntValidator
+        if total > 0:
+            self._page_input.setValidator(QIntValidator(1, total, self))
+        self._page_input.setText("1")
 
     def _on_page_input_entered(self) -> None:
         text = self._page_input.text().strip()
@@ -270,6 +293,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._reposition_formatting_bar()
+        if hasattr(self, '_search_bar') and self._search_bar.isVisible():
+            self._search_bar._reposition()
 
     # ------------------------------------------------------------------
     # Page management
@@ -314,3 +339,142 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             sidebar=self._sidebar,
         )
         undo_stack.push(cmd)
+
+    def _on_back_clicked(self) -> None:
+        """Save zoom and navigate back to manager."""
+        self._save_current_zoom()
+        self._clear_search()
+        self.back_requested.emit()
+
+    # ------------------------------------------------------------------
+    # Full-text search
+    # ------------------------------------------------------------------
+
+    def _show_search(self) -> None:
+        """Show the search bar (Ctrl+F)."""
+        self._search_bar.show_search()
+
+    def _on_search(self, query: str) -> None:
+        """Handle search input (debounced)."""
+        self._clear_search_items()
+
+        if not query.strip():
+            self._search_bar.update_count(0, 0)
+            return
+
+        hits = self._doc_manager.search_text(query)
+        self._search_hits = hits
+        self._search_current = 0 if hits else -1
+
+        self._draw_search_highlights()
+
+        if hits:
+            self._scroll_to_hit(0)
+        self._search_bar.update_count(
+            self._search_current, len(hits))
+
+    def _draw_search_highlights(self) -> None:
+        """Create highlight items for all search hits."""
+        from items.search_highlight_item import SearchHighlightItem
+
+        for i, hit in enumerate(self._search_hits):
+            page_idx = hit["page_index"]
+            fitz_rect = hit["rect"]
+
+            scene_rect = self._fitz_rect_to_scene(fitz_rect, page_idx)
+            if scene_rect.isEmpty():
+                continue
+
+            item = SearchHighlightItem(
+                scene_rect,
+                is_current=(i == self._search_current))
+            self._page_scene.addItem(item)
+            self._search_items.append(item)
+
+    def _fitz_rect_to_scene(
+        self, fitz_rect: object, page_idx: int
+    ) -> QRectF:
+        """Convert a fitz.Rect (PDF coords) to scene coordinates."""
+        page_rect = self._page_scene.get_page_rect(page_idx)
+        if page_rect.isEmpty():
+            return QRectF()
+
+        pdf_w, pdf_h = self._doc_manager.get_page_size(page_idx)
+        if pdf_w <= 0 or pdf_h <= 0:
+            return QRectF()
+
+        sx = page_rect.width() / pdf_w
+        sy = page_rect.height() / pdf_h
+
+        return QRectF(
+            page_rect.x() + fitz_rect.x0 * sx,
+            page_rect.y() + fitz_rect.y0 * sy,
+            (fitz_rect.x1 - fitz_rect.x0) * sx,
+            (fitz_rect.y1 - fitz_rect.y0) * sy)
+
+    def _scroll_to_hit(self, idx: int) -> None:
+        """Scroll to a specific search hit."""
+        if idx < 0 or idx >= len(self._search_hits):
+            return
+        hit = self._search_hits[idx]
+        page_idx = hit["page_index"]
+
+        self._page_view.scroll_to_page(page_idx)
+
+        scene_rect = self._fitz_rect_to_scene(hit["rect"], page_idx)
+        if not scene_rect.isEmpty():
+            self._page_view.ensureVisible(
+                scene_rect.x(),
+                scene_rect.y(),
+                scene_rect.width(),
+                scene_rect.height(),
+                100, 100)
+
+    def _search_prev(self) -> None:
+        """Navigate to previous search hit."""
+        if not self._search_hits:
+            return
+        if self._search_current >= 0 and self._search_current < len(self._search_items):
+            self._search_items[self._search_current].set_current(False)
+        self._search_current = (
+            self._search_current - 1) % len(self._search_hits)
+        if self._search_current < len(self._search_items):
+            self._search_items[self._search_current].set_current(True)
+        self._scroll_to_hit(self._search_current)
+        self._search_bar.update_count(
+            self._search_current, len(self._search_hits))
+
+    def _search_next(self) -> None:
+        """Navigate to next search hit."""
+        if not self._search_hits:
+            return
+        if self._search_current >= 0 and self._search_current < len(self._search_items):
+            self._search_items[self._search_current].set_current(False)
+        self._search_current = (
+            self._search_current + 1) % len(self._search_hits)
+        if self._search_current < len(self._search_items):
+            self._search_items[self._search_current].set_current(True)
+        self._scroll_to_hit(self._search_current)
+        self._search_bar.update_count(
+            self._search_current, len(self._search_hits))
+
+    def _clear_search_items(self) -> None:
+        """Remove all search highlight items from the scene."""
+        for item in self._search_items:
+            self._page_scene.removeItem(item)
+        self._search_items.clear()
+        self._search_hits = []
+        self._search_current = -1
+
+    def _clear_search(self) -> None:
+        """Clear search and hide the bar."""
+        self._clear_search_items()
+        self._search_bar.update_count(0, 0)
+
+    def keyPressEvent(self, event) -> None:
+        """Handle Escape to close search bar."""
+        if event.key() == Qt.Key.Key_Escape:
+            if hasattr(self, '_search_bar') and self._search_bar.isVisible():
+                self._search_bar._on_close()
+                return
+        super().keyPressEvent(event)

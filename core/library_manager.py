@@ -95,6 +95,17 @@ class LibraryManager:
             })
         return docs
 
+    def get_documents_recursive(
+        self, folder: Path | None = None
+    ) -> list[dict]:
+        """Return all documents in *folder* and all sub-folders recursively."""
+        base = folder or self._root
+        result: list[dict] = []
+        result.extend(self.get_documents(base))
+        for subfolder in self.get_folders(base):
+            result.extend(self.get_documents_recursive(subfolder))
+        return result
+
     def import_pdf(
         self, source_pdf: Path, target_folder: Path | None = None
     ) -> dict:

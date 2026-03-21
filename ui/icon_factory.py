@@ -297,6 +297,41 @@ def _register_builtins() -> None:
         'a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     )
 
+    # Globe – Lucide "Globe"
+    r(
+        "globe",
+        '<circle cx="12" cy="12" r="10"/>'
+        '<path d="M12 2a14.5 14.5 0 0 0 0 20'
+        ' 14.5 14.5 0 0 0 0-20"/>'
+        '<path d="M2 12h20"/>',
+    )
+
+    # Monitor – Lucide "Monitor"
+    r(
+        "monitor",
+        '<rect width="20" height="14" x="2" y="3" rx="2"/>'
+        '<path d="M8 21h8"/>'
+        '<path d="M12 17v4"/>',
+    )
+
+    # Moon – Lucide "Moon"
+    r(
+        "moon",
+        '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    )
+
+    # Sun – Lucide "Sun"
+    r(
+        "sun",
+        '<circle cx="12" cy="12" r="4"/>'
+        '<path d="M12 2v2M12 20v2'
+        'M4.93 4.93l1.41 1.41'
+        'M17.66 17.66l1.41 1.41'
+        'M2 12h2M20 12h2'
+        'M6.34 17.66l-1.41 1.41'
+        'M19.07 4.93l-1.41 1.41"/>',
+    )
+
     # FolderOpen – Lucide "FolderOpen"
     r(
         "folder_open",
@@ -440,6 +475,40 @@ def _register_builtins() -> None:
     IconFactory.register(
         "shape_triangle",
         '<polygon points="12 3 22 21 2 21"/>',
+    )
+
+    # FilePlus – Lucide "FilePlus2"
+    IconFactory.register(
+        "file_plus",
+        '<path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/>'
+        '<path d="M14 2v4a2 2 0 0 0 2 2h4"/>'
+        '<path d="M3 15h6"/>'
+        '<path d="M6 12v6"/>',
+    )
+
+    # Info – Lucide "Info"
+    IconFactory.register(
+        "info",
+        '<circle cx="12" cy="12" r="10"/>'
+        '<path d="M12 16v-4"/>'
+        '<path d="M12 8h.01"/>',
+    )
+
+    # FolderX – Lucide "FolderX" (empty folder state)
+    IconFactory.register(
+        "folder_x",
+        '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9'
+        'a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4'
+        'a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
+        '<path d="m9.5 10.5 5 5"/>'
+        '<path d="m14.5 10.5-5 5"/>',
+    )
+
+    # X (close) – Lucide "X"
+    IconFactory.register(
+        "x",
+        '<path d="M18 6 6 18"/>'
+        '<path d="m6 6 12 12"/>',
     )
 
 

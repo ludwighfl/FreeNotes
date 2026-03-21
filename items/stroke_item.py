@@ -29,7 +29,7 @@ class StrokeItem(QGraphicsItem):
         super().__init__(parent)
         self._path: QPainterPath = path
         self._style: ToolStyle = style
-        self.page_index: int = page_index
+        self._page_index: int = page_index
         self._outline_mode: bool = False  # True after pixel-erase
         self._is_selected: bool = False
 
@@ -98,6 +98,10 @@ class StrokeItem(QGraphicsItem):
             painter.setOpacity(1.0)
             painter.drawRect(self.boundingRect().adjusted(1, 1, -1, -1))
             painter.restore()
+
+    @property
+    def page_index(self) -> int:
+        return self._page_index
 
     @property
     def style(self) -> ToolStyle:

@@ -14,6 +14,7 @@ from core import undo_stack
 from core.app_settings import AppSettings
 from core.library_manager import LibraryManager
 from ui.manager_view import ManagerView
+from ui.settings_view import SettingsView
 from ui.viewer_window import ViewerWindow
 from utils.path_helpers import get_default_annotations_root
 
@@ -47,14 +48,19 @@ class MainWindow(QMainWindow):
         from utils.path_helpers import get_app_path
         banner_path = get_app_path() / "assets" / "banner.png"
         self._splash_screen = SplashScreen(str(banner_path))
+        self._settings_view = SettingsView()
+        self._load_settings_pages()
 
         self._stack.addWidget(self._manager_view)   # index 0
         self._stack.addWidget(self._viewer_window)   # index 1
         self._stack.addWidget(self._splash_screen)   # index 2
+        self._stack.addWidget(self._settings_view)   # index 3
 
         # Connections
         self._manager_view.open_pdf_requested.connect(self.show_viewer)
+        self._manager_view.settings_requested.connect(self.show_settings)
         self._viewer_window.back_requested.connect(self.show_manager)
+        self._settings_view.back_requested.connect(self.show_manager)
 
         # --- Keyboard shortcuts: Undo / Redo ---
         undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
@@ -74,6 +80,22 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
     # ------------------------------------------------------------------
+    # Settings pages
+    # ------------------------------------------------------------------
+
+    def _load_settings_pages(self) -> None:
+        """Replace placeholder pages in SettingsView with real content."""
+        from ui.settings_pages.display_page import DisplayPage
+        from ui.settings_pages.pen_page import PenPage
+        from ui.settings_pages.language_page import LanguagePage
+        from ui.settings_pages.library_page import LibraryPage
+
+        self._settings_view.replace_page("display", DisplayPage())
+        self._settings_view.replace_page("pen", PenPage())
+        self._settings_view.replace_page("language", LanguagePage())
+        self._settings_view.replace_page("library", LibraryPage())
+
+    # ------------------------------------------------------------------
     # First-run / library init
     # ------------------------------------------------------------------
 
@@ -84,6 +106,21 @@ class MainWindow(QMainWindow):
         else:
             root = AppSettings.get_annotations_root()
             AppState().library_manager = LibraryManager(root)
+
+        # Auto-open last document if available
+        last_doc = AppSettings.get_last_opened_doc()
+        if last_doc:
+            last_path = Path(last_doc)
+            if last_path.exists() and last_path.suffix == ".freenotes":
+                self.show_manager()
+                self._viewer_window.open_freenotes(str(last_path))
+                self._stack.setCurrentIndex(1)
+                return
+            if last_path.exists() and last_path.suffix == ".pdf":
+                self.show_manager()
+                self.show_viewer(last_path)
+                return
+
         self.show_manager()
 
     def _show_first_run_dialog(self) -> None:
@@ -194,6 +231,11 @@ class MainWindow(QMainWindow):
         """
         self._viewer_window.open_pdf(path)
         self._stack.setCurrentIndex(1)
+
+    def show_settings(self, page: str = "display") -> None:
+        """Switch to the settings screen."""
+        self._settings_view.show_page(page)
+        self._stack.setCurrentIndex(3)
 
     # ------------------------------------------------------------------
     # Drag & Drop

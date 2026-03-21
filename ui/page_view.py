@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import (
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import QPainter
@@ -47,12 +48,22 @@ class PageView(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setViewportUpdateMode(
-            QGraphicsView.ViewportUpdateMode.FullViewportUpdate
+            QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate
         )
         self.setBackgroundBrush(Qt.GlobalColor.transparent)
 
         # Track scrolling to detect current visible page
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
+
+        # Debounced render timer for virtual page rendering
+        self._render_timer = QTimer()
+        self._render_timer.setSingleShot(True)
+        self._render_timer.setInterval(80)
+        self._render_timer.timeout.connect(self._on_render_timer)
+        self.verticalScrollBar().valueChanged.connect(
+            self._on_scroll_changed)
+        self.horizontalScrollBar().valueChanged.connect(
+            self._on_scroll_changed)
 
     # ------------------------------------------------------------------
     # Eraser cursor visibility on enter/leave
@@ -98,6 +109,8 @@ class PageView(QGraphicsView):
             self._current_zoom = new_zoom
             self.scale(factor, factor)
             self._app_state.zoom_factor = new_zoom
+            # Trigger re-render after zoom
+            QTimer.singleShot(200, self._on_render_timer)
         else:
             super().wheelEvent(event)
 
@@ -116,6 +129,16 @@ class PageView(QGraphicsView):
         transform = self.transform()
         self._current_zoom = transform.m11()
         self._app_state.zoom_factor = self._current_zoom
+
+    def set_zoom(self, zoom: float) -> None:
+        """Set the zoom to a specific level (no animation)."""
+        zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, zoom))
+        self.resetTransform()
+        self.scale(zoom, zoom)
+        self._current_zoom = zoom
+        self._app_state.zoom_factor = zoom
+        # Trigger re-render after zoom
+        QTimer.singleShot(200, self._on_render_timer)
 
     # ------------------------------------------------------------------
     # Pan (Space+Drag / Middle-mouse – always available)
@@ -227,7 +250,10 @@ class PageView(QGraphicsView):
 
     def _on_scroll(self) -> None:
         """Detect which page is most visible after scrolling."""
-        viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
+        try:
+            viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
+        except RuntimeError:
+            return
         viewport_center_y = viewport_rect.center().y()
 
         best_index = 0
@@ -243,6 +269,28 @@ class PageView(QGraphicsView):
                 best_distance = distance
                 best_index = i
 
-        if best_index != self._app_state.current_page:
-            self._app_state.current_page = best_index
-            self.visible_page_changed.emit(best_index)
+        try:
+            if best_index != self._app_state.current_page:
+                self._app_state.current_page = best_index
+                self.visible_page_changed.emit(best_index)
+        except RuntimeError:
+            pass
+
+    # ------------------------------------------------------------------
+    # Virtual rendering triggers
+    # ------------------------------------------------------------------
+
+    def _on_scroll_changed(self) -> None:
+        """Restart debounce timer on scroll."""
+        self._render_timer.start()
+
+    def _on_render_timer(self) -> None:
+        """Inform scene which pages are visible for rendering."""
+        try:
+            vp_rect = self.mapToScene(
+                self.viewport().rect()).boundingRect()
+            scene = self.scene()
+            if scene and hasattr(scene, 'update_visible_pages'):
+                scene.update_visible_pages(vp_rect)
+        except RuntimeError:
+            pass
