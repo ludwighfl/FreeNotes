@@ -13,7 +13,7 @@ from items.highlight_item import HighlightItem
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class HighlighterTool(BaseTool):

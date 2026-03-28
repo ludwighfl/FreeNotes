@@ -39,6 +39,7 @@ class PdfCard(QFrame):
         name: str,
         modified: float,
         parent: QWidget | None = None,
+        thumbnail_cache: 'ThumbnailCache' | None = None,
     ) -> None:
         super().__init__(parent)
         self._pdf_path = pdf_path
@@ -46,6 +47,7 @@ class PdfCard(QFrame):
         self._name = name
         self._modified = modified
         self._rendered = False
+        self._thumbnail_cache = thumbnail_cache
         self.setObjectName("pdfCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(200, 280)
@@ -97,8 +99,18 @@ class PdfCard(QFrame):
         self._rendered = True
         if self._pdf_path and self._pdf_path.exists():
             try:
+                if self._thumbnail_cache is not None:
+                    cached = self._thumbnail_cache.get(self._pdf_path, self.THUMB_W, self.THUMB_H)
+                    if cached:
+                        self._thumb_label.setPixmap(cached)
+                        return
+
                 pixmap = self._render_thumbnail_with_annotations(
                     self._pdf_path, self._freenotes_path)
+                
+                if self._thumbnail_cache is not None and not pixmap.isNull():
+                    self._thumbnail_cache.put(self._pdf_path, pixmap)
+
                 self._thumb_label.setPixmap(pixmap)
             except Exception:
                 self._show_placeholder()
@@ -119,136 +131,114 @@ class PdfCard(QFrame):
     def _render_thumbnail_with_annotations(
         self, pdf_path: Path, freenotes_path: Path | None
     ) -> QPixmap:
-        """Render the first PDF page and overlay annotations via QPainter."""
+        """Render the first PDF page and overlay annotations efficiently."""
         import fitz
-        doc = fitz.open(str(pdf_path))
-        page = doc.load_page(0)
-        zoom = 150.0 / 72.0
-        pix = page.get_pixmap(
-            matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        img = QImage(
-            pix.samples, pix.width, pix.height, pix.stride,
-            QImage.Format.Format_RGB888).copy()
-        pixmap = QPixmap.fromImage(img)
-        pdf_w = page.rect.width
-        pdf_h = page.rect.height
-        doc.close()
+        from PySide6.QtWidgets import QGraphicsScene, QGraphicsPixmapItem
+        import json
 
-        if freenotes_path and freenotes_path.exists():
-            try:
-                data = json.loads(
-                    freenotes_path.read_text(encoding="utf-8"))
-                sx = pixmap.width() / pdf_w
-                sy = pixmap.height() / pdf_h
-                painter = QPainter(pixmap)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        try:
+            doc = fitz.open(str(pdf_path))
+            
+            data = None
+            if freenotes_path and freenotes_path.exists():
+                data = json.loads(freenotes_path.read_text(encoding="utf-8"))
+
+            zoom = 150.0 / 72.0
+            page0_w = 595.0 * zoom
+            h = 842.0 * zoom
+            max_w = 0.0
+
+            real_page_0 = 0
+            is_blank = False
+
+            if data:
+                page_map = data.get("page_map", [])
+                if page_map and isinstance(page_map, list):
+                    if page_map[0] == -1:
+                        is_blank = True
+                    elif 0 <= page_map[0] < doc.page_count:
+                        real_page_0 = page_map[0]
+
+            if not is_blank:
+                page = doc.load_page(real_page_0)
+                page0_w = page.rect.width * zoom
+                h = page.rect.height * zoom
+                
+                # Fast max_w calculation: check up to max 50 pages to avoid stutter
+                max_w = page0_w
+                limit = min(50, doc.page_count)
+                for i in range(limit):
+                    w = doc[i].rect.width * zoom
+                    if w > max_w:
+                        max_w = w
+
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+                img = QImage(
+                    pix.samples, pix.width, pix.height, pix.stride,
+                    QImage.Format.Format_RGB888).copy()
+                pixmap = QPixmap.fromImage(img)
+            else:
+                max_w = page0_w
+                pixmap = QPixmap(int(page0_w), int(h))
+                pixmap.fill(Qt.GlobalColor.white)
+
+            doc.close()
+
+            x_off = (max_w - page0_w) / 2.0
+            y_off = 20.0  # PageScene.PAGE_GAP
+
+            # Create a lightweight, isolated scene
+            scene = QGraphicsScene()
+            page_item = QGraphicsPixmapItem(pixmap)
+            scene.addItem(page_item)
+
+            if data:
+                from core.freenotes_store import FreenotesStore
+                from items.shape_item import ShapeItem
+                
                 page_data = data.get("pages", {}).get("0", {})
                 
-                for s in page_data.get("strokes", []):
-                    self._draw_stroke(painter, s, sx, sy)
-                for h in page_data.get("highlights", []):
-                    self._draw_highlight(painter, h, sx, sy)
-                for t in page_data.get("textboxes", []):
-                    self._draw_textbox(painter, t, sx, sy)
-                for sh in page_data.get("shapes", []):
-                    self._draw_shape(painter, sh, sx, sy)
-                
-                painter.end()
-            except Exception:
-                pass
+                for d in page_data.get("strokes", []):
+                    item = FreenotesStore._deserialize_stroke(d, 0)
+                    item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
+                    scene.addItem(item)
+                    
+                for d in page_data.get("highlights", []):
+                    item = FreenotesStore._deserialize_highlight(d, 0)
+                    item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
+                    scene.addItem(item)
+                    
+                for d in page_data.get("textboxes", []):
+                    item = FreenotesStore._deserialize_textbox(d, 0)
+                    item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
+                    if hasattr(item, "_is_editing"):
+                        item._is_editing = False 
+                    item.clearFocus()
+                    scene.addItem(item)
+                    
+                for d in page_data.get("shapes", []):
+                    item = ShapeItem.from_dict(d)
+                    item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
+                    scene.addItem(item)
 
-        return pixmap.scaled(
-            self.THUMB_W, self.THUMB_H,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation)
+            # Render scene seamlessly
+            final_pixmap = QPixmap(int(page0_w), int(h))
+            final_pixmap.fill(Qt.GlobalColor.white)
+            painter = QPainter(final_pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            scene.render(painter, QRectF(0, 0, page0_w, h), QRectF(0, 0, page0_w, h))
+            painter.end()
 
-    @staticmethod
-    def _draw_stroke(painter: QPainter, d: dict, sx: float, sy: float) -> None:
-        pts = d.get("points", [])
-        if len(pts) < 2:
-            return
-        ox, oy = d.get("pos", (0, 0))
-        path = QPainterPath()
-        path.moveTo((pts[0][0] + ox) * sx, (pts[0][1] + oy) * sy)
-        for px, py in pts[1:]:
-            path.lineTo((px + ox) * sx, (py + oy) * sy)
-        pen = QPen(QColor(d.get("color", "#000000")),
-                   d.get("width", 2) * min(sx, sy))
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(path)
+            scene.clear()
 
-    @staticmethod
-    def _draw_highlight(painter: QPainter, d: dict, sx: float, sy: float) -> None:
-        pts = d.get("points", [])
-        if len(pts) < 2:
-            return
-        ox, oy = d.get("pos", (0, 0))
-        xs = [(p[0] + ox) * sx for p in pts]
-        ys = [(p[1] + oy) * sy for p in pts]
-        rect = QRectF(min(xs), min(ys),
-                       max(xs) - min(xs), max(ys) - min(ys))
-        color = QColor(d.get("color", "#FFFF00"))
-        color.setAlphaF(0.35)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(color)
-        painter.drawRect(rect)
+            return final_pixmap.scaled(
+                self.THUMB_W, self.THUMB_H,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
 
-    @staticmethod
-    def _draw_textbox(painter: QPainter, d: dict, sx: float, sy: float) -> None:
-        rect_data = d.get("rect")
-        if not rect_data:
-            return
-        rx, ry, rw, rh = rect_data
-        ox, oy = d.get("pos", (0, 0))
-        rect = QRectF((rx + ox) * sx, (ry + oy) * sy, rw * sx, rh * sy)
-        from PySide6.QtGui import QTextDocument
-        doc = QTextDocument()
-        doc.setHtml(d.get("html", ""))
-        plain = doc.toPlainText()
-        font_size = max(6.0, d.get("font_size", 12) * min(sx, sy))
-        painter.setPen(QColor(d.get("style_color", "#000000")))
-        f = QFont(d.get("font_family", "Segoe UI"), int(font_size))
-        painter.setFont(f)
-        painter.drawText(
-            rect,
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-            | Qt.TextFlag.TextWordWrap,
-            plain)
-
-    @staticmethod
-    def _draw_shape(painter: QPainter, d: dict, sx: float, sy: float) -> None:
-        rect_data = d.get("rect")
-        if not rect_data:
-            return
-        style = d.get("style", {})
-        rx, ry, rw, rh = rect_data
-        ox, oy = d.get("pos", (0, 0))
-        rect = QRectF((rx + ox) * sx, (ry + oy) * sy, rw * sx, rh * sy)
-        stroke_c = QColor(style.get("stroke_color", "#3B7BF5"))
-        stroke_w = style.get("stroke_width", 2.0) * min(sx, sy)
-        fill_c = QColor(style.get("fill_color", "#00000000"))
-        pen = QPen(stroke_c, stroke_w)
-        brush = QBrush(fill_c) if fill_c.alpha() > 0 else QBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(pen)
-        painter.setBrush(brush)
-        shape_type = style.get("shape_type", "rect")
-        if shape_type == "ellipse":
-            painter.drawEllipse(rect)
-        elif shape_type == "rounded_rect":
-            painter.drawRoundedRect(rect, 8, 8)
-        elif shape_type in ("line", "arrow"):
-            painter.drawLine(rect.topLeft(), rect.bottomRight())
-        elif shape_type == "triangle":
-            tri = QPolygonF([
-                QPointF(rect.center().x(), rect.top()),
-                QPointF(rect.left(), rect.bottom()),
-                QPointF(rect.right(), rect.bottom()),
-            ])
-            painter.drawPolygon(tri)
-        else:
-            painter.drawRect(rect)
+        except Exception as e:
+            print(f"Thumb render error: {e}")
+            return QPixmap()
 
     # ------------------------------------------------------------------
     # Events

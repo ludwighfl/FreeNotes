@@ -9,7 +9,7 @@ from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
     from core.document_manager import DocumentManager
 
 

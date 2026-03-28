@@ -51,7 +51,7 @@ class PdfRenderer:
         # Increase rendering resolution by 2x for sharper text, but increase
         # devicePixelRatio by 2x as well so the item's logical scene coordinate
         # size stays exactly the same (preserving tool sizes).
-        render_scale = 2.0
+        render_scale = min(2.0, dpr)
         
         physical_dpi = dpi * dpr * render_scale
 

@@ -9,8 +9,8 @@ from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
     from core.document_manager import DocumentManager
-    from ui.page_scene import PageScene
-    from ui.sidebar_widget import SidebarWidget
+    from ui.scene.page_scene import PageScene
+    from ui.bars.sidebar_widget import SidebarWidget
 
 
 class ReorderPagesCommand(QUndoCommand):

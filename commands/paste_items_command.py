@@ -9,7 +9,7 @@ from PySide6.QtGui import QUndoCommand
 from PySide6.QtWidgets import QGraphicsItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class PasteItemsCommand(QUndoCommand):

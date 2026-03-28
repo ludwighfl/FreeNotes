@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QToolButton,
 )
 
-from ui.icon_factory import IconFactory
+from ui.components.icon_factory import IconFactory
 
 
 class DisplayPage(QWidget):
@@ -86,7 +86,7 @@ class DisplayPage(QWidget):
         layout.addSpacing(8)
 
         size_row = QHBoxLayout()
-        from ui.font_size_widget import FontSizeWidget
+        from ui.popups.font_size_widget import FontSizeWidget
         self._font_size = FontSizeWidget()
         self._font_size.setValue(
             AppSettings.get_default_font_size())

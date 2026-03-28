@@ -150,8 +150,12 @@ class DocumentManager:
             self._document.insert_page(at_index, width=595, height=842)
             self.page_map.insert(at_index, -1)
         else:
-            # copy_page inserts after source, so we use fullcopy + move
-            self._document.copy_page(source_idx, at_index)
+            # Use temp doc to safely copy page and insert at correct index
+            import fitz
+            temp = fitz.open()
+            temp.insert_pdf(self._document, from_page=source_idx, to_page=source_idx)
+            self._document.insert_pdf(temp, start_at=at_index)
+            temp.close()
             self.page_map.insert(at_index, self.page_map[source_idx])
             
         new_cache = OrderedDict()
@@ -189,7 +193,7 @@ class DocumentManager:
         temp.close()
         return data
 
-    def restore_page(self, at_index: int, page_bytes: bytes) -> None:
+    def restore_page(self, at_index: int, page_bytes: bytes, original_map_idx: int = -1) -> None:
         """Restore a previously saved page from bytes."""
         import fitz
         if self._document is None or not page_bytes:
@@ -197,8 +201,7 @@ class DocumentManager:
         temp = fitz.open("pdf", page_bytes)
         self._document.insert_pdf(
             temp, from_page=0, to_page=0, start_at=at_index)
-        # We don't track restored page in page_map here since commands handles page_map?
-        # Actually, undo/redo of delete_page should restore the page_map value via the command.
+        self.page_map.insert(at_index, original_map_idx)
         temp.close()
         self._cache.clear()
 

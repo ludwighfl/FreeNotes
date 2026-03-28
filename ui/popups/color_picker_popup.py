@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from ui.color_wheel_widget import ColorWheelWidget
+from ui.popups.color_wheel_widget import ColorWheelWidget
 
 
 class ColorPickerPopup(QWidget):

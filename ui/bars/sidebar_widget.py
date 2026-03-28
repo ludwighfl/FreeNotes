@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal, QTimer, QRectF, QMimeData, QPoint
+from PySide6.QtCore import Qt, Signal, QTimer, QRectF, QMimeData, QPoint, QThread
 from PySide6.QtGui import (
     QPixmap, QPainter, QFont, QColor, QPen, QBrush, QDrag,
     QMouseEvent, QContextMenuEvent, QAction,
@@ -19,8 +19,30 @@ from app.app_state import AppState
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
-    from ui.viewer_window import ViewerWindow
+    from ui.scene.page_scene import PageScene
+    from ui.windows.viewer_window import ViewerWindow
+
+
+class ThumbnailWorker(QThread):
+    thumbnail_ready = Signal(int, QPixmap)
+
+    def __init__(self, doc_manager, indices: list[int], dpi: int):
+        super().__init__()
+        self._doc_manager = doc_manager
+        self._indices = indices
+        self._dpi = dpi
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        for i in self._indices:
+            if self._cancelled:
+                break
+            pm = self._doc_manager.get_page_pixmap(i, self._dpi)
+            if not self._cancelled:
+                self.thumbnail_ready.emit(i, pm)
 
 
 class ThumbnailCard(QFrame):
@@ -181,6 +203,7 @@ class SidebarWidget(QScrollArea):
         self._active_index: int = -1
         self._app_state: AppState = AppState()
         self._drop_indicator_index: int = -1
+        self._thumb_worker: ThumbnailWorker | None = None
 
         # Container widget
         self._container = QWidget()
@@ -223,6 +246,10 @@ class SidebarWidget(QScrollArea):
 
         self._loaded_pages.clear()
         self._active_index = -1
+
+        if self._thumb_worker is not None:
+            self._thumb_worker.cancel()
+            self._thumb_worker.wait()
 
         for card in self._cards:
             card.deleteLater()
@@ -469,9 +496,9 @@ class SidebarWidget(QScrollArea):
             return
 
         for rect in rects:
-            page_index = self._scene.get_page_index_at(rect.center())
-            if page_index != -1:
-                self.invalidate_thumb(page_index)
+            for i, page_rect in enumerate(self._scene._page_rects):
+                if rect.intersects(page_rect):
+                    self.invalidate_thumb(i)
 
     def invalidate_thumb(self, page_idx: int) -> None:
         """Mark a thumbnail as needing re-render. Re-renders if visible."""
@@ -488,15 +515,20 @@ class SidebarWidget(QScrollArea):
         if self._doc_manager is None or not self._cards:
             return
 
+        if self._thumb_worker is not None:
+            self._thumb_worker.cancel()
+            self._thumb_worker.wait()
+
         viewport_rect = self.viewport().rect()
         buffer = 2
 
         first_visible = -1
         last_visible = -1
 
+        vp_global = self.viewport().mapToGlobal(QPoint(0, 0))
+
         for i, card in enumerate(self._cards):
             card_global = card.mapToGlobal(QPoint(0, 0))
-            vp_global = self.viewport().mapToGlobal(QPoint(0, 0))
             rel = card_global - vp_global
             card_rect = card.rect().translated(rel.x(), rel.y())
             if viewport_rect.intersects(card_rect):
@@ -511,10 +543,65 @@ class SidebarWidget(QScrollArea):
         start = max(0, first_visible - buffer)
         end = min(len(self._cards) - 1, last_visible + buffer)
 
-        for i in range(start, end + 1):
-            if i not in self._loaded_pages:
-                pixmap = self._doc_manager.get_page_pixmap(
-                    i, dpi=self.THUMBNAIL_DPI)
-                if not pixmap.isNull():
-                    self._cards[i].set_thumbnail(pixmap)
-                self._loaded_pages.add(i)
+        indices = [i for i in range(start, end + 1) if i not in self._loaded_pages]
+        if not indices:
+            return
+
+        for i in indices:
+            self._loaded_pages.add(i)
+
+        self._thumb_worker = ThumbnailWorker(self._doc_manager, indices, self.THUMBNAIL_DPI)
+        self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self._thumb_worker.start()
+
+    def _on_thumbnail_ready(self, idx: int, pixmap: QPixmap) -> None:
+        if idx < len(self._cards) and not pixmap.isNull():
+            
+            # --- Overlay Annotations ---
+            if self._scene is not None and idx < len(self._scene._page_items):
+                overlay = QPixmap(pixmap.size())
+                overlay.setDevicePixelRatio(pixmap.devicePixelRatio())
+                overlay.fill(Qt.GlobalColor.transparent)
+                
+                self._scene._is_rendering_thumbnail = True
+                page_item = self._scene._page_items[idx]
+                was_visible = page_item.isVisible()
+                page_item.setVisible(False)
+                
+                ephemeral_items = self._scene.get_ephemeral_items()
+                ephemeral_states = [(item, item.isVisible()) for item in ephemeral_items]
+                for item, _ in ephemeral_states:
+                    item.setVisible(False)
+                    
+                overlay_was_visible = False
+                if getattr(self._scene, '_selection_overlay', None):
+                    overlay_was_visible = self._scene._selection_overlay.isVisible()
+                    self._scene._selection_overlay.setVisible(False)
+                
+                painter = QPainter(overlay)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                source_rect = self._scene.get_page_rect(idx)
+                
+                # Correct logical target rect scaling based on DPR
+                dpr = overlay.devicePixelRatio()
+                target_rect = QRectF(0, 0, overlay.width() / dpr, overlay.height() / dpr)
+                
+                self._scene.render(painter, target_rect, source_rect)
+                painter.end()
+                
+                page_item.setVisible(was_visible)
+                self._scene._is_rendering_thumbnail = False
+                
+                for item, vis in ephemeral_states:
+                    item.setVisible(vis)
+                    
+                if getattr(self._scene, '_selection_overlay', None):
+                    self._scene._selection_overlay.setVisible(overlay_was_visible)
+                
+                p2 = QPainter(pixmap)
+                p2.setRenderHint(QPainter.RenderHint.Antialiasing)
+                p2.drawPixmap(0, 0, overlay)
+                p2.end()
+            # ---------------------------
+            
+            self._cards[idx].set_thumbnail(pixmap)

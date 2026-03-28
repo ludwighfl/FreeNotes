@@ -35,7 +35,7 @@ class PenPage(QWidget):
         layout.addSpacing(8)
 
         from core.app_settings import AppSettings
-        from ui.toolbar_icons import make_color_icon
+        from ui.bars.toolbar_icons import make_color_icon
 
         saved_colors = AppSettings.get_pen_colors()
         current_color = AppSettings.get_pen_default_color()
@@ -72,7 +72,7 @@ class PenPage(QWidget):
         layout.addWidget(self._make_label("Standard-Breite"))
         layout.addSpacing(8)
 
-        from ui.toolbar_icons import make_width_icon
+        from ui.bars.toolbar_icons import make_width_icon
         self._widths = [1.0, 2.0, 4.0, 8.0, 14.0]
         self._radii = [1, 2, 4, 6, 8]
         saved_width = AppSettings.get_pen_width()
@@ -109,7 +109,7 @@ class PenPage(QWidget):
         from core.app_settings import AppSettings
         from app.app_state import AppState
         from PySide6.QtGui import QColor
-        from ui.toolbar_icons import make_color_icon
+        from ui.bars.toolbar_icons import make_color_icon
 
         AppSettings.set_pen_default_color(color)
         AppState().tool_style.color = QColor(color)

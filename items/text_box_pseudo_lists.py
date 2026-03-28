@@ -245,8 +245,7 @@ class TextBoxPseudoListMixin:
             block_start = self._cursor.block().position()
             target_pos = block_start + marker_len
             
-            # If there's an active selection, we must preserve the anchor correctly 
-            # (complex, standard text editors usually just snap the move).
-            # We'll just snap the position to the marker boundary for safety.
-            self._cursor.setPosition(target_pos)
+            # If there's an active selection, we must preserve the anchor correctly.
+            mode = QTextCursor.MoveMode.KeepAnchor if self._cursor.hasSelection() else QTextCursor.MoveMode.MoveAnchor
+            self._cursor.setPosition(target_pos, mode)
             self.update()

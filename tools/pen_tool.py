@@ -13,7 +13,7 @@ from items.stroke_item import StrokeItem
 from core.tool_style import ToolStyle
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class PenTool(BaseTool):

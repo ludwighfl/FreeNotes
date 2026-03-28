@@ -3,9 +3,15 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 
+_color_icon_cache: dict[tuple, QIcon] = {}
+_width_icon_cache: dict[tuple, QIcon] = {}
+
 
 def make_color_icon(color: str, size: int = 20, checked: bool = False) -> QIcon:
     """Create a circular color swatch icon, optionally with a checkmark."""
+    key = (color.lower(), size, checked)
+    if key in _color_icon_cache:
+        return _color_icon_cache[key]
     
     # NEU: Skalierungsfaktor für High-DPI (3 deckt Monitore bis 300% Skalierung scharf ab)
     scale_factor = 3
@@ -44,11 +50,16 @@ def make_color_icon(color: str, size: int = 20, checked: bool = False) -> QIcon:
         painter.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "✓")
 
     painter.end()
-    return QIcon(pixmap)
+    icon = QIcon(pixmap)
+    _color_icon_cache[key] = icon
+    return icon
 
 
 def make_width_icon(dot_radius: int, size: int = 24) -> QIcon:
     """Create an icon showing a filled circle representing pen width."""
+    key = (dot_radius, size)
+    if key in _width_icon_cache:
+        return _width_icon_cache[key]
     
     # NEU: Der bewährte Skalierungsfaktor
     scale_factor = 3
@@ -73,4 +84,6 @@ def make_width_icon(dot_radius: int, size: int = 24) -> QIcon:
     painter.drawEllipse(cx - dot_radius, cy - dot_radius, dot_radius * 2, dot_radius * 2)
     
     painter.end()
-    return QIcon(pixmap)
+    icon = QIcon(pixmap)
+    _width_icon_cache[key] = icon
+    return icon

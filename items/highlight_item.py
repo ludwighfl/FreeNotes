@@ -36,6 +36,7 @@ class HighlightItem(QGraphicsItem):
         self._fixed_y: float | None = None
         self._outline_mode: bool = False  # True after pixel-erase
         self._is_selected: bool = False
+        self._cached_br: QRectF | None = None
 
         self.setZValue(5)
         self.setAcceptHoverEvents(True)
@@ -57,6 +58,7 @@ class HighlightItem(QGraphicsItem):
         self._path = QPainterPath()
         self._path.moveTo(fixed_pos)
         self.prepareGeometryChange()
+        self._cached_br = None
         self.update()
 
     def extend(self, pos: QPointF) -> None:
@@ -70,25 +72,31 @@ class HighlightItem(QGraphicsItem):
         fixed_pos = QPointF(pos.x(), self._fixed_y)
         self._path.lineTo(fixed_pos)
         self.prepareGeometryChange()
+        self._cached_br = None
         self.update()
 
     def finish(self) -> None:
         """Finish the stroke – release the Y lock."""
         self._fixed_y = None
+        self._cached_br = None
 
     # ------------------------------------------------------------------
     # QGraphicsItem interface
     # ------------------------------------------------------------------
 
     def boundingRect(self) -> QRectF:
+        if self._cached_br is not None:
+            return self._cached_br
         if self._path.isEmpty():
             return QRectF(0, 0, 0, 0)
         if self._outline_mode:
-            return self._path.boundingRect().adjusted(-2, -2, 2, 2)
-        padding = self._style.width / 2.0 + 4.0
-        return self._path.boundingRect().adjusted(
-            -padding, -padding, padding, padding
-        )
+            self._cached_br = self._path.boundingRect().adjusted(-2, -2, 2, 2)
+        else:
+            padding = self._style.width / 2.0 + 4.0
+            self._cached_br = self._path.boundingRect().adjusted(
+                -padding, -padding, padding, padding
+            )
+        return self._cached_br
 
     def paint(
         self,
@@ -164,6 +172,7 @@ class HighlightItem(QGraphicsItem):
         """Replace the path (for undo/redo or deserialization)."""
         self.prepareGeometryChange()
         self._path = path
+        self._cached_br = None
         self.update()
 
     def restore_original_path(self, path: QPainterPath) -> None:
@@ -177,6 +186,7 @@ class HighlightItem(QGraphicsItem):
         copy = QPainterPath()
         copy.addPath(path)
         self._path = copy
+        self._cached_br = None
         self.update()
 
     def subtract_path(self, eraser_ellipse: QPainterPath) -> bool:
@@ -245,6 +255,7 @@ class HighlightItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._path = new_path
         self._outline_mode = False  # Stay in normal stroke mode
+        self._cached_br = None
         self.update()
 
         # Store extra segments for the eraser tool to create new items
@@ -308,6 +319,7 @@ class HighlightItem(QGraphicsItem):
 
         self.prepareGeometryChange()
         self._path = new_path_local
+        self._cached_br = None
         self.update()
 
     def get_path_state(self) -> tuple:
@@ -319,5 +331,6 @@ class HighlightItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._path = path
         self.setPos(pos)
+        self._cached_br = None
         self.update()
 

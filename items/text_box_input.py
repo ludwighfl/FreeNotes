@@ -7,7 +7,6 @@ from PySide6.QtGui import (
     QFont,
     QKeyEvent,
     QTextCursor,
-    QTextListFormat,
 )
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -193,16 +192,6 @@ class TextBoxInputMixin:
         # ── Block 7: Printable characters ──────────────────────────
         text = event.text()
         if text:
-            # Extra space guard (Qt version compat)
-            if text == " " and key != Qt.Key.Key_Space:
-                self._mark_undo_pending()
-                self._commit_undo_checkpoint()
-                self._cursor.insertText(" ")
-                self._undo_snapshot = self._document.toHtml()
-                self._undo_pending = False
-                self._on_text_modified()
-                self._on_cursor_moved()
-                event.accept(); return
             if text.isprintable():
                 self._mark_undo_pending()
                 self._cursor.insertText(text)

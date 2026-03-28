@@ -15,9 +15,9 @@ from tools.shape_tool import ShapeTool
 
 if TYPE_CHECKING:
     from app.app_state import AppState
-    from ui.page_scene import PageScene
-    from ui.toolbar_widget import ToolbarWidget
-    from ui.formatting_bar import FormattingBar
+    from ui.scene.page_scene import PageScene
+    from ui.bars.toolbar_widget import ToolbarWidget
+    from ui.bars.formatting_bar import FormattingBar
     from items.text_box_item import TextBoxItem
     from tools.hand_tool import HandTool
     from tools.selection_tool import SelectionTool
@@ -82,7 +82,7 @@ class ViewerToolManagerMixin:
             self._page_scene.set_tool(self._selection_tool)
         elif tool_name == "shape":
             self._toolbar.update_width_buttons("shape")
-            self._page_scene.set_tool(ShapeTool())
+            self._page_scene.set_tool(self._shape_tool)
 
     def _on_style_changed(self, style: object) -> None:
         """Style changed from toolbar — route to active tool/item."""

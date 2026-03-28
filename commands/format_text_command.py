@@ -9,7 +9,7 @@ from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class FormatTextCommand(QUndoCommand):

@@ -9,7 +9,7 @@ from items.shape_item import ShapeItem
 from items.selection_overlay_item import SelectionOverlayItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class SceneSelectionMixin:

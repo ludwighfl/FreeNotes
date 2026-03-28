@@ -41,6 +41,7 @@ class TextBoxFormattingMixin:
     def _apply_char_format(self, fmt: QTextCharFormat) -> None:
         """Apply a character format to selection or cursor insertion point."""
         self._cursor.mergeCharFormat(fmt)
+        self._auto_resize()
         self.update()
         self.cursor_moved.emit()
 
@@ -69,7 +70,7 @@ class TextBoxFormattingMixin:
         if old_html != new_html:
             self._push_format_command(
                 old_html, new_html, "Fett" if bold else "Fett aufheben")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     def apply_italic(self, italic: bool) -> None:
@@ -82,7 +83,7 @@ class TextBoxFormattingMixin:
         if old_html != new_html:
             self._push_format_command(
                 old_html, new_html, "Kursiv" if italic else "Kursiv aufheben")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     def apply_underline(self, underline: bool) -> None:
@@ -96,7 +97,7 @@ class TextBoxFormattingMixin:
             self._push_format_command(
                 old_html, new_html,
                 "Unterstrichen" if underline else "Unterstrichen aufheben")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     def apply_strikethrough(self, strikethrough: bool) -> None:
@@ -110,7 +111,7 @@ class TextBoxFormattingMixin:
             self._push_format_command(
                 old_html, new_html,
                 "Durchgestrichen" if strikethrough else "Durchgestrichen aufheben")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     # ------------------------------------------------------------------
@@ -177,7 +178,7 @@ class TextBoxFormattingMixin:
         new_html = self._document.toHtml()
         if old_html != new_html:
             self._push_format_command(old_html, new_html, "Textfarbe ändern")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     def apply_alignment(self, alignment: Qt.AlignmentFlag) -> None:
@@ -186,12 +187,13 @@ class TextBoxFormattingMixin:
         block_fmt = QTextBlockFormat()
         block_fmt.setAlignment(alignment)
         self._cursor.mergeBlockFormat(block_fmt)
+        self._auto_resize()
         self.update()
         self.cursor_moved.emit()
         new_html = self._document.toHtml()
         if old_html != new_html:
             self._push_format_command(old_html, new_html, "Ausrichtung ändern")
-        self._undo_snapshot = self._document.toHtml()
+        self._undo_snapshot = new_html
         self._undo_pending = False
 
     # ------------------------------------------------------------------

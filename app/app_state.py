@@ -176,3 +176,19 @@ class AppState(QObject):
         self._total_pages = 0
         self._active_tool_name = "hand"
         self._tool_style = ToolStyle()
+        
+        self.clipboard_box = None
+        self.items_clipboard = []
+
+        from core.shape_style import ShapeType
+        from PySide6.QtGui import QColor
+        self.active_shape_type = ShapeType.RECT
+        self.shape_fill_color = QColor(255, 255, 255, 0)
+        self.shape_stroke_color = QColor("#3B7BF5")
+        self.current_stroke_width = 2.0
+
+        self.freenotes_path = None
+        self.is_modified = False
+
+        self._library_manager = None
+        self.current_folder = None

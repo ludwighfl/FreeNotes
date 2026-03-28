@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from ui.icon_factory import IconFactory
+from ui.components.icon_factory import IconFactory
 
 
 class LanguagePage(QWidget):

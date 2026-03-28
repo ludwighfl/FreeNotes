@@ -34,7 +34,7 @@ from items.text_box_formatting import TextBoxFormattingMixin
 from items.text_box_pseudo_lists import TextBoxPseudoListMixin
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMixin, QGraphicsObject):
@@ -162,6 +162,8 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     # ==================================================================
 
     def boundingRect(self) -> QRectF:
+        if getattr(self, "_is_selected_custom", False) or getattr(self, "_is_editing", False):
+            return self._rect.adjusted(-50, -60, 50, 40)
         return self._rect.adjusted(-2, -2, 2, 2)
 
     def shape(self) -> QPainterPath:
@@ -332,14 +334,6 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self._update_handle_positions()
         self.update()
 
-    # ==================================================================
-    # Item change (handle repositioning on drag)
-    # ==================================================================
-
-    def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            self._update_handle_positions()
-        return super().itemChange(change, value)
 
     # ==================================================================
     # Hover cursors
@@ -382,6 +376,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     # ==================================================================
 
     def start_editing(self) -> None:
+        self.prepareGeometryChange()
         self._is_editing = True
         self._is_selected_custom = True
         self._set_handles_visible(True)
@@ -394,6 +389,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     def stop_editing(self) -> None:
         if not self._is_editing:
             return  # idempotent
+        self.prepareGeometryChange()
         # Commit any pending undo checkpoint
         self._commit_undo_checkpoint()
         self._is_editing = False
@@ -431,6 +427,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         return new_box
 
     def set_selected_custom(self, selected: bool) -> None:
+        self.prepareGeometryChange()
         self._is_selected_custom = selected
         self._set_handles_visible(selected)
         if not selected:
@@ -443,7 +440,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
                 scene = self.scene()
                 if scene is not None:
                     scene.removeItem(self)
-                    from ui.page_scene import PageScene
+                    from ui.scene.page_scene import PageScene
 
                     if isinstance(scene, PageScene):
                         scene.remove_item_from_registry(self)
@@ -461,7 +458,9 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         """Recalculate height after text modification while respecting current width."""
         # Force text to wrap at current visual width
         current_width = self._rect.width()
-        self._document.setTextWidth(current_width - self.PADDING * 2)
+        new_text_width = current_width - self.PADDING * 2
+        if abs(self._document.textWidth() - new_text_width) > 0.5:
+            self._document.setTextWidth(new_text_width)
 
         # Height at this width
         natural_height = self._document.size().height() + self.PADDING * 2

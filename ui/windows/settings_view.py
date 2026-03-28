@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
-from ui.icon_factory import IconFactory
+from ui.components.icon_factory import IconFactory
 
 
 class SettingsView(QWidget):

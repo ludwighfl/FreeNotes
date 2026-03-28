@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 import fitz
+import logging
 from PySide6.QtCore import QPointF
+
+logger = logging.getLogger(__name__)
 from core.pdf_exporter import PdfExporter
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
     from items.text_box_item import TextBoxItem
 
 
@@ -143,7 +146,8 @@ class PdfTextExporter:
                                 # Precise x position via cursorToX
                                 try:
                                     frag_x = line.cursorToX(overlap_start)[0]
-                                except Exception:
+                                except Exception as e:
+                                    logger.warning("Failed to calculate cursor position: %s", e)
                                     frag_x = 0
                                 x_in_line = x0 + pad_x + \
                                     (layout_pos.x() + frag_x) * sx
@@ -162,8 +166,8 @@ class PdfTextExporter:
                                             fg_color),
                                         morph=morph,
                                     )
-                                except Exception:
-                                    pass  # Skip unsupported chars
+                                except Exception as e:
+                                    logger.warning("Failed to insert text %r: %s", text, e)
 
                     it.__next__()
 

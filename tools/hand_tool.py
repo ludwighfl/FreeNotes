@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QGraphicsSceneMouseEvent, QGraphicsView
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class HandTool(BaseTool):

@@ -16,9 +16,9 @@ from core.pdf_exporter import PdfExporter
 if TYPE_CHECKING:
     from app.app_state import AppState
     from core.document_manager import DocumentManager
-    from ui.page_scene import PageScene
-    from ui.sidebar_widget import SidebarWidget
-    from ui.three_dot_menu import ThreeDotMenu
+    from ui.scene.page_scene import PageScene
+    from ui.bars.sidebar_widget import SidebarWidget
+    from ui.popups.three_dot_menu import ThreeDotMenu
     from PySide6.QtWidgets import QLabel, QLineEdit
 
 
@@ -67,6 +67,9 @@ class ViewerFileIOMixin:
         self._page_input.setValidator(QIntValidator(1, page_count, self))
         self._page_input.setText("1")
         
+        # Safely deactivate any active tool before destroying C++ objects
+        self._page_scene.set_tool(None)
+        
         self._page_scene.load_document(self._doc_manager)
 
         # Check if corresponding .freenotes exists and load it automatically
@@ -97,9 +100,6 @@ class ViewerFileIOMixin:
             self._app_state.freenotes_path = None
             self._fallback_open_pdf_setup()
 
-        # Track modifications via undo stack
-        undo_stack.get_stack().indexChanged.connect(self._on_stack_changed)
-
         # Set default tool: Hand
         self._on_tool_changed("hand")
         self._toolbar.set_active_tool("hand")
@@ -125,6 +125,8 @@ class ViewerFileIOMixin:
         self._sidebar.load_document(self._doc_manager, self._page_scene)
         self._sidebar.set_viewer(self)  # type: ignore
         undo_stack.clear()
+        self._app_state.is_modified = False
+        self._three_dot_menu.set_save_enabled(True)
 
     def open_freenotes(self, path: str) -> None:
         """Open a .freenotes file: load PDF first, then annotations."""
@@ -187,9 +189,8 @@ class ViewerFileIOMixin:
         """Slot for Save As action from ThreeDotMenu."""
         default_name = ""
         if self._app_state.current_pdf_path:
-            default_name = os.path.splitext(
-                os.path.basename(str(self._app_state.current_pdf_path))
-            )[0] + ".freenotes"
+            pdf_path = Path(self._app_state.current_pdf_path)
+            default_name = str(pdf_path.with_suffix(".freenotes"))
         path, _ = QFileDialog.getSaveFileName(
             self, "Speichern unter", default_name,  # type: ignore
             "FreeNotes (*.freenotes)",
@@ -212,6 +213,7 @@ class ViewerFileIOMixin:
             )
             self._app_state.freenotes_path = path
             self._app_state.is_modified = False
+            undo_stack.get_stack().setClean()
             self._three_dot_menu.set_save_enabled(True)
             self._update_title()
         except Exception as e:
@@ -287,7 +289,7 @@ class ViewerFileIOMixin:
 
     def _on_stack_changed(self, _idx: int) -> None:
         """Mark document as modified when undo stack changes."""
-        self._app_state.is_modified = True
+        self._app_state.is_modified = not undo_stack.get_stack().isClean()
         self._update_title()
 
     def _save_current_zoom(self) -> None:

@@ -58,7 +58,7 @@ class MoveHandleItem(QGraphicsItem):
     def boundingRect(self) -> QRectF:
         return QRectF(
             -self.WIDTH / 2, -self.HEIGHT / 2, self.WIDTH, self.HEIGHT,
-        )
+        ).adjusted(-4, -4, 4, 4)
 
     def update_position(self, box_rect: QRectF) -> None:
         """Reposition centered on the top edge of *box_rect* (local coords)."""
@@ -159,7 +159,6 @@ class MoveHandleItem(QGraphicsItem):
         if self._dragging and self._drag_start_box_pos is not None:
             box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
             box.setPos(self._drag_start_box_pos + delta)
-            box._update_handle_positions()
         event.accept()
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:

@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.app_state import AppState
-from ui.icon_factory import IconFactory
-from ui.font_size_widget import FontSizeWidget
+from ui.components.icon_factory import IconFactory
+from ui.popups.font_size_widget import FontSizeWidget
 
 if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem

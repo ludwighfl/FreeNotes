@@ -149,6 +149,7 @@ class SceneClipboardMixin:
                 "rotation": item.rotation(),
                 "page_index": item.page_index,
                 "pos": (item.pos().x(), item.pos().y()),
+                "style": item._style.to_dict(),
             }
         elif isinstance(item, ShapeItem):
             return item.to_dict()
@@ -203,7 +204,8 @@ class SceneClipboardMixin:
 
         elif item_type == "textbox":
             rx, ry, rw, rh = entry["rect"]
-            style = ToolStyle()
+            style_dict = entry.get("style")
+            style = ToolStyle.from_dict(style_dict) if style_dict else ToolStyle()
             item = TextBoxItem(
                 rect=QRectF(rx, ry, rw, rh),
                 style=style,

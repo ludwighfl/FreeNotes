@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from ui.icon_factory import IconFactory
-from ui.pdf_card import PdfCard
+from ui.components.icon_factory import IconFactory
+from ui.components.pdf_card import PdfCard
 
 
 class ManagerView(QWidget):
@@ -42,6 +42,9 @@ class ManagerView(QWidget):
         self._expanded_folders: set[Path] = set()
         self._active_folder: Path | None = None
         self._active_mode: str = "folder"  # "folder" | "recent"
+
+        from core.thumbnail_cache import ThumbnailCache
+        self._thumbnail_cache = ThumbnailCache()
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -372,12 +375,19 @@ class ManagerView(QWidget):
             return
         self._hide_empty_state()
 
+        from PySide6.QtWidgets import QApplication
+
         for i, doc in enumerate(docs):
+            if i % 5 == 0:
+                QApplication.processEvents()
+
             card = PdfCard(
                 pdf_path=doc["pdf"],
                 freenotes_path=doc["freenotes"],
                 name=doc["name"],
-                modified=doc["modified"])
+                modified=doc["modified"],
+                thumbnail_cache=self._thumbnail_cache,
+            )
             card.double_clicked.connect(self._on_card_double_clicked)
             card.rename_requested.connect(
                 lambda name, d=doc: self._on_rename(d, name))
@@ -541,6 +551,8 @@ class ManagerView(QWidget):
         lm = AppState().library_manager
         if lm:
             lm.rename_document(doc, new_name)
+            if doc.get("pdf"):
+                self._thumbnail_cache.invalidate(doc["pdf"])
             self.load_grid(AppState().current_folder)
 
     def _on_delete(self, doc: dict) -> None:
@@ -548,6 +560,8 @@ class ManagerView(QWidget):
         lm = AppState().library_manager
         if lm:
             lm.delete_document(doc, trash=True)
+            if doc.get("pdf"):
+                self._thumbnail_cache.invalidate(doc["pdf"])
             self.load_grid(AppState().current_folder)
 
     # Backward compatibility alias

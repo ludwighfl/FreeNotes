@@ -12,7 +12,7 @@ from items.text_box_item import TextBoxItem
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class TextTool(BaseTool):

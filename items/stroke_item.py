@@ -32,6 +32,7 @@ class StrokeItem(QGraphicsItem):
         self._page_index: int = page_index
         self._outline_mode: bool = False  # True after pixel-erase
         self._is_selected: bool = False
+        self._cached_br: QRectF | None = None
 
         # Always above PDF pages
         self.setZValue(10)
@@ -49,17 +50,22 @@ class StrokeItem(QGraphicsItem):
         """
         self.prepareGeometryChange()
         self._path = path
+        self._cached_br = None
         self.update()
 
     def boundingRect(self) -> QRectF:
         """Return bounding rect with padding for pen width."""
+        if self._cached_br is not None:
+            return self._cached_br
         if self._path.isEmpty():
             return QRectF()
         if self._outline_mode:
             # Outline mode: path IS the filled shape, small margin suffices
-            return self._path.boundingRect().adjusted(-2, -2, 2, 2)
-        padding = self._style.width / 2.0 + 4.0
-        return self._path.boundingRect().adjusted(-padding, -padding, padding, padding)
+            self._cached_br = self._path.boundingRect().adjusted(-2, -2, 2, 2)
+        else:
+            padding = self._style.width / 2.0 + 4.0
+            self._cached_br = self._path.boundingRect().adjusted(-padding, -padding, padding, padding)
+        return self._cached_br
 
     def paint(
         self,
@@ -130,6 +136,7 @@ class StrokeItem(QGraphicsItem):
             self.prepareGeometryChange()
             self._path = outline
             self._outline_mode = True
+            self._cached_br = None
             self.update()
 
     def subtract_path(self, eraser_ellipse: QPainterPath) -> bool:
@@ -154,6 +161,7 @@ class StrokeItem(QGraphicsItem):
             return False
         self.prepareGeometryChange()
         self._path = new_path
+        self._cached_br = None
         self.update()
         return True
 
@@ -168,6 +176,7 @@ class StrokeItem(QGraphicsItem):
         copy = QPainterPath()
         copy.addPath(path)
         self._path = copy
+        self._cached_br = None
         self.update()
 
     # ------------------------------------------------------------------
@@ -217,6 +226,7 @@ class StrokeItem(QGraphicsItem):
 
         self.prepareGeometryChange()
         self._path = new_path_local
+        self._cached_br = None
         self.update()
 
     def get_path_state(self) -> tuple:
@@ -228,5 +238,6 @@ class StrokeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._path = path
         self.setPos(pos)
+        self._cached_br = None
         self.update()
 

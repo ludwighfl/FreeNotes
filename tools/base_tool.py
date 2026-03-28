@@ -12,7 +12,7 @@ from app.app_state import AppState
 from core.tool_style import ToolStyle
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class BaseTool(QObject):

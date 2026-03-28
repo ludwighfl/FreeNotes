@@ -4,7 +4,7 @@ Uses Lucide-style SVG paths (24×24 viewBox, stroke-based, round caps/joins).
 New icons can be registered at runtime via IconFactory.register().
 
 Usage:
-    from ui.icon_factory import IconFactory
+    from ui.components.icon_factory import IconFactory
 
     icon = IconFactory.create("pen")
     icon_blue = IconFactory.create("pen", color="#3B7BF5")
@@ -48,6 +48,9 @@ class IconFactory:
     # Registry: icon name → SVG inner elements
     _REGISTRY: dict[str, str] = {}
 
+    _ICON_CACHE: dict[tuple, QIcon] = {}
+    _PIXMAP_CACHE: dict[tuple, QPixmap] = {}
+
     @classmethod
     def register(cls, name: str, svg_elements: str) -> None:
         """Register a new icon by name with SVG inner elements.
@@ -82,6 +85,10 @@ class IconFactory:
         if not elements:
             return QIcon()
 
+        key = (name, color, size, stroke_width)
+        if key in cls._ICON_CACHE:
+            return cls._ICON_CACHE[key]
+
         svg_str = cls._SVG_TEMPLATE.format(
             color=color,
             stroke_width=stroke_width,
@@ -104,7 +111,9 @@ class IconFactory:
             painter.end()
 
         pixmap.setDevicePixelRatio(dpr)
-        return QIcon(pixmap)
+        icon = QIcon(pixmap)
+        cls._ICON_CACHE[key] = icon
+        return icon
 
     @classmethod
     def create_pixmap(
@@ -132,6 +141,10 @@ class IconFactory:
         if not elements:
             return QPixmap()
 
+        key = (name, color, size, stroke_width)
+        if key in cls._PIXMAP_CACHE:
+            return cls._PIXMAP_CACHE[key]
+
         svg_str = cls._SVG_TEMPLATE.format(
             color=color,
             stroke_width=stroke_width,
@@ -153,7 +166,14 @@ class IconFactory:
             painter.end()
 
         pixmap.setDevicePixelRatio(dpr)
+        cls._PIXMAP_CACHE[key] = pixmap
         return pixmap
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear the icon and pixmap caches."""
+        cls._ICON_CACHE.clear()
+        cls._PIXMAP_CACHE.clear()
 
     @classmethod
     def available_icons(cls) -> list[str]:

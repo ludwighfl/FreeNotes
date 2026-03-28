@@ -13,10 +13,10 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from core.tool_style import ToolStyle
 from core import undo_stack
-from ui.icon_factory import IconFactory
-from ui.color_picker_popup import ColorPickerPopup
-from ui.toolbar_icons import make_color_icon, make_width_icon
-from ui.toolbar_mode_popups import ToolbarModePopupsMixin
+from ui.components.icon_factory import IconFactory
+from ui.popups.color_picker_popup import ColorPickerPopup
+from ui.bars.toolbar_icons import make_color_icon, make_width_icon
+from ui.bars.toolbar_mode_popups import ToolbarModePopupsMixin
 
 
 class ToolbarWidget(ToolbarModePopupsMixin, QWidget):

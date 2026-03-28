@@ -3,6 +3,9 @@
 import sys
 import ctypes
 
+import fitz
+fitz.TOOLS.mupdf_display_errors(False)
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 
@@ -11,7 +14,7 @@ from PySide6.QtCore import Qt
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeNotes")
 QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-from ui.main_window import MainWindow
+from ui.windows.main_window import MainWindow
 
 
 def main() -> None:
@@ -19,8 +22,6 @@ def main() -> None:
     app.setStyle("Fusion") # Prevent PyInstaller from losing style plugins and looking completely different
     from styles.loader import load_stylesheet
     app.setStyleSheet(load_stylesheet())
-
-    from ui.main_window import MainWindow
 
     window = MainWindow()
     window.showMaximized()

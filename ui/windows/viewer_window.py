@@ -18,22 +18,23 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from core.document_manager import DocumentManager
 from core import undo_stack
-from ui.page_scene import PageScene
-from ui.page_view import PageView
-from ui.sidebar_widget import SidebarWidget
-from ui.toolbar_widget import ToolbarWidget
-from ui.icon_factory import IconFactory
+from ui.scene.page_scene import PageScene
+from ui.scene.page_view import PageView
+from ui.bars.sidebar_widget import SidebarWidget
+from ui.bars.toolbar_widget import ToolbarWidget
+from ui.components.icon_factory import IconFactory
 from tools.hand_tool import HandTool
 from tools.pen_tool import PenTool
 from tools.highlighter_tool import HighlighterTool
 from tools.eraser_tool import EraserTool
 from tools.text_tool import TextTool
 from tools.selection_tool import SelectionTool
-from ui.formatting_bar import FormattingBar
-from ui.three_dot_menu import ThreeDotMenu
+from tools.shape_tool import ShapeTool
+from ui.bars.formatting_bar import FormattingBar
+from ui.popups.three_dot_menu import ThreeDotMenu
 
-from ui.viewer_file_io import ViewerFileIOMixin
-from ui.viewer_tool_manager import ViewerToolManagerMixin
+from ui.windows.viewer_file_io import ViewerFileIOMixin
+from ui.windows.viewer_tool_manager import ViewerToolManagerMixin
 
 
 class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
@@ -59,6 +60,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._eraser_tool: EraserTool = EraserTool()
         self._text_tool: TextTool = TextTool()
         self._selection_tool: SelectionTool = SelectionTool()
+        self._shape_tool: ShapeTool = ShapeTool()
 
         # --- Main vertical layout ---
         main_layout = QVBoxLayout(self)
@@ -215,6 +217,9 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._eraser_tool.tool_action_completed.connect(self._on_action_completed)
         self._text_tool.tool_action_completed.connect(self._on_action_completed)
 
+        # Connect global undo stack events to update file modification state
+        undo_stack.get_stack().indexChanged.connect(self._on_stack_changed)
+
         # Formatting bar (floating, child of self)
         self._formatting_bar = FormattingBar(parent=self)
         self._formatting_bar.color_at_cursor.connect(
@@ -224,7 +229,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._page_scene.tool_switch_requested.connect(self._on_tool_switch_requested)
 
         # --- Search ---
-        from ui.search_bar import SearchBar
+        from ui.bars.search_bar import SearchBar
         self._search_bar = SearchBar(parent=self)
         self._search_bar.search_changed.connect(self._on_search)
         self._search_bar.navigate_prev.connect(self._search_prev)
@@ -344,6 +349,14 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         """Save zoom and navigate back to manager."""
         self._save_current_zoom()
         self._clear_search()
+        
+        # Safely shut down scene and unlock files before returning
+        self._page_scene.set_tool(None)
+        self._page_scene.clear()
+        self._doc_manager.close_document()
+        self._app_state.current_pdf_path = None
+        self._app_state.freenotes_path = None
+        
         self.back_requested.emit()
 
     # ------------------------------------------------------------------

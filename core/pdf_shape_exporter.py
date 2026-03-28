@@ -10,7 +10,7 @@ from core.pdf_exporter import PdfExporter
 from core.shape_style import ShapeType
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
     from items.shape_item import ShapeItem
 
 

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 
-from ui.icon_factory import IconFactory
+from ui.components.icon_factory import IconFactory
 
 
 

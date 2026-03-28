@@ -12,7 +12,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 def _deep_copy_path(path: QPainterPath) -> QPainterPath:

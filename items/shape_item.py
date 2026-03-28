@@ -44,6 +44,7 @@ class ShapeItem(QGraphicsItem):
         self._is_selected: bool = False
         self._is_selected_custom: bool = False
         self._line_dir: int = 0  # 0: TL->BR, 1: BR->TL, 2: TR->BL, 3: BL->TR
+        self._cached_br: QRectF | None = None
 
         self.setPos(rect.topLeft())
 
@@ -85,15 +86,19 @@ class ShapeItem(QGraphicsItem):
         return self._style
 
     def set_style(self, style: ShapeStyle) -> None:
+        self.prepareGeometryChange()
         self._style = style.copy()
+        self._cached_br = None
         self.update()
 
     def set_selected(self, selected: bool) -> None:
+        self.prepareGeometryChange()
         self._is_selected = selected
         self.update()
 
     def set_selected_custom(self, selected: bool) -> None:
         """Show/hide handles + selection frame (called by scene)."""
+        self.prepareGeometryChange()
         self._is_selected = selected
         self._is_selected_custom = selected
         self._set_handles_visible(selected)
@@ -105,7 +110,9 @@ class ShapeItem(QGraphicsItem):
         return self._line_dir
 
     def set_line_dir(self, line_dir: int) -> None:
+        self.prepareGeometryChange()
         self._line_dir = line_dir
+        self._cached_br = None
         self.update()
 
     def _get_line_points(self) -> tuple[QPointF, QPointF]:
@@ -137,6 +144,7 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self.setPos(rect.topLeft())
         self._rect = QRectF(0, 0, rect.width(), rect.height())
+        self._cached_br = None
         self._update_handle_positions()
         self.update()
 
@@ -210,6 +218,8 @@ class ShapeItem(QGraphicsItem):
 
         start_rect is in scene coordinates (from get_rect()).
         """
+        self.prepareGeometryChange()
+        self._cached_br = None
         new_rect = QRectF(start_rect)
 
         match handle_pos:
@@ -287,21 +297,19 @@ class ShapeItem(QGraphicsItem):
             self._options_handle.show()
 
     # ------------------------------------------------------------------
-    # Item change
-    # ------------------------------------------------------------------
-
-    def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            self._update_handle_positions()
-        return super().itemChange(change, value)
-
-    # ------------------------------------------------------------------
     # Geometry
     # ------------------------------------------------------------------
 
     def boundingRect(self) -> QRectF:
+        if self._cached_br is not None:
+            return self._cached_br
         pad = self._style.stroke_width / 2.0 + self.HIT_PADDING
-        return self._rect.adjusted(-pad, -pad, pad, pad)
+        if getattr(self, "_is_selected_custom", False):
+            val = self._rect.adjusted(-pad - 50, -pad - 60, pad + 50, pad + 40)
+        else:
+            val = self._rect.adjusted(-pad, -pad, pad, pad)
+        self._cached_br = val
+        return val
 
     def shape(self) -> QPainterPath:
         """Precise hit-detection path depending on shape type."""
@@ -504,7 +512,6 @@ class ShapeItem(QGraphicsItem):
             
             if self._native_dragging:
                 self.setPos(self._click_box_pos + delta)
-                self._update_handle_positions()
             event.accept()
             return
             
@@ -542,6 +549,7 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         local_rect = self.mapFromScene(new_br).boundingRect()
         self._rect = local_rect
+        self._cached_br = None
         self.update()
 
     def get_path_state(self) -> tuple:
@@ -553,6 +561,7 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._rect = QRectF(path_or_rect)
         self.setPos(pos)
+        self._cached_br = None
         self.update()
 
     # ------------------------------------------------------------------

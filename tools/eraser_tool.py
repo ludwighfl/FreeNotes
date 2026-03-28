@@ -16,7 +16,7 @@ from items.shape_item import ShapeItem
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class EraserMode(Enum):
@@ -148,6 +148,14 @@ class EraserTool(BaseTool):
         self._is_erasing = False
         self._last_erase_pos = None
         self.tool_action_completed.emit()
+
+        # Clean up state data after undo command generation
+        self._affected_items.clear()
+        self._erased_items.clear()
+        self._original_paths.clear()
+        self._item_refs.clear()
+        self._deleted_items.clear()
+        self._created_items.clear()
 
     # ------------------------------------------------------------------
     # Erase logic

@@ -37,14 +37,24 @@ class SplashScreen(QWidget):
             self.logical_height = self.pixmap.height() / self.dpr
 
         self._gleam_pos = 0.0
+        self._frame_cache: dict[int, QPixmap] = {}
 
-        # 3. Configure animation -> 2.5s per loop, endless
         self.animation = QPropertyAnimation(self, b"gleam_pos")
         self.animation.setStartValue(0.0)
         self.animation.setEndValue(1.0)
         self.animation.setDuration(2500)
         self.animation.setLoopCount(-1)
         self.animation.start()
+
+    def start_animation(self) -> None:
+        """Starts or resumes the gleam animation."""
+        if self.animation.state() != QPropertyAnimation.State.Running:
+            self.animation.start()
+
+    def stop_animation(self) -> None:
+        """Stops the gleam animation completely to conserve CPU when hidden."""
+        if self.animation.state() == QPropertyAnimation.State.Running:
+            self.animation.stop()
 
     @Property(float)
     def gleam_pos(self):
@@ -81,16 +91,26 @@ class SplashScreen(QWidget):
         pw = self.pixmap.width()
         ph = self.pixmap.height()
         
-        gleam_buffer = QPixmap(pw, ph)
-        gleam_buffer.fill(Qt.GlobalColor.transparent)
+        # Discretize gleam_pos into exactly 120 frames
+        step = int(self._gleam_pos * 120)
+
+        # Draw highly expensive composited frame if cached
+        if step in self._frame_cache:
+            cached_frame = self._frame_cache[step]
+            painter.drawPixmap(target_rect, cached_frame, QRectF(cached_frame.rect()))
+            painter.end()
+            return
+
+        frame_buffer = QPixmap(pw, ph)
+        frame_buffer.fill(Qt.GlobalColor.transparent)
         
-        buffer_painter = QPainter(gleam_buffer)
+        buffer_painter = QPainter(frame_buffer)
         buffer_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         gleam_width = pw * 0.4 
         start_x = -gleam_width
         end_x = pw + gleam_width
-        center = start_x + self._gleam_pos * (end_x - start_x)
+        center = start_x + (step / 120.0) * (end_x - start_x)
 
         # Draw the light gradient
         gradient = QLinearGradient(center - gleam_width/2, 0, center + gleam_width/2, 0)
@@ -105,8 +125,11 @@ class SplashScreen(QWidget):
         buffer_painter.drawPixmap(0, 0, self.pixmap)
         buffer_painter.end()
 
+        # Cache the resulting frame for sub-1ms lightning fast subsequent calls
+        self._frame_cache[step] = frame_buffer
+
         # Draw the final physical buffer mapped precisely onto the logical target area
-        painter.drawPixmap(target_rect, gleam_buffer, QRectF(gleam_buffer.rect()))
+        painter.drawPixmap(target_rect, frame_buffer, QRectF(frame_buffer.rect()))
         
         painter.end()
 

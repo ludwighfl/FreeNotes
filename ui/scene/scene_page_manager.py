@@ -10,7 +10,7 @@ from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
     from core.document_manager import DocumentManager
 
 

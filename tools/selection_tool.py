@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 # Lazy-loaded tuple of selectable item types
@@ -139,11 +139,6 @@ class SelectionTool(BaseTool):
 
         # Click on new item without Shift → select only this
         if hit_item and not shift:
-            from items.text_box_item import TextBoxItem
-            if isinstance(hit_item, TextBoxItem):
-                # Single TextBox click → switch to text tool
-                scene.tool_switch_requested.emit("text")
-                return
             scene.set_selection([hit_item])
             self._mode = "dragging"
             self._drag_start = pos

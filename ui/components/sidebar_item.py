@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
 
-from ui.icon_factory import IconFactory
+from ui.components.icon_factory import IconFactory
 
 
 class SidebarItem(QWidget):

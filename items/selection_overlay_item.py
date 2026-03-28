@@ -28,7 +28,7 @@ class SelectionOverlayItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
 
     def update_from_items(
-        self, items: set[QGraphicsItem], scene: QGraphicsScene
+        self, items: list[QGraphicsItem], scene: QGraphicsScene
     ) -> None:
         """Recompute overlay from the current set of selected items."""
         self._managed_items = list(items)
@@ -39,7 +39,7 @@ class SelectionOverlayItem(QGraphicsItem):
             return
 
         combined = QRectF()
-        for item in items:
+        for item in self._managed_items:
             item_rect = item.mapToScene(
                 item.boundingRect()
             ).boundingRect()
@@ -94,6 +94,7 @@ class SelectionOverlayItem(QGraphicsItem):
             from items.stroke_item import StrokeItem
             from items.highlight_item import HighlightItem
             from items.text_box_item import TextBoxItem
+            from items.shape_item import ShapeItem
 
             if isinstance(item, (StrokeItem, HighlightItem)):
                 item_old_br = item.mapToScene(item.boundingRect()).boundingRect()
@@ -101,7 +102,7 @@ class SelectionOverlayItem(QGraphicsItem):
                 bottom_right = transform.map(item_old_br.bottomRight())
                 item_new_br = QRectF(top_left, bottom_right).normalized()
                 item.apply_bounding_box_resize(item_new_br)
-            elif isinstance(item, TextBoxItem):
+            elif isinstance(item, (TextBoxItem, ShapeItem)):
                 item_old_br = item.get_rect()
                 top_left = transform.map(item_old_br.topLeft())
                 bottom_right = transform.map(item_old_br.bottomRight())
@@ -123,10 +124,11 @@ class SelectionOverlayItem(QGraphicsItem):
         from items.stroke_item import StrokeItem
         from items.highlight_item import HighlightItem
         from items.text_box_item import TextBoxItem
+        from items.shape_item import ShapeItem
         
         state = {}
         for item in self._managed_items:
-            if isinstance(item, (StrokeItem, HighlightItem)):
+            if isinstance(item, (StrokeItem, HighlightItem, ShapeItem)):
                 state[item] = item.get_path_state()
             elif isinstance(item, TextBoxItem):
                 state[item] = item.get_rect()
@@ -137,9 +139,10 @@ class SelectionOverlayItem(QGraphicsItem):
         from items.stroke_item import StrokeItem
         from items.highlight_item import HighlightItem
         from items.text_box_item import TextBoxItem
+        from items.shape_item import ShapeItem
 
         for item, item_state in state.items():
-            if isinstance(item, (StrokeItem, HighlightItem)):
+            if isinstance(item, (StrokeItem, HighlightItem, ShapeItem)):
                 item.set_path_state(item_state[0], item_state[1])
             elif isinstance(item, TextBoxItem):
                 item.set_rect(item_state)

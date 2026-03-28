@@ -10,7 +10,7 @@ from PySide6.QtGui import QUndoCommand, QPainterPath
 
 if TYPE_CHECKING:
     from items.stroke_item import StrokeItem
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class ResizeStrokeCommand(QUndoCommand):

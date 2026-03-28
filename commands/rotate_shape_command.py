@@ -10,7 +10,7 @@ from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
     from items.shape_item import ShapeItem
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class RotateShapeCommand(QUndoCommand):

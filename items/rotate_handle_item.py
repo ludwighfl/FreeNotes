@@ -58,7 +58,7 @@ class RotateHandleItem(QGraphicsItem):
         bottom = r + 2
         left = -(r + 2)
         right = r + 2
-        return QRectF(left, top, right - left, bottom - top)
+        return QRectF(left, top, right - left, bottom - top).adjusted(-4, -4, 4, 4)
 
     def update_position(self, box_rect: QRectF) -> None:
         """Reposition below bottom-center of *box_rect* (local coords)."""

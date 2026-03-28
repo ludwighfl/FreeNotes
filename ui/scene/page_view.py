@@ -9,7 +9,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView
 
 from app.app_state import AppState
-from ui.page_scene import PageScene
+from ui.scene.page_scene import PageScene
 
 
 class PageView(QGraphicsView):

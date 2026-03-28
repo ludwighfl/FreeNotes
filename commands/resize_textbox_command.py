@@ -11,7 +11,7 @@ from PySide6.QtGui import QUndoCommand
 from items.text_box_item import TextBoxItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class ResizeTextBoxCommand(QUndoCommand):

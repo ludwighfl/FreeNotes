@@ -10,7 +10,7 @@ from PySide6.QtGui import QPainterPath
 from core.pdf_exporter import PdfExporter
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class PdfPathExporter:

@@ -20,10 +20,10 @@ from items.selection_overlay_item import SelectionOverlayItem
 from items.bounding_box_handle_manager import BoundingBoxHandleManager
 from items.shape_item import ShapeItem
 
-from ui.scene_registry import SceneRegistryMixin
-from ui.scene_clipboard import SceneClipboardMixin
-from ui.scene_selection import SceneSelectionMixin
-from ui.scene_page_manager import ScenePageManagerMixin
+from ui.scene.scene_registry import SceneRegistryMixin
+from ui.scene.scene_clipboard import SceneClipboardMixin
+from ui.scene.scene_selection import SceneSelectionMixin
+from ui.scene.scene_page_manager import ScenePageManagerMixin
 
 # TYPE_CHECKING import to avoid circular dependency
 from typing import TYPE_CHECKING
@@ -114,6 +114,7 @@ class PageScene(
         self._stroke_items.clear()
         self._highlight_items.clear()
         self._text_box_items.clear()
+        self._shape_items.clear()
         self._selected_items.clear()
         self._doc_manager = doc_manager
 
@@ -135,6 +136,10 @@ class PageScene(
             log_w = w_pt * scale
             log_h = h_pt * scale
 
+            # Keep splash screen and UI fluid during heavy setups by processing events
+            if i % 5 == 0:
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
             item = QGraphicsPixmapItem(placeholder)
             item.setTransformationMode(
                 Qt.TransformationMode.SmoothTransformation)
@@ -210,7 +215,9 @@ class PageScene(
 
     def _render_range(self, first: int, last: int) -> None:
         """Render all pages in the given range."""
+        from PySide6.QtWidgets import QApplication
         for i in range(first, last + 1):
+            QApplication.processEvents()
             self._render_page(i)
 
     def _find_visible_range(self, viewport_rect: QRectF) -> tuple[int, int]:
@@ -347,6 +354,23 @@ class PageScene(
         if self._active_tool is not None:
             self._active_tool.on_release(event, self)
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        """Handle double clicks on items like text boxes in selection mode."""
+        super().mouseDoubleClickEvent(event)
+        
+        # Tools might override double click behavior
+        from tools.selection_tool import SelectionTool
+        if isinstance(self._active_tool, SelectionTool):
+            items_at = self.items(event.scenePos())
+            for item in items_at:
+                if isinstance(item, TextBoxItem):
+                    # Request a tool switch to "text" which will start editing it
+                    self.tool_switch_requested.emit("text")
+                    # Forward the click to position the cursor and start editing
+                    item.mousePressEvent(event)
+                    item.mouseDoubleClickEvent(event)
+                    break
 
     # ------------------------------------------------------------------
     # Key events

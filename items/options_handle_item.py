@@ -136,7 +136,7 @@ class OptionsHandleItem(QGraphicsItem):
         w = self._bar_width()
         h = self.BAR_HEIGHT
         # Bar is drawn from y=0 upward (negative y) since positioned above
-        return QRectF(-w / 2 - 2, -h - 2, w + 4, h + 4)
+        return QRectF(-w / 2 - 2, -h - 2, w + 4, h + 4).adjusted(-4, -4, 4, 4)
 
     def _btn_rect(self, index: int) -> QRectF:
         """Return rect for button at index (0=copy, 1=cut, 2=delete)."""

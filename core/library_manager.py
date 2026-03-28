@@ -81,7 +81,17 @@ class LibraryManager:
 
         all_stems = sorted(set(pdf_files) | set(fn_files))
         docs = []
-        for stem in all_stems:
+
+        try:
+            from PySide6.QtWidgets import QApplication
+            has_qapp = True
+        except ImportError:
+            has_qapp = False
+
+        for i, stem in enumerate(all_stems):
+            if has_qapp and i % 5 == 0:
+                QApplication.processEvents()
+
             pdf = pdf_files.get(stem)
             fn = fn_files.get(stem)
             ref = fn or pdf

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class BoundingBoxHandle(QGraphicsEllipseItem):

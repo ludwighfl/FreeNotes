@@ -10,8 +10,8 @@ from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
     from core.document_manager import DocumentManager
-    from ui.page_scene import PageScene
-    from ui.sidebar_widget import SidebarWidget
+    from ui.scene.page_scene import PageScene
+    from ui.bars.sidebar_widget import SidebarWidget
 
 from app.app_state import AppState
 
@@ -43,7 +43,11 @@ class DeletePageCommand(QUndoCommand):
             return
 
         # Restore PDF page
-        doc_mgr.restore_page(self._page_idx, self._saved_pdf_bytes)
+        doc_mgr.restore_page(
+            self._page_idx, 
+            self._saved_pdf_bytes, 
+            getattr(self, "_saved_map_idx", -1)
+        )
 
         # Restore scene page + annotations
         scene.insert_page(self._page_idx, doc_mgr)
@@ -68,6 +72,7 @@ class DeletePageCommand(QUndoCommand):
                 self._page_idx)
             self._saved_pdf_bytes = doc_mgr.save_page_bytes(
                 self._page_idx)
+            self._saved_map_idx = doc_mgr.page_map[self._page_idx]
 
         # Remove page
         scene.remove_page(self._page_idx, doc_mgr)

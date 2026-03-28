@@ -59,24 +59,6 @@ pdf_annotator/
 │   ├── cut_textbox_command.py, delete_items_command.py
 │   ├── paste_items_command.py
 │   └── delete_page_command.py  # Deleting single pages
-├── ui/                      # Qt widgets (windows, toolbars, popups)
-│   ├── main_window.py       # Main QMainWindow (thin shell)
-│   ├── splash_screen.py     # Startup splash screen overlay
-│   ├── manager_view.py      # File manager / landing page
-│   ├── pdf_card.py          # PDF thumbnail item for the manager
-│   ├── sidebar_item.py      # Folder/file entry for manager sidebar
-│   ├── viewer_window.py     # PDF viewer with toolbar + sidebar (uses mixins)
-│   ├── viewer_file_io.py    # ViewerFileIOMixin — Load, save, export
-│   ├── viewer_tool_manager.py # ViewerToolManagerMixin — Tool & style handling
-│   ├── page_scene.py        # QGraphicsScene — page layout + tool dispatch (uses mixins)
-│   ├── scene_registry.py    # SceneRegistryMixin — per-page item tracking
-│   ├── scene_clipboard.py   # SceneClipboardMixin — copy/cut/paste + serialization
-│   ├── page_view.py         # QGraphicsView — zoom, scroll, viewport
-│   ├── toolbar_widget.py    # Tool selection toolbar (uses mixin + helpers)
-│   ├── toolbar_icons.py     # make_color_icon(), make_width_icon() helpers
-│   ├── toolbar_mode_popups.py # ToolbarModePopupsMixin — eraser/selection mode menus
-│   ├── sidebar_widget.py    # Page thumbnail sidebar
-│   ├── formatting_bar.py    # Rich-text formatting bar
 │   ├── font_size_widget.py  # FontSizeWidget — compact number input with arrows
 │   ├── color_picker_popup.py # Color picker dialog
 │   ├── color_wheel_widget.py # HSV color wheel

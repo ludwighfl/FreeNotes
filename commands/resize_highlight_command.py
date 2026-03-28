@@ -10,7 +10,7 @@ from PySide6.QtGui import QUndoCommand, QPainterPath
 
 if TYPE_CHECKING:
     from items.highlight_item import HighlightItem
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
 
 
 class ResizeHighlightCommand(QUndoCommand):

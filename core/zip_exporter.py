@@ -135,7 +135,7 @@ class ZipExporter:
         """Build a minimal PageScene with loaded annotations for export."""
         from core.document_manager import DocumentManager
         from core.freenotes_store import FreenotesStore
-        from ui.page_scene import PageScene
+        from ui.scene.page_scene import PageScene
 
         dm = DocumentManager()
         dm.load(str(pdf_path))

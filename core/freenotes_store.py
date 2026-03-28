@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QPainterPath, QColor
@@ -16,7 +19,7 @@ from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
 
 if TYPE_CHECKING:
-    from ui.page_scene import PageScene
+    from ui.scene.page_scene import PageScene
     from core.document_manager import DocumentManager
 
 
@@ -94,12 +97,15 @@ class FreenotesStore:
                 scene.rebuild_after_reorder(doc_manager)
                 structural_modified = True
             except Exception as e:
-                print(f"Warning: Failed to apply page map: {e}")
+                logger.warning("Failed to apply page map: %s", e)
 
         # Clear existing annotations
         cls._clear_scene_annotations(scene)
 
+        from PySide6.QtWidgets import QApplication
+
         for page_str, page_data in data.get("pages", {}).items():
+            QApplication.processEvents()
             page_idx = int(page_str)
 
             for d in page_data.get("strokes", []):
@@ -108,7 +114,7 @@ class FreenotesStore:
                     scene.addItem(item)
                     scene.add_item_to_registry(item)
                 except Exception as e:
-                    print(f"Warning: Stroke laden fehlgeschlagen: {e}")
+                    logger.warning("Stroke laden fehlgeschlagen: %s", e)
 
             for d in page_data.get("highlights", []):
                 try:
@@ -116,7 +122,7 @@ class FreenotesStore:
                     scene.addItem(item)
                     scene.add_item_to_registry(item)
                 except Exception as e:
-                    print(f"Warning: Highlight laden fehlgeschlagen: {e}")
+                    logger.warning("Highlight laden fehlgeschlagen: %s", e)
 
             for d in page_data.get("textboxes", []):
                 try:
@@ -124,7 +130,7 @@ class FreenotesStore:
                     scene.addItem(item)
                     scene.add_item_to_registry(item)
                 except Exception as e:
-                    print(f"Warning: Textbox laden fehlgeschlagen: {e}")
+                    logger.warning("Textbox laden fehlgeschlagen: %s", e)
 
             for d in page_data.get("shapes", []):
                 try:
@@ -132,7 +138,7 @@ class FreenotesStore:
                     scene.addItem(item)
                     scene.add_item_to_registry(item)
                 except Exception as e:
-                    print(f"Warning: Shape laden fehlgeschlagen: {e}")
+                    logger.warning("Shape laden fehlgeschlagen: %s", e)
 
         return pdf_path, structural_modified
 
@@ -201,7 +207,7 @@ class FreenotesStore:
             "points": points,
             "color": item._style.color.name(),
             "width": item._style.width,
-            "page_index": item._page_index,
+            "page_index": item.page_index,
             "pos": (item.pos().x(), item.pos().y()),
         }
 
