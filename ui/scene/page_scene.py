@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QRectF, QPointF, Signal, Qt
 from PySide6.QtGui import QKeyEvent, QBrush, QColor, QPen, QPixmap
 from PySide6.QtWidgets import (
@@ -13,6 +15,8 @@ from PySide6.QtWidgets import (
 
 from core.document_manager import DocumentManager
 from core import undo_stack
+from core.tile_cache import TileCache, TileKey, MipLevel
+from core.tile_renderer import TileRenderer, TILE_SIZE_PX, MIP_DPI
 from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
@@ -42,9 +46,10 @@ class PageScene(
 ):
     """QGraphicsScene that holds all PDF pages stacked vertically.
 
-    Uses virtual rendering: pages start as gray placeholders and are
-    rendered on demand when they become visible in the viewport.
-    Far-away pages are unloaded to conserve memory.
+    Uses tile-based rendering: pages start as gray placeholders and tiles
+    are rendered on demand at multiple mip levels (THUMB → MEDIUM → FULL)
+    when they become visible in the viewport.  Far-away tiles are evicted
+    to conserve memory.
 
     Functionality is split across mixins:
         SceneRegistryMixin    – per-page item tracking (strokes, highlights, textboxes, shapes)
@@ -89,6 +94,20 @@ class PageScene(
         # Shared placeholder pixmap (tiny, gets stretched by item size)
         self._placeholder_pm: QPixmap | None = None
 
+        # --- Tile rendering system ---
+        self._tile_cache: TileCache = TileCache()
+        self._tile_renderer: TileRenderer = TileRenderer(self._tile_cache)
+        self._tile_renderer.tile_ready.connect(self._on_tile_ready)
+
+        # Maps TileKey → QGraphicsPixmapItem in the scene
+        self._tile_items: dict[TileKey, QGraphicsPixmapItem] = {}
+
+        # Tracks which tiles have been requested to avoid duplicate requests
+        self._pending_tiles: set[TileKey] = set()
+
+        # Current mip level based on zoom (updated by PageView)
+        self._current_mip: MipLevel = MipLevel.MEDIUM
+
     def _get_placeholder_pixmap(self) -> QPixmap:
         """Return a shared tiny gray placeholder pixmap."""
         if self._placeholder_pm is None:
@@ -97,14 +116,22 @@ class PageScene(
         return self._placeholder_pm
 
     def load_document(self, doc_manager: DocumentManager) -> None:
-        """Load pages as placeholders (virtual rendering).
+        """Load pages as placeholders and kick off initial tile rendering.
 
-        All pages use QGraphicsPixmapItem. Render/unload just swap
-        the pixmap content — no scene item add/remove needed.
+        All pages use QGraphicsPixmapItem placeholders for layout/hit-testing.
+        Actual pixel content is delivered by the tile rendering pipeline.
 
         Args:
             doc_manager: An open DocumentManager instance.
         """
+        # --- Cancel / clear tile system ---
+        self._tile_renderer.cancel_all()
+        self._tile_cache.invalidate_all()
+
+        # Tile items will be destroyed by self.clear() below — just drop refs
+        self._tile_items.clear()
+        self._pending_tiles.clear()
+
         self.clear()
         self._page_items.clear()
         self._page_rects.clear()
@@ -136,10 +163,6 @@ class PageScene(
             log_w = w_pt * scale
             log_h = h_pt * scale
 
-            # Keep splash screen and UI fluid during heavy setups by processing events
-            if i % 5 == 0:
-                from PySide6.QtWidgets import QApplication
-                QApplication.processEvents()
             item = QGraphicsPixmapItem(placeholder)
             item.setTransformationMode(
                 Qt.TransformationMode.SmoothTransformation)
@@ -160,14 +183,25 @@ class PageScene(
         # Center all pages horizontally
         self._center_pages()
 
-        # Render first few pages immediately
-        self._render_range(0, min(3, page_count - 1))
+        # Request THUMB tiles for the first few pages immediately
+        doc_path = doc_manager.get_doc_path()
+        if doc_path:
+            initial_count = min(5, page_count)
+            for i in range(initial_count):
+                page_rect = self._page_rects[i]
+                self._request_tiles_for_page(i, MipLevel.THUMB, page_rect, doc_path)
+
+            # Pre-render first 10 pages at MEDIUM resolution in background
+            for i in range(min(10, page_count)):
+                page_rect = self._page_rects[i]
+                self._request_tiles_for_page(
+                    i, MipLevel.MEDIUM, page_rect, doc_path, priority=5)
 
         # Force viewport repaint (MinimalViewportUpdate won't auto-repaint)
         self.update(self.sceneRect())
 
     # ------------------------------------------------------------------
-    # Virtual rendering
+    # Virtual rendering (tile-based)
     # ------------------------------------------------------------------
 
     def _center_pages(self) -> None:
@@ -181,44 +215,186 @@ class PageScene(
             item.setPos(x_off, item.pos().y())
             self._page_rects[i] = QRectF(
                 x_off, item.pos().y(), r.width(), r.height())
+                
+        # Explicitly set scene rect so Scrollbars update accurately and shrink!
+        # Because QGraphicsScene NEVER shrinks its rect automatically.
+        if self._page_rects:
+            max_y = max(r.bottom() for r in self._page_rects) + self.PAGE_GAP
+            self.setSceneRect(0, 0, max_w, max_y)
+        else:
+            self.setSceneRect(0, 0, 0, 0)
 
     def _render_page(self, i: int) -> None:
-        """Render a single page — just swap pixmap content, no item changes."""
-        if self._doc_manager is None:
-            return
-        if i < 0 or i >= len(self._page_items):
-            return
-        if self._page_states[i] == "rendered":
-            return
-
-        pixmap = self._doc_manager.get_page_pixmap(i, self.RENDER_DPI)
-        if pixmap.isNull():
-            return
-
-        item = self._page_items[i]
-        item.setScale(1.0)  # Reset scale from placeholder
-        item.setPixmap(pixmap)
-        self._page_states[i] = "rendered"
-        self._rendered_set.add(i)
+        """Replaced by tile rendering — see _request_tiles_for_page()."""
+        pass
 
     def _unload_page(self, i: int) -> None:
-        """Unload a rendered page — swap pixmap back to tiny placeholder."""
-        if self._page_states[i] != "rendered":
-            return
-
-        rect = self._page_rects[i]
-        item = self._page_items[i]
-        item.setPixmap(self._get_placeholder_pixmap())
-        item.setScale(rect.width() / 2.0)  # Stretch to page size
-        self._page_states[i] = "placeholder"
-        self._rendered_set.discard(i)
+        """Replaced by tile rendering — see update_visible_pages()."""
+        pass
 
     def _render_range(self, first: int, last: int) -> None:
-        """Render all pages in the given range."""
-        from PySide6.QtWidgets import QApplication
-        for i in range(first, last + 1):
-            QApplication.processEvents()
-            self._render_page(i)
+        """Replaced by tile rendering — see _request_tiles_for_page()."""
+        pass
+
+    def _request_tiles_for_page(
+        self,
+        page_index: int,
+        mip_level: MipLevel,
+        area_rect: QRectF,
+        doc_path: str,
+        priority: int | None = None,
+    ) -> None:
+        """Compute the tile grid for *page_index* and enqueue tiles that
+        intersect *area_rect*.
+
+        Args:
+            page_index: Zero-based index of the page.
+            mip_level: Resolution level to render at.
+            area_rect: Visible area in scene coordinates, **or** the full
+                page rect when requesting thumbnails for off-screen pages.
+            doc_path: Absolute path to the PDF document.
+            priority: Optional explicitly set priority for TileRenderer.
+        """
+        if page_index < 0 or page_index >= len(self._page_rects):
+            return
+
+        page_rect = self._page_rects[page_index]
+        page_w = page_rect.width()
+        page_h = page_rect.height()
+
+        if page_w <= 0 or page_h <= 0:
+            return
+
+        cols = 1 # We span the entire width of the PDF page automatically
+        rows = math.ceil(page_h / TILE_SIZE_PX)
+
+        # Viewport center in scene coords — for distance-based priority
+        vp_center_x = area_rect.center().x()
+        vp_center_y = area_rect.center().y()
+
+        tiles_to_request: list[tuple[float, TileKey]] = []
+
+        for r in range(rows):
+            for c in range(cols):
+                # Tile rect in scene coordinates
+                tile_x = page_rect.x()
+                tile_y = page_rect.y() + r * TILE_SIZE_PX
+                tile_w = page_w
+                tile_h = min(TILE_SIZE_PX, page_h - r * TILE_SIZE_PX)
+                tile_scene_rect = QRectF(tile_x, tile_y, tile_w, tile_h)
+
+                if not tile_scene_rect.intersects(area_rect):
+                    continue
+
+                # Distance to viewport center (lower = higher priority)
+                tile_cx = tile_scene_rect.center().x()
+                tile_cy = tile_scene_rect.center().y()
+                dist = math.hypot(tile_cx - vp_center_x, tile_cy - vp_center_y)
+
+                has_thumb = (
+                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.THUMB)) or
+                    TileKey(page_index, c, r, MipLevel.THUMB) in self._pending_tiles
+                )
+                has_medium = (
+                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.MEDIUM)) or
+                    TileKey(page_index, c, r, MipLevel.MEDIUM) in self._pending_tiles
+                )
+                has_full = (
+                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.FULL)) or
+                    TileKey(page_index, c, r, MipLevel.FULL) in self._pending_tiles
+                )
+                has_any = has_thumb or has_medium or has_full
+
+                mips_to_request = []
+                # If no tile exists for this position, always request THUMB first
+                if not has_any:
+                    mips_to_request.append(MipLevel.THUMB)
+
+                # Then enqueue progressively higher mips up to the target mip_level
+                if mip_level >= MipLevel.MEDIUM and not has_medium:
+                    mips_to_request.append(MipLevel.MEDIUM)
+                if mip_level >= MipLevel.FULL and not has_full:
+                    mips_to_request.append(MipLevel.FULL)
+                if mip_level == MipLevel.THUMB and not has_thumb and has_any:
+                    mips_to_request.append(MipLevel.THUMB)
+
+                for m in mips_to_request:
+                    key = TileKey(page_index, c, r, m)
+                    if not self._tile_cache.contains(key) and key not in self._pending_tiles:
+                        tiles_to_request.append((dist, key))
+
+        # Sort by mip level first (ensuring all THUMBs are requested before FULLs),
+        # then by distance to viewport center
+        tiles_to_request.sort(key=lambda t: (t[1].mip_level, t[0]))
+
+        for _dist, key in tiles_to_request:
+            self._pending_tiles.add(key)
+            self._tile_renderer.request_tile(
+                key,
+                page_rect,
+                doc_path,
+                priority,
+                is_cancelled=lambda k=key: k not in self._pending_tiles
+            )
+
+    def _on_tile_ready(self, key: TileKey) -> None:
+        """Called on main thread when a tile has been rendered and cached."""
+        self._pending_tiles.discard(key)
+
+        image = self._tile_cache.get(key)
+        if image is None or image.isNull():
+            return
+            
+        # GPU upload occurs safely on the native GUI thread
+        pixmap = QPixmap.fromImage(image)
+
+        # Validate page index is still in range (crucial if back navigation clears scene)
+        if key.page_index < 0 or key.page_index >= len(self._page_rects):
+            return
+
+        # Create or update the tile item for this key
+        item = self._tile_items.get(key)
+        if item is None:
+            item = QGraphicsPixmapItem()
+            item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+            item.setZValue(0)
+
+            # Position tile correctly in scene coordinates
+            page_rect = self._page_rects[key.page_index]
+            x = page_rect.x() # full width tile
+            y = page_rect.y() + key.tile_row * TILE_SIZE_PX
+            item.setPos(x, y)
+
+            self.addItem(item)
+            self._tile_items[key] = item
+
+        item.setPixmap(pixmap)
+        item.setVisible(True)
+
+        # Hide lower-quality tiles for the same position now that
+        # a higher-quality tile is available
+        if key.mip_level == MipLevel.FULL:
+            medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
+            thumb_key  = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+            for lower_key in (medium_key, thumb_key):
+                lower_item = self._tile_items.get(lower_key)
+                if lower_item is not None:
+                    lower_item.setVisible(False)
+        elif key.mip_level == MipLevel.MEDIUM:
+            thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+            thumb_item = self._tile_items.get(thumb_key)
+            if thumb_item is not None:
+                thumb_item.setVisible(False)
+
+        # Repaint only the affected tile region, not the whole scene
+        page_rect = self._page_rects[key.page_index]
+        tile_scene_rect = QRectF(
+            page_rect.x() + key.tile_col * TILE_SIZE_PX,
+            page_rect.y() + key.tile_row * TILE_SIZE_PX,
+            TILE_SIZE_PX,
+            TILE_SIZE_PX,
+        ).intersected(page_rect)
+        self.update(tile_scene_rect)
 
     def _find_visible_range(self, viewport_rect: QRectF) -> tuple[int, int]:
         """Binary search for the range of pages intersecting viewport_rect.
@@ -263,7 +439,7 @@ class PageScene(
     def update_visible_pages(
         self, viewport_rect: QRectF, buffer: int = 2
     ) -> None:
-        """Render visible pages and unload far-away pages.
+        """Request tiles for visible pages and manage tile lifecycle.
 
         Uses binary search for O(log n) visible detection.
 
@@ -271,29 +447,67 @@ class PageScene(
             viewport_rect: The visible area in scene coordinates.
             buffer: Number of extra pages to pre-render above/below.
         """
-        if not self._page_states:
+        if not self._page_rects:
             return
 
         vis_first, vis_last = self._find_visible_range(viewport_rect)
         if vis_first < 0:
             return
 
-        first = max(0, vis_first - buffer)
-        last = min(len(self._page_rects) - 1, vis_last + buffer)
+        doc_path = self._doc_manager.get_doc_path() if self._doc_manager else None
+        if not doc_path:
+            return
 
-        # Render pages in the visible + buffer range
-        for i in range(first, last + 1):
-            if self._page_states[i] == "placeholder":
-                self._render_page(i)
+        n = len(self._page_rects)
 
-        # Unload far-away rendered pages (iterate only rendered set)
-        unload_threshold = buffer + 5
-        to_unload = [
-            i for i in self._rendered_set
-            if i < first - unload_threshold or i > last + unload_threshold
-        ]
-        for i in to_unload:
-            self._unload_page(i)
+        # --- 1. Visible pages: request FULL + MEDIUM for visible tile area ---
+        for i in range(vis_first, vis_last + 1):
+            page_rect = self._page_rects[i]
+            visible_tile_area = viewport_rect.intersected(page_rect)
+            if visible_tile_area.isEmpty():
+                continue
+            self._request_tiles_for_page(i, MipLevel.FULL,   visible_tile_area, doc_path)
+            self._request_tiles_for_page(i, MipLevel.MEDIUM, visible_tile_area, doc_path)
+
+        # --- 2. Pre-render buffer pages: MEDIUM only, full page rect ---
+        pre_first = max(0, vis_first - buffer)
+        pre_last  = min(n - 1, vis_last + buffer)
+
+        for i in range(pre_first, vis_first):
+            page_rect = self._page_rects[i]
+            self._request_tiles_for_page(i, MipLevel.MEDIUM, page_rect, doc_path)
+
+        for i in range(vis_last + 1, pre_last + 1):
+            page_rect = self._page_rects[i]
+            self._request_tiles_for_page(i, MipLevel.MEDIUM, page_rect, doc_path)
+
+        # --- 3. THUMB for all pages (entire document, lowest priority) ---
+        # Only request if not already cached — provides instant scroll preview
+        # for pages far away. Uses priority 10 so it never blocks visible tiles.
+        THUMB_LOOKAHEAD = 10  # pages beyond the buffer zone
+        thumb_first = max(0, vis_first - buffer - THUMB_LOOKAHEAD)
+        thumb_last  = min(n - 1, vis_last + buffer + THUMB_LOOKAHEAD)
+
+        for i in range(thumb_first, thumb_last + 1):
+            page_rect = self._page_rects[i]
+            self._request_tiles_for_page(
+                i, MipLevel.THUMB, page_rect, doc_path, priority=10)
+
+        # --- 4. Evict FULL tiles for far-away pages ---
+        evict_threshold = buffer + 5
+        for key, item in list(self._tile_items.items()):
+            if key.mip_level == MipLevel.FULL:
+                distance = abs(key.page_index - vis_first)
+                if distance > evict_threshold:
+                    self.removeItem(item)
+                    del self._tile_items[key]
+                    # Do not remove from cache — L1 cache handles its own eviction
+
+        # Cancel pending tasks for evicted pages
+        self._pending_tiles = {
+            k for k in self._pending_tiles
+            if abs(k.page_index - vis_first) <= evict_threshold
+        }
 
     # ------------------------------------------------------------------
     # Tool management

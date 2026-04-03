@@ -375,11 +375,7 @@ class ManagerView(QWidget):
             return
         self._hide_empty_state()
 
-        from PySide6.QtWidgets import QApplication
-
         for i, doc in enumerate(docs):
-            if i % 5 == 0:
-                QApplication.processEvents()
 
             card = PdfCard(
                 pdf_path=doc["pdf"],
@@ -397,6 +393,11 @@ class ManagerView(QWidget):
             col = i % 4
             self._grid_layout.addWidget(card, row, col)
             self._cards.append(card)
+
+        # Stagger animate the new cards
+        from ui.animations import StaggerFadeAnimation
+        self._stagger_anim = StaggerFadeAnimation(self._cards, delay_ms=20, max_total_ms=400)
+        self._stagger_anim.start()
 
         QTimer.singleShot(50, self._check_visible_cards)
 

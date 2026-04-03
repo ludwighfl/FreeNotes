@@ -62,7 +62,7 @@ class ReorderPagesCommand(QUndoCommand):
         doc_manager.reorder_pages(order)
 
         # 3. Rebuild scene visuals (pixmaps + item positions)
-        scene.rebuild_after_reorder(doc_manager)
+        scene.rebuild_after_reorder(doc_manager, order=order)
 
         # 4. Update sidebar
         sidebar.refresh_order(order)

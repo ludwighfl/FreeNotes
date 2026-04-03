@@ -53,15 +53,16 @@ class FadeAnimation(QObject):
         self._anim = anim
 
 
-class CrossfadeAnimation(QObject):
-    """Crossfade transition for a QStackedWidget.
+class StackFadeTransition(QObject):
+    """Fade-in transition for a QStackedWidget.
 
-    Fades in the new page after setCurrentIndex().
-    The stack automatically hides the old page.
+    Fades in the new page softly upon calling switch_to(index).
+    Since QStackedWidget hides the old page immediately, this acts as 
+    a smooth fade-in over the background color rather than a true crossfade.
 
     Usage:
-        cf = CrossfadeAnimation(stack, duration=150)
-        cf.switch_to(index)
+        transition = StackFadeTransition(stack, duration=150)
+        transition.switch_to(index)
     """
 
     def __init__(

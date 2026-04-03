@@ -9,6 +9,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QGraphicsView
 
 from app.app_state import AppState
+from core.tile_cache import MipLevel
 from ui.scene.page_scene import PageScene
 
 
@@ -109,6 +110,7 @@ class PageView(QGraphicsView):
             self._current_zoom = new_zoom
             self.scale(factor, factor)
             self._app_state.zoom_factor = new_zoom
+            self._update_mip_for_zoom()
             # Trigger re-render after zoom
             QTimer.singleShot(200, self._on_render_timer)
         else:
@@ -129,6 +131,7 @@ class PageView(QGraphicsView):
         transform = self.transform()
         self._current_zoom = transform.m11()
         self._app_state.zoom_factor = self._current_zoom
+        self._update_mip_for_zoom()
 
     def set_zoom(self, zoom: float) -> None:
         """Set the zoom to a specific level (no animation)."""
@@ -137,6 +140,7 @@ class PageView(QGraphicsView):
         self.scale(zoom, zoom)
         self._current_zoom = zoom
         self._app_state.zoom_factor = zoom
+        self._update_mip_for_zoom()
         # Trigger re-render after zoom
         QTimer.singleShot(200, self._on_render_timer)
 
@@ -294,3 +298,17 @@ class PageView(QGraphicsView):
                 scene.update_visible_pages(vp_rect)
         except RuntimeError:
             pass
+
+    # ------------------------------------------------------------------
+    # Mip level selection
+    # ------------------------------------------------------------------
+
+    def _update_mip_for_zoom(self) -> None:
+        """Set the scene's current mip level based on the zoom factor."""
+        if self._current_zoom < 0.6:
+            mip = MipLevel.THUMB
+        elif self._current_zoom < 1.2:
+            mip = MipLevel.MEDIUM
+        else:
+            mip = MipLevel.FULL
+        self._page_scene._current_mip = mip

@@ -55,7 +55,12 @@ class StaggerFadeAnimation(QObject):
                 delay, lambda w=widget: self._fade_in(w))
 
     def _fade_in(self, widget: QWidget) -> None:
-        effect = widget.graphicsEffect()
+        try:
+            effect = widget.graphicsEffect()
+        except RuntimeError:
+            # Widget was deleted before timer triggered
+            return
+            
         if effect is None:
             return
 

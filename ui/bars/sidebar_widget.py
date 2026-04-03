@@ -1,19 +1,19 @@
-from PySide6.QtCore import Qt, Signal, QTimer, QRectF, QMimeData, QPoint, QThread
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint
 from PySide6.QtGui import (
-    QPixmap, QPainter, QFont, QColor, QPen, QBrush, QDrag,
-    QMouseEvent, QContextMenuEvent, QAction,
+    QPixmap, QImage, QPainter, QContextMenuEvent, QAction,
 )
 from PySide6.QtWidgets import (
     QScrollArea,
     QWidget,
     QVBoxLayout,
-    QLabel,
-    QFrame,
     QMenu,
 )
 
 from core.document_manager import DocumentManager
+from core.thumbnail_worker import ThumbnailWorker
+from ui.components.thumbnail_card import ThumbnailCard
 from app.app_state import AppState
+from PySide6.QtCore import QRectF
 
 # TYPE_CHECKING import to avoid circular dependency problems on init
 from typing import TYPE_CHECKING
@@ -21,165 +21,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ui.scene.page_scene import PageScene
     from ui.windows.viewer_window import ViewerWindow
-
-
-class ThumbnailWorker(QThread):
-    thumbnail_ready = Signal(int, QPixmap)
-
-    def __init__(self, doc_manager, indices: list[int], dpi: int):
-        super().__init__()
-        self._doc_manager = doc_manager
-        self._indices = indices
-        self._dpi = dpi
-        self._cancelled = False
-
-    def cancel(self):
-        self._cancelled = True
-
-    def run(self):
-        for i in self._indices:
-            if self._cancelled:
-                break
-            pm = self._doc_manager.get_page_pixmap(i, self._dpi)
-            if not self._cancelled:
-                self.thumbnail_ready.emit(i, pm)
-
-
-class ThumbnailCard(QFrame):
-    """Single thumbnail card: page image + page number badge."""
-
-    clicked = Signal(int)
-
-    THUMB_WIDTH: int = 160
-    BADGE_COLOR: str = "#3B7BF5"
-    ACTIVE_BORDER_COLOR: str = "#3B7BF5"
-
-    def __init__(self, page_index: int, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._page_index: int = page_index
-        self._is_active: bool = False
-        self._thumb_label: QLabel = QLabel(self)
-        self._thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(0)
-        layout.addWidget(self._thumb_label)
-
-        self.setObjectName("thumbnailCard")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._update_style()
-
-    def set_thumbnail(self, pixmap: QPixmap) -> None:
-        """Set the thumbnail pixmap, scaled to THUMB_WIDTH with page badge."""
-        if pixmap.isNull():
-            return
-        # Account for HiDPI: scale to logical width × devicePixelRatio
-        dpr = pixmap.devicePixelRatio()
-        physical_width = int(self.THUMB_WIDTH * dpr)
-        scaled = pixmap.scaledToWidth(
-            physical_width, Qt.TransformationMode.SmoothTransformation
-        )
-        scaled.setDevicePixelRatio(dpr)
-        self._scaled_pixmap = scaled  # keep for badge re-render
-        self._render_badge()
-
-    def update_page_number(self, new_index: int) -> None:
-        """Update the page index and re-render the badge."""
-        self._page_index = new_index
-        self._render_badge()
-
-    def _render_badge(self) -> None:
-        """Draw the page number badge on the stored scaled pixmap."""
-        scaled = getattr(self, '_scaled_pixmap', None)
-        if scaled is None:
-            return
-        dpr = scaled.devicePixelRatio()
-
-        # Draw page number badge (in physical pixel space)
-        badge_pixmap = QPixmap(scaled.size())
-        badge_pixmap.setDevicePixelRatio(dpr)
-        badge_pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(badge_pixmap)
-        painter.drawPixmap(0, 0, scaled)
-
-        # Badge background
-        badge_text = str(self._page_index + 1)
-        font = QFont("Segoe UI", 10, QFont.Weight.Bold)
-        painter.setFont(font)
-        fm = painter.fontMetrics()
-        text_width = fm.horizontalAdvance(badge_text) + 12
-        text_height = fm.height() + 6
-        badge_x = scaled.width() - text_width - 6
-        badge_y = scaled.height() - text_height - 6
-        painter.setBrush(QBrush(QColor(self.BADGE_COLOR)))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(badge_x, badge_y, text_width, text_height, 4, 4)
-
-        # Badge text
-        painter.setPen(QColor("#ffffff"))
-        painter.drawText(
-            badge_x, badge_y, text_width, text_height,
-            Qt.AlignmentFlag.AlignCenter, badge_text,
-        )
-        painter.end()
-
-        self._thumb_label.setPixmap(badge_pixmap)
-
-    def set_active(self, active: bool) -> None:
-        """Set whether this card is the active page."""
-        if self._is_active != active:
-            self._is_active = active
-            self._update_style()
-
-    def _update_style(self) -> None:
-        if self._is_active:
-            self.setStyleSheet(
-                f"#thumbnailCard {{ border: 2px solid {self.ACTIVE_BORDER_COLOR}; "
-                f"border-radius: 4px; background: #2d2d2d; }}"
-            )
-        else:
-            self.setStyleSheet(
-                "#thumbnailCard { border: 2px solid transparent; "
-                "border-radius: 4px; background: #242424; }"
-            )
-
-    # --- Drag support ---
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_pos = event.pos()
-        self.clicked.emit(self._page_index)
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-        start = getattr(self, '_drag_start_pos', None)
-        if start is None:
-            return
-        if (event.pos() - start).manhattanLength() < 20:
-            return
-
-        drag = QDrag(self)
-        mime = QMimeData()
-        mime.setData("application/x-freenotes-page",
-                     str(self._page_index).encode())
-        drag.setMimeData(mime)
-
-        # Semi-transparent preview
-        thumb = self._thumb_label.pixmap()
-        if thumb and not thumb.isNull():
-            preview = QPixmap(thumb.size())
-            preview.setDevicePixelRatio(thumb.devicePixelRatio())
-            preview.fill(Qt.GlobalColor.transparent)
-            p = QPainter(preview)
-            p.setOpacity(0.6)
-            p.drawPixmap(0, 0, thumb)
-            p.end()
-            drag.setPixmap(preview)
-
-        drag.exec(Qt.DropAction.MoveAction)
 
 
 class SidebarWidget(QScrollArea):
@@ -202,10 +43,11 @@ class SidebarWidget(QScrollArea):
         self._loaded_pages: set[int] = set()
         self._active_index: int = -1
         self._app_state: AppState = AppState()
-        self._drop_indicator_index: int = -1
+        # Background rendering thread
         self._thumb_worker: ThumbnailWorker | None = None
-
-        # Container widget
+        self._thumb_generation_id: int = 0
+        self._zombie_workers: set['ThumbnailWorker'] = set()
+        self._queued_pages: set[int] = set()
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
         self._layout.setContentsMargins(8, 8, 8, 8)
@@ -232,6 +74,37 @@ class SidebarWidget(QScrollArea):
         # Listen for page changes
         self._app_state.page_changed.connect(self.set_active_page)
 
+        from ui.animations import DragReorderController
+        self._drag_ctrl = DragReorderController(
+            sidebar=self,
+            get_cards=lambda: self._cards,
+            get_spacing=lambda: self._layout.spacing(),
+            on_reorder=self._on_drag_reorder,
+            parent=self,
+        )
+
+    def clear(self) -> None:
+        """Instantly wipe all thumbnails (prevents flashing old data during transitions)."""
+        self._loaded_pages.clear()
+        self._queued_pages.clear()
+        self._active_index = -1
+
+        if self._thumb_worker is not None:
+            worker_ref = self._thumb_worker
+            self._thumb_worker = None
+            try:
+                worker_ref.cancel()
+                worker_ref.wait()
+            except RuntimeError:
+                pass
+
+        self._thumb_generation_id += 1
+
+        for card in self._cards:
+            self._layout.removeWidget(card)
+            card.deleteLater()
+        self._cards.clear()
+
     def load_document(self, doc_manager: DocumentManager, scene: 'PageScene') -> None:
         """Create thumbnail cards for all pages in the document."""
         if self._scene is not None:
@@ -245,11 +118,19 @@ class SidebarWidget(QScrollArea):
         self._scene.changed.connect(self._on_scene_changed)
 
         self._loaded_pages.clear()
+        self._queued_pages.clear()
         self._active_index = -1
 
         if self._thumb_worker is not None:
-            self._thumb_worker.cancel()
-            self._thumb_worker.wait()
+            worker_ref = self._thumb_worker
+            self._thumb_worker = None
+            try:
+                worker_ref.cancel()
+                worker_ref.wait()
+            except RuntimeError:
+                pass
+
+        self._thumb_generation_id += 1
 
         for card in self._cards:
             card.deleteLater()
@@ -275,68 +156,25 @@ class SidebarWidget(QScrollArea):
     # Drag & drop
     # ------------------------------------------------------------------
 
-    def dragEnterEvent(self, event) -> None:
-        if event.mimeData().hasFormat("application/x-freenotes-page"):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    def _on_drag_reorder(self, new_order: list[int]) -> None:
+        """Called by DragReorderController when a valid drag-drop reordering finishes."""
+        
+        # PREVENT C++ SEGFAULT: Cancel background renders BEFORE changing scene items
+        if self._thumb_worker is not None:
+            worker_ref = self._thumb_worker
+            self._thumb_worker = None
+            try:
+                worker_ref.cancel()
+                worker_ref.wait()
+            except RuntimeError:
+                pass
+        self._thumb_generation_id += 1  # Invalidate any already queued signals
+        
+        current_order = [c._page_index for c in self._cards]
 
-    def dragMoveEvent(self, event) -> None:
-        if not event.mimeData().hasFormat("application/x-freenotes-page"):
-            event.ignore()
-            return
-        event.acceptProposedAction()
-        # Calculate drop position
-        drop_idx = self._get_drop_index(event.position().toPoint())
-        if drop_idx != self._drop_indicator_index:
-            self._drop_indicator_index = drop_idx
-            self._container.update()
-
-    def dragLeaveEvent(self, event) -> None:
-        self._drop_indicator_index = -1
-        self._container.update()
-
-    def dropEvent(self, event) -> None:
-        self._drop_indicator_index = -1
-        self._container.update()
-
-        if not event.mimeData().hasFormat("application/x-freenotes-page"):
-            event.ignore()
-            return
-
-        data = event.mimeData().data("application/x-freenotes-page")
-        source_page = int(bytes(data).decode())
-        target_idx = self._get_drop_index(event.position().toPoint())
-
-        # Build current order (what original page each position holds)
-        current_order = [card._page_index for card in self._cards]
-
-        # Find source position in current layout
-        source_pos = None
-        for i, orig_idx in enumerate(current_order):
-            if orig_idx == source_page:
-                source_pos = i
-                break
-        if source_pos is None:
-            return
-
-        # No change
-        if target_idx == source_pos or target_idx == source_pos + 1:
-            return
-
-        # Build new order
-        new_order = list(current_order)
-        moved = new_order.pop(source_pos)
-        insert_at = target_idx if target_idx < source_pos else target_idx - 1
-        insert_at = max(0, min(insert_at, len(new_order)))
-        new_order.insert(insert_at, moved)
-
-        if new_order == current_order:
-            return
-
-        # Push undo command
         from commands.reorder_pages_command import ReorderPagesCommand
         from core import undo_stack
+
         cmd = ReorderPagesCommand(
             old_order=current_order,
             new_order=new_order,
@@ -346,29 +184,20 @@ class SidebarWidget(QScrollArea):
         )
         undo_stack.push(cmd)
 
-        # Apply immediately (first redo is skipped)
         self._scene.reorder_annotations(new_order)
         self._doc_manager.reorder_pages(new_order)
-        self._scene.rebuild_after_reorder(self._doc_manager)
+        self._scene.rebuild_after_reorder(self._doc_manager, order=new_order)
         self.refresh_order(new_order)
-
-        event.acceptProposedAction()
-
-    def _get_drop_index(self, pos: QPoint) -> int:
-        """Return the index where a drop at pos should insert."""
-        container_pos = self._container.mapFrom(self.viewport(), pos)
-        for i, card in enumerate(self._cards):
-            card_rect = card.geometry()
-            mid_y = card_rect.y() + card_rect.height() // 2
-            if container_pos.y() < mid_y:
-                return i
-        return len(self._cards)
 
     def refresh_order(self, new_order: list[int]) -> None:
         """Reorder cards to match new_order and update page numbers.
 
         new_order[new_pos] = old_page_index.
         """
+        # Preserve scroll position
+        vbar = self.verticalScrollBar()
+        saved_scroll = vbar.value()
+
         # Map original page index → card
         idx_to_card: dict[int, ThumbnailCard] = {
             card._page_index: card for card in self._cards
@@ -388,7 +217,18 @@ class SidebarWidget(QScrollArea):
                 new_cards.append(card)
 
         self._cards = new_cards
+
+        # Reset all active states and re-apply to the correct card
+        for card in self._cards:
+            card.set_active(False)
+        if 0 <= self._active_index < len(self._cards):
+            self._cards[self._active_index].set_active(True)
+
         self._loaded_pages.clear()
+        self._queued_pages.clear()
+
+        # Restore scroll position (prevent jump to top)
+        QTimer.singleShot(0, lambda: vbar.setValue(saved_scroll))
         QTimer.singleShot(50, self._load_visible_thumbnails)
 
     def rebuild_all(self, doc_manager: DocumentManager | None = None) -> None:
@@ -398,8 +238,11 @@ class SidebarWidget(QScrollArea):
             return
 
         self._loaded_pages.clear()
+        self._queued_pages.clear()
         old_active = self._active_index
         self._active_index = -1
+
+        self._thumb_generation_id += 1
 
         for card in self._cards:
             self._layout.removeWidget(card)
@@ -477,13 +320,12 @@ class SidebarWidget(QScrollArea):
         Args:
             page_index: Zero-based page index.
         """
-        if self._active_index == page_index:
-            return
+        # Clear old active
         if 0 <= self._active_index < len(self._cards):
             self._cards[self._active_index].set_active(False)
+        # Set new active
         if 0 <= page_index < len(self._cards):
             self._cards[page_index].set_active(True)
-            # Ensure visible
             self.ensureWidgetVisible(self._cards[page_index], 50, 50)
         self._active_index = page_index
 
@@ -492,6 +334,8 @@ class SidebarWidget(QScrollArea):
 
     def _on_scene_changed(self, rects: list) -> None:
         """Invalidate thumbnails that overlap with the changed area."""
+        if getattr(self._scene, '_is_rendering_thumbnail', False):
+            return
         if self._scene is None or not self._cards:
             return
 
@@ -503,12 +347,13 @@ class SidebarWidget(QScrollArea):
     def invalidate_thumb(self, page_idx: int) -> None:
         """Mark a thumbnail as needing re-render. Re-renders if visible."""
         self._loaded_pages.discard(page_idx)
+        self._queued_pages.discard(page_idx)
         self._lazy_timer.start()
 
     def _load_visible_thumbnails(self) -> None:
         """Load thumbnails for visible cards + 2 buffer pages.
 
-        Uses doc_manager.get_page_pixmap(dpi=72) directly instead of
+        Uses doc_manager.get_page_pixmap(dpi=36, use_hidpi=False) directly instead of
         scene.render() to avoid capturing gray placeholders from virtual
         rendering.
         """
@@ -516,8 +361,17 @@ class SidebarWidget(QScrollArea):
             return
 
         if self._thumb_worker is not None:
-            self._thumb_worker.cancel()
-            self._thumb_worker.wait()
+            worker_ref = self._thumb_worker
+            self._thumb_worker = None
+            try:
+                worker_ref.cancel()
+                for idx in worker_ref._indices:
+                    self._queued_pages.discard(idx)
+                # Keep python reference alive until C++ thread exits natively
+                self._zombie_workers.add(worker_ref)
+                worker_ref.finished.connect(lambda w=worker_ref: self._zombie_workers.discard(w))
+            except RuntimeError:
+                pass
 
         viewport_rect = self.viewport().rect()
         buffer = 2
@@ -543,19 +397,31 @@ class SidebarWidget(QScrollArea):
         start = max(0, first_visible - buffer)
         end = min(len(self._cards) - 1, last_visible + buffer)
 
-        indices = [i for i in range(start, end + 1) if i not in self._loaded_pages]
+        indices = [i for i in range(start, end + 1) 
+                   if i not in self._loaded_pages and i not in self._queued_pages]
         if not indices:
             return
 
         for i in indices:
-            self._loaded_pages.add(i)
+            self._queued_pages.add(i)
 
-        self._thumb_worker = ThumbnailWorker(self._doc_manager, indices, self.THUMBNAIL_DPI)
+        self._thumb_generation_id += 1
+        self._thumb_worker = ThumbnailWorker(
+            self._doc_manager, indices, self.THUMBNAIL_DPI, False, self._thumb_generation_id
+        )
+        self._thumb_worker.finished.connect(self._thumb_worker.deleteLater)
         self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_worker.start()
 
-    def _on_thumbnail_ready(self, idx: int, pixmap: QPixmap) -> None:
-        if idx < len(self._cards) and not pixmap.isNull():
+    def _on_thumbnail_ready(self, gen_id: int, idx: int, img: QImage) -> None:
+        self._queued_pages.discard(idx)
+        
+        if gen_id != self._thumb_generation_id:
+            return
+            
+        if idx < len(self._cards) and not img.isNull():
+            self._loaded_pages.add(idx)
+            pixmap = QPixmap.fromImage(img)
             
             # --- Overlay Annotations ---
             if self._scene is not None and idx < len(self._scene._page_items):
@@ -565,18 +431,32 @@ class SidebarWidget(QScrollArea):
                 
                 self._scene._is_rendering_thumbnail = True
                 page_item = self._scene._page_items[idx]
-                was_visible = page_item.isVisible()
-                page_item.setVisible(False)
+                
+                try:
+                    # We replace the pixmap instead of setVisible(False) because visibility 
+                    # might not flush instantly or flawlessly in NoIndex QGraphicsScenes.
+                    # A null QPixmap guarantees the placeholder/page is totally invisible.
+                    old_pixmap = page_item.pixmap()
+                    page_item.setPixmap(QPixmap())
+                except RuntimeError:
+                    # C++ object deleted by rapid scene.clear() calls in main thread
+                    return
                 
                 ephemeral_items = self._scene.get_ephemeral_items()
                 ephemeral_states = [(item, item.isVisible()) for item in ephemeral_items]
                 for item, _ in ephemeral_states:
-                    item.setVisible(False)
+                    try:
+                        item.setVisible(False)
+                    except RuntimeError:
+                        pass
                     
                 overlay_was_visible = False
                 if getattr(self._scene, '_selection_overlay', None):
-                    overlay_was_visible = self._scene._selection_overlay.isVisible()
-                    self._scene._selection_overlay.setVisible(False)
+                    try:
+                        overlay_was_visible = self._scene._selection_overlay.isVisible()
+                        self._scene._selection_overlay.setVisible(False)
+                    except RuntimeError:
+                        pass
                 
                 painter = QPainter(overlay)
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -589,14 +469,23 @@ class SidebarWidget(QScrollArea):
                 self._scene.render(painter, target_rect, source_rect)
                 painter.end()
                 
-                page_item.setVisible(was_visible)
+                try:
+                    page_item.setPixmap(old_pixmap)
+                except RuntimeError:
+                    pass
                 self._scene._is_rendering_thumbnail = False
                 
                 for item, vis in ephemeral_states:
-                    item.setVisible(vis)
+                    try:
+                        item.setVisible(vis)
+                    except RuntimeError:
+                        pass
                     
                 if getattr(self._scene, '_selection_overlay', None):
-                    self._scene._selection_overlay.setVisible(overlay_was_visible)
+                    try:
+                        self._scene._selection_overlay.setVisible(overlay_was_visible)
+                    except RuntimeError:
+                        pass
                 
                 p2 = QPainter(pixmap)
                 p2.setRenderHint(QPainter.RenderHint.Antialiasing)

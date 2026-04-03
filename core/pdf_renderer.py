@@ -1,7 +1,7 @@
 """PDF page renderer – converts fitz.Page objects to QPixmap."""
 
 import fitz  # PyMuPDF
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 
@@ -30,8 +30,8 @@ class PdfRenderer:
         page: fitz.Page,
         dpi: int = 150,
         use_hidpi: bool = True,
-    ) -> QPixmap:
-        """Render a fitz.Page to QPixmap at the specified DPI.
+    ) -> QImage:
+        """Render a fitz.Page to QImage at the specified DPI.
 
         When use_hidpi is True, the actual rendering DPI is multiplied by
         the device pixel ratio so the pixmap stays crisp on scaled displays.
@@ -44,7 +44,7 @@ class PdfRenderer:
             use_hidpi: Whether to account for screen scaling (default True).
 
         Returns:
-            A QPixmap of the rendered page.
+            A QImage of the rendered page.
         """
         dpr = PdfRenderer.get_device_pixel_ratio() if use_hidpi else 1.0
         
@@ -72,7 +72,4 @@ class PdfRenderer:
         
         effective_dpr = dpr * render_scale
         img.setDevicePixelRatio(effective_dpr)
-
-        pixmap = QPixmap.fromImage(img)
-        pixmap.setDevicePixelRatio(effective_dpr)
-        return pixmap
+        return img

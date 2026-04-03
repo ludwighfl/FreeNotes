@@ -1,137 +1,149 @@
-import os
-from PySide6.QtWidgets import QApplication, QWidget
-from PySide6.QtCore import Qt, QPropertyAnimation, Property, QRectF
-from PySide6.QtGui import QPixmap, QPainter, QColor, QLinearGradient, QBrush, QKeyEvent, QGuiApplication
+"""Splash screen – banner logo with a modern spinning loader underneath.
+
+The spinner is drawn as a simple QPainter arc that rotates via QTimer.
+paintEvent cost is ~1 ms (background fill + drawPixmap + drawArc), making
+the animation immune to main-thread load.
+"""
+
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QTimer, QRectF
+from PySide6.QtGui import (
+    QPixmap, QPainter, QColor, QPen, QKeyEvent, QGuiApplication,
+)
+
 
 class SplashScreen(QWidget):
-    """
-    A frameless, full-screen splash screen matching the app's dark theme (#1a1a1a).
-    The logo is centered, scaled, and features an animated light ray (gleam) effect.
-    """
-    def __init__(self, image_path: str):
-        super().__init__()
-        
-        # We use the app background color from base.qss
-        self.bg_color = QColor("#1a1a1a")
+    """Full-screen splash overlay with a spinning loader below the logo."""
 
-        # 2. Load and scale image
-        original_pixmap = QPixmap(image_path)
-        if original_pixmap.isNull():
-            print(f"Warning: Image '{image_path}' could not be loaded!")
-            self.pixmap = QPixmap()
-            self.logical_width = 0
-            self.logical_height = 0
-        else:
+    CYCLE_DURATION_MS = 2500   # one full spinner revolution
+    SPINNER_FPS = 60
+    SPINNER_SIZE = 32          # logical pixels
+    SPINNER_THICKNESS = 3      # pen width in logical pixels
+    SPINNER_GAP_PX = 28       # gap between banner bottom and spinner center
+
+    def __init__(self, image_path: str, parent: QWidget | None = None):
+        super().__init__(parent)
+        
+        # Make this a standalone, frameless top-level window
+        self.setWindowFlags(
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.SplashScreen
+        )
+        self.resize(500, 300)
+        
+        self.bg_color = QColor("#1a1a1a")
+        self.logical_width = 0
+        self.logical_height = 0
+        self.pixmap = QPixmap()
+
+        original = QPixmap(image_path)
+        if not original.isNull():
             screen = QGuiApplication.primaryScreen()
-            screen_geometry = screen.geometry()
-            target_logical_width = screen_geometry.width() * 0.20
-            self.dpr = screen.devicePixelRatio()
             
-            # Create a purely physical high-res pixmap without setting internal dpr trickery
-            physical_width = int(target_logical_width * self.dpr)
-            self.pixmap = original_pixmap.scaledToWidth(
-                physical_width, 
-                Qt.TransformationMode.SmoothTransformation
+            # Center the splash screen on the primary monitor
+            screen_geom = screen.geometry()
+            self.move(
+                (screen_geom.width() - self.width()) // 2,
+                (screen_geom.height() - self.height()) // 2
+            )
+            
+            target_w = screen_geom.width() * 0.20
+            self.dpr = screen.devicePixelRatio()
+            physical_w = int(target_w * self.dpr)
+
+            self.pixmap = original.scaledToWidth(
+                physical_w, Qt.TransformationMode.SmoothTransformation,
             )
             self.logical_width = self.pixmap.width() / self.dpr
             self.logical_height = self.pixmap.height() / self.dpr
 
-        self._gleam_pos = 0.0
-        self._frame_cache: dict[int, QPixmap] = {}
+        # Indeterminate spinner state
+        self._head = 0.0          # the leading edge angle
+        self._span = 30.0         # current arc length
+        self._expanding = True    # whether the arc is growing or shrinking
 
-        self.animation = QPropertyAnimation(self, b"gleam_pos")
-        self.animation.setStartValue(0.0)
-        self.animation.setEndValue(1.0)
-        self.animation.setDuration(2500)
-        self.animation.setLoopCount(-1)
-        self.animation.start()
+        # Timer – NOT started until start_animation() is called
+        interval = max(1, 1000 // self.SPINNER_FPS)
+        self._timer = QTimer(self)
+        self._timer.setInterval(interval)
+        self._timer.timeout.connect(self._advance)
+
+    # ------------------------------------------------------------------
+    # Playback control
+    # ------------------------------------------------------------------
 
     def start_animation(self) -> None:
-        """Starts or resumes the gleam animation."""
-        if self.animation.state() != QPropertyAnimation.State.Running:
-            self.animation.start()
+        """Start the spinner animation."""
+        if not self._timer.isActive():
+            self._timer.start()
 
     def stop_animation(self) -> None:
-        """Stops the gleam animation completely to conserve CPU when hidden."""
-        if self.animation.state() == QPropertyAnimation.State.Running:
-            self.animation.stop()
+        """Stop the spinner to free CPU."""
+        self._timer.stop()
 
-    @Property(float)
-    def gleam_pos(self):
-        return self._gleam_pos
+    def _advance(self) -> None:
+        """Advance the spinner head and oscillate its length to create a modern tail-catch effect."""
+        # Head always moves steadily clockwise (negative in Qt)
+        self._head = (self._head - 5.0) % 360.0
 
-    @gleam_pos.setter
-    def gleam_pos(self, pos):
-        self._gleam_pos = pos
-        self.update()
+        # Oscillate the arc length
+        if self._expanding:
+            self._span += 3.5
+            if self._span >= 270.0:
+                self._span = 270.0
+                self._expanding = False
+        else:
+            self._span -= 3.5
+            if self._span <= 30.0:
+                self._span = 30.0
+                self._expanding = True
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.repaint()
 
-        # 1. Fill background with the theme color
-        painter.fillRect(self.rect(), self.bg_color)
+    # ------------------------------------------------------------------
+    # Painting – trivially fast
+    # ------------------------------------------------------------------
 
-        if getattr(self, "logical_width", 0) == 0:
+    def paintEvent(self, event) -> None:                # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), self.bg_color)
+
+        if self.logical_width == 0:
+            p.end()
             return
 
-        # 2. Calculate logical coordinates to center
-        x_offset = (self.width() - self.logical_width) / 2.0
-        y_offset = (self.height() - self.logical_height) / 2.0
-        target_rect = QRectF(x_offset, y_offset, self.logical_width, self.logical_height)
+        # --- Banner (centered) ---
+        bx = (self.width() - self.logical_width) / 2.0
+        by = (self.height() - self.logical_height) / 2.0 - self.SPINNER_GAP_PX
+        p.drawPixmap(
+            QRectF(bx, by, self.logical_width, self.logical_height),
+            self.pixmap,
+            QRectF(self.pixmap.rect()),
+        )
 
-        # 3. Draw base logo dimmed (as background)
-        painter.setOpacity(0.3)
-        painter.drawPixmap(target_rect, self.pixmap, QRectF(self.pixmap.rect()))
+        # --- Spinner (below banner, centered) ---
+        cx = self.width() / 2.0
+        cy = by + self.logical_height + self.SPINNER_GAP_PX
+        r = self.SPINNER_SIZE / 2.0
+        spinner_rect = QRectF(cx - r, cy - r, self.SPINNER_SIZE, self.SPINNER_SIZE)
 
-        # 4. Prepare the gleam effect purely in physical coordinates to prevent bleeding
-        painter.setOpacity(1.0)
+        pen = QPen(QColor(255, 255, 255, 200))
+        pen.setWidthF(self.SPINNER_THICKNESS)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+
+        # Draw the arc
+        # Qt draws from 'start' counter-clockwise for positive span, clockwise for negative.
+        # So we draw clockwise from the tail angle.
+        tail = self._head + self._span
+        start_16 = int(tail * 16)
+        span_16 = int(-self._span * 16)
         
-        pw = self.pixmap.width()
-        ph = self.pixmap.height()
-        
-        # Discretize gleam_pos into exactly 120 frames
-        step = int(self._gleam_pos * 120)
+        p.drawArc(spinner_rect, start_16, span_16)
 
-        # Draw highly expensive composited frame if cached
-        if step in self._frame_cache:
-            cached_frame = self._frame_cache[step]
-            painter.drawPixmap(target_rect, cached_frame, QRectF(cached_frame.rect()))
-            painter.end()
-            return
+        p.end()
 
-        frame_buffer = QPixmap(pw, ph)
-        frame_buffer.fill(Qt.GlobalColor.transparent)
-        
-        buffer_painter = QPainter(frame_buffer)
-        buffer_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        gleam_width = pw * 0.4 
-        start_x = -gleam_width
-        end_x = pw + gleam_width
-        center = start_x + (step / 120.0) * (end_x - start_x)
-
-        # Draw the light gradient
-        gradient = QLinearGradient(center - gleam_width/2, 0, center + gleam_width/2, 0)
-        gradient.setColorAt(0.0, QColor(255, 255, 255, 0))
-        gradient.setColorAt(0.5, QColor(255, 255, 255, 255))
-        gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
-
-        buffer_painter.fillRect(0, 0, pw, ph, QBrush(gradient))
-
-        # Use SourceIn to mask the gradient using the logo's alpha and color
-        buffer_painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-        buffer_painter.drawPixmap(0, 0, self.pixmap)
-        buffer_painter.end()
-
-        # Cache the resulting frame for sub-1ms lightning fast subsequent calls
-        self._frame_cache[step] = frame_buffer
-
-        # Draw the final physical buffer mapped precisely onto the logical target area
-        painter.drawPixmap(target_rect, frame_buffer, QRectF(frame_buffer.rect()))
-        
-        painter.end()
-
-    def keyPressEvent(self, event: QKeyEvent):
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         super().keyPressEvent(event)

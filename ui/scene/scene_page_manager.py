@@ -53,16 +53,24 @@ class ScenePageManagerMixin:
         self._text_box_items = remap(self._text_box_items)
         self._shape_items = remap(self._shape_items)
 
-    def rebuild_after_reorder(self, doc_manager: DocumentManager) -> None:
+    def rebuild_after_reorder(self, doc_manager: DocumentManager, order: list[int] = None) -> None:
         """Rebuild page pixmaps and reposition annotations after reorder.
 
         Must be called AFTER doc_manager.reorder_pages().
+        If `order` is provided, it does a fast list rearrangement instead
+        of destroying and recreating all scene items.
         """
+        # Invalidate tile cache — PDF page content has moved
+        if hasattr(self, '_tile_cache'):
+            self._tile_cache.invalidate_all()
+        if hasattr(self, '_tile_renderer'):
+            self._tile_renderer.cancel_all()
+
         page_count = doc_manager.get_page_count()
         if page_count == 0:
             return
 
-        # Collect all annotation items and temporarily remove from scene
+        # Collect all annotation items
         all_annotations: dict[int, list] = {}
         for idx in range(page_count):
             items = []
@@ -74,77 +82,94 @@ class ScenePageManagerMixin:
         # Store old page rects for offset calculation
         old_page_rects = list(self._page_rects)
 
-        # Remove old page pixmap items
-        for pix_item in self._page_items:
-            self.removeItem(pix_item)
-        self._page_items.clear()
-        self._page_rects.clear()
-        # Also clear virtual rendering state
-        self._page_states.clear()
-        self._page_y_offsets.clear()
-        self._rendered_set.clear()
+        if order is not None and len(order) == len(self._page_items):
+            # FAST PATH: Reorder existing items
+            self._page_items = [self._page_items[i] for i in order]
+            self._page_rects = [self._page_rects[i] for i in order]
+            self._page_states = [self._page_states[i] for i in order]
+            
+            self._page_y_offsets.clear()
+            self._rendered_set.clear()
 
-        # Re-render pages in new order
-        y_offset: float = self.PAGE_GAP
-        for i in range(page_count):
-            pixmap = doc_manager.get_page_pixmap(i)
-            item = QGraphicsPixmapItem(pixmap)
-            item.setTransformationMode(
-                Qt.TransformationMode.SmoothTransformation)
+            y_offset = float(self.PAGE_GAP)
+            for i, rect in enumerate(self._page_rects):
+                w, h = rect.width(), rect.height()
+                self._page_items[i].setPos(rect.x(), y_offset)
+                self._page_rects[i] = QRectF(rect.x(), y_offset, w, h)
+                self._page_y_offsets.append(y_offset)
+                if self._page_states[i] == "rendered":
+                    self._rendered_set.add(i)
+                y_offset += h + self.PAGE_GAP
+        else:
+            # FALLBACK PATH: Destroy and recreate
+            for pix_item in self._page_items:
+                self.removeItem(pix_item)
+            self._page_items.clear()
+            self._page_rects.clear()
+            self._page_states.clear()
+            self._page_y_offsets.clear()
+            self._rendered_set.clear()
 
-            dpr = pixmap.devicePixelRatio()
-            logical_w = pixmap.width() / dpr
-            logical_h = pixmap.height() / dpr
+            scale = getattr(self, 'RENDER_DPI', 144) / 72.0
+            placeholder = getattr(self, '_get_placeholder_pixmap', lambda: None)()
+            if placeholder is None:
+                from PySide6.QtGui import QPixmap
+                placeholder = QPixmap()
 
-            item.setPos(0, y_offset)
-            self._page_items.append(item)
-            self.addItem(item)
+            y_offset = float(self.PAGE_GAP)
+            for i in range(page_count):
+                w_pt, h_pt = doc_manager.get_page_size(i)
+                log_w = w_pt * scale
+                log_h = h_pt * scale
 
-            page_rect = QRectF(0, y_offset, logical_w, logical_h)
-            self._page_rects.append(page_rect)
-            self._page_states.append("rendered")
-            self._page_y_offsets.append(y_offset)
-            self._rendered_set.add(i)
-            y_offset += logical_h + self.PAGE_GAP
+                item = QGraphicsPixmapItem(placeholder)
+                item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+                if log_w > 0:
+                    item.setScale(log_w / 2.0)
+                item.setPos(0, y_offset)
+                
+                self._page_items.append(item)
+                self.addItem(item)
+                self._page_rects.append(QRectF(0, y_offset, log_w, log_h))
+                self._page_states.append("placeholder")
+                self._page_y_offsets.append(y_offset)
+                y_offset += log_h + self.PAGE_GAP
 
         # Center horizontally
-        if self._page_items:
-            max_width = max(
-                it.pixmap().width() / it.pixmap().devicePixelRatio()
-                for it in self._page_items
-            )
-            for i, it in enumerate(self._page_items):
-                pix = it.pixmap()
-                lw = pix.width() / pix.devicePixelRatio()
-                lh = pix.height() / pix.devicePixelRatio()
-                x_off = (max_width - lw) / 2.0
-                it.setPos(x_off, it.pos().y())
-                self._page_rects[i] = QRectF(
-                    x_off, it.pos().y(), lw, lh)
+        if hasattr(self, '_center_pages'):
+            self._center_pages()
+        else:
+            if self._page_items:
+                max_width = max(r.width() for r in self._page_rects)
+                for i, it in enumerate(self._page_items):
+                    lw = self._page_rects[i].width()
+                    lh = self._page_rects[i].height()
+                    x_off = (max_width - lw) / 2.0
+                    it.setPos(x_off, it.pos().y())
+                    self._page_rects[i] = QRectF(x_off, it.pos().y(), lw, lh)
 
         # Reposition annotation items to new page y-offsets
         for idx in range(page_count):
             if idx >= len(self._page_rects):
                 break
             new_rect = self._page_rects[idx]
-            # Get old rect for this page's annotations (use old_page_rects if available)
             for item in all_annotations.get(idx, []):
                 old_pos = item.pos()
-                # Find which old page this item was on based on its old _page_index
                 old_page_idx = getattr(item, '_old_page_index', idx)
                 if old_page_idx < len(old_page_rects):
                     old_rect = old_page_rects[old_page_idx]
-                    # Compute relative position within old page
                     rel_x = old_pos.x() - old_rect.x()
                     rel_y = old_pos.y() - old_rect.y()
-                    # Apply to new page position
-                    item.setPos(QPointF(
-                        new_rect.x() + rel_x,
-                        new_rect.y() + rel_y,
-                    ))
-                # clear temporary old page index marker
+                    item.setPos(QPointF(new_rect.x() + rel_x, new_rect.y() + rel_y))
                 if hasattr(item, '_old_page_index'):
                     delattr(item, '_old_page_index')
+                    
+        # Update render loop
+        if hasattr(self, '_viewport_rect'):
+            vt = self._viewport_rect
+            # Trick the zoom/scroll update to render newly visible pages
+            if hasattr(self, '_on_scroll_changed'):
+                self._on_scroll_changed()
 
     def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
         """Insert an empty annotation slot at at_index.
@@ -164,6 +189,10 @@ class ScenePageManagerMixin:
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
+
+        # Invalidate tile cache — page indices have shifted
+        if hasattr(self, '_tile_cache'):
+            self._tile_cache.invalidate_all()
 
     def remove_page(self, page_idx: int, doc_manager: DocumentManager) -> None:
         """Remove all annotations on page_idx and shift indices down."""
@@ -186,6 +215,10 @@ class ScenePageManagerMixin:
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
+
+        # Invalidate tile cache — page indices have shifted
+        if hasattr(self, '_tile_cache'):
+            self._tile_cache.invalidate_all()
 
     def clone_page_annotations(
         self, source_idx: int, target_idx: int

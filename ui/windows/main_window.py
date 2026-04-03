@@ -1,4 +1,17 @@
-"""Main window – top-level QMainWindow with stacked ManagerView / ViewerWindow."""
+"""Main window – top-level QMainWindow with stacked ManagerView / ViewerWindow.
+
+Startup sequence
+----------------
+1. __init__ creates only the splash overlay + central stack (fast, ~50 ms).
+2. showMaximized() is called by main.py → window appears with splash.
+3. Event loop starts → QTimer(0) fires → _build_ui() creates views one by one
+   with processEvents() between each, so the splash animates smoothly.
+4. After views are ready, _perform_startup_loading() launches the background
+   StartupWorker thread for library scanning.
+5. When both the worker AND the 2500 ms minimum splash time have elapsed,
+   _finish_startup() loads the last document, hides the splash, and shows the
+   target view.
+"""
 
 from pathlib import Path
 
@@ -6,18 +19,15 @@ from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QShortcut, QKeySequence, QIcon, QFont
 from PySide6.QtWidgets import (
     QMainWindow, QStackedWidget, QDialog, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QFileDialog,
+    QLabel, QPushButton, QFileDialog, QApplication,
 )
 
 from app.app_state import AppState
 from core import undo_stack
 from core.app_settings import AppSettings
 from core.library_manager import LibraryManager
-from ui.windows.manager_view import ManagerView
-from ui.windows.settings_view import SettingsView
-from ui.windows.viewer_window import ViewerWindow
-from ui.windows.splash_screen import SplashScreen
 from utils.path_helpers import get_app_path, get_default_annotations_root
+
 
 class StartupWorker(QThread):
     """Background worker to handle file system operations without freezing UI."""
@@ -27,49 +37,56 @@ class StartupWorker(QThread):
         root = AppSettings.get_annotations_root()
         from core.library_manager import LibraryManager
         AppState().library_manager = LibraryManager(root)
-        
+
         folder = AppState().current_folder
         docs = AppState().library_manager.get_documents_recursive(folder)
         setattr(AppState(), "_cached_startup_docs", docs)
 
         self.finished_loading.emit()
 
+
 class MainWindow(QMainWindow):
     """Application main window using QStackedWidget.
 
     Index 0: ManagerView (file browser)
     Index 1: ViewerWindow (PDF viewer)
+    Index 2: SettingsView
     """
 
     def __init__(self) -> None:
         super().__init__()
+        import time
+        self._start_time = time.time()
+        self._splash_proc = None
+
         self.setWindowTitle("FreeNotes")
 
-        from utils.path_helpers import get_app_path
         icon_path = get_app_path() / "assets" / "icon.ico"
         self.setWindowIcon(QIcon(str(icon_path)))
 
         self.setMinimumSize(1024, 700)
         self.resize(1280, 800)
 
+        # Central stack
         self._stack = QStackedWidget()
         self.setCentralWidget(self._stack)
 
-        # Pages
+        from ui.animations import StackFadeTransition
+        self._stack_transition = StackFadeTransition(self._stack, duration=150)
+
+        from ui.windows.manager_view import ManagerView
+        from ui.windows.viewer_window import ViewerWindow
+        from ui.windows.settings_view import SettingsView
+
         self._manager_view = ManagerView()
         self._viewer_window = ViewerWindow()
-
-        from ui.windows.splash_screen import SplashScreen
-        from utils.path_helpers import get_app_path
-        banner_path = get_app_path() / "assets" / "banner.png"
-        self._splash_screen = SplashScreen(str(banner_path))
         self._settings_view = SettingsView()
         self._load_settings_pages()
 
-        self._stack.addWidget(self._manager_view)   # index 0
+        self._stack.addWidget(self._manager_view)    # index 0
         self._stack.addWidget(self._viewer_window)   # index 1
-        self._stack.addWidget(self._splash_screen)   # index 2
-        self._stack.addWidget(self._settings_view)   # index 3
+        self._stack.addWidget(self._settings_view)   # index 2
+        self._stack.setCurrentIndex(0)
 
         # Connections
         self._manager_view.open_pdf_requested.connect(self.show_viewer)
@@ -77,28 +94,23 @@ class MainWindow(QMainWindow):
         self._viewer_window.back_requested.connect(self.show_manager)
         self._settings_view.back_requested.connect(self.show_manager)
 
-        # --- Keyboard shortcuts: Undo / Redo ---
-        undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
-        undo_shortcut.activated.connect(self._handle_undo)
+        # Keyboard shortcuts
+        undo_sc = QShortcut(QKeySequence.StandardKey.Undo, self)
+        undo_sc.activated.connect(self._handle_undo)
+        redo_y = QShortcut(QKeySequence("Ctrl+Y"), self)
+        redo_y.activated.connect(self._handle_redo)
+        redo_z = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
+        redo_z.activated.connect(self._handle_redo)
 
-        redo_shortcut_y = QShortcut(QKeySequence("Ctrl+Y"), self)
-        redo_shortcut_y.activated.connect(self._handle_redo)
-
-        redo_shortcut_z = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
-        redo_shortcut_z.activated.connect(self._handle_redo)
-
-        # Start on splash screen (index 2)
-        self._stack.setCurrentIndex(2)
-        
-        import time
-        self._startup_time = time.time()
-        # Wait 400ms so the window has time to show and start rendering the splash screen
-        QTimer.singleShot(400, self._perform_startup_loading)
-
-        # Enable drag & drop
         self.setAcceptDrops(True)
 
-    # ------------------------------------------------------------------
+        self._perform_startup_loading()
+
+    def set_splash_process(self, proc) -> None:
+        """Store the external splash screen subprocess to terminate it later."""
+        self._splash_proc = proc
+
+
     # Settings pages
     # ------------------------------------------------------------------
 
@@ -129,45 +141,57 @@ class MainWindow(QMainWindow):
         self._worker.finished_loading.connect(self._on_worker_finished)
         self._worker.start()
 
-    def _on_worker_finished(self):
-        # We are back on the main thread. Apply UI.
+    def _on_worker_finished(self) -> None:
+        """Worker done. Ensure minimum splash time has elapsed before showing UI."""
+        import time
+        elapsed = time.time() - self._start_time
+        remaining = max(0, 2.5 - elapsed)
+        
+        if remaining > 0:
+            QTimer.singleShot(int(remaining * 1000), self._finish_startup)
+        else:
+            self._finish_startup()
+
+    def _finish_startup(self, is_first_run: bool = False) -> None:
+        """All conditions met. Load data, hide splash, show target view."""
+
+        if is_first_run:
+            self._dismiss_splash()
+            self._show_first_run_dialog()
+            return
+
+        # Build manager grid (splash still animating)
         docs = getattr(AppState(), "_cached_startup_docs", [])
         self._manager_view._all_docs = docs
         self._manager_view._display_docs(docs)
-        self._target_index = 0
-        
+
+        # Open last document if available
+        target_index = 0
         last_doc = AppSettings.get_last_opened_doc()
         if last_doc:
             last_path = Path(last_doc)
             if last_path.exists():
                 if last_path.suffix == ".freenotes":
                     self._viewer_window.open_freenotes(str(last_path))
-                    self._target_index = 1
+                    target_index = 1
                 elif last_path.suffix == ".pdf":
                     self._viewer_window.open_pdf(last_path)
-                    self._target_index = 1
+                    target_index = 1
 
-        import time
-        elapsed_ms = int((time.time() - self._startup_time) * 1000)
-        min_duration_ms = 2500  # 2.5 seconds minimum
-        
-        remaining_ms = max(0, min_duration_ms - elapsed_ms)
-        
-        if remaining_ms > 0:
-            QTimer.singleShot(remaining_ms, self._finish_startup)
-        else:
-            self._finish_startup()
+        self._stack.setCurrentIndex(target_index)
+        self._dismiss_splash()
 
-    def _finish_startup(self, is_first_run: bool = False) -> None:
-        """Finalizes startup by hiding splash screen and showing target view."""
-        self._splash_screen.stop_animation()
+    def _dismiss_splash(self) -> None:
+        """Kill the external splash process and reveal the main window."""
+        if self._splash_proc:
+            self._splash_proc.terminate()
+            self._splash_proc = None
         
-        if is_first_run:
-            self._stack.setCurrentIndex(0)
-            self._show_first_run_dialog()
-            return
+        self.showMaximized()
 
-        self._stack.setCurrentIndex(getattr(self, "_target_index", 0))
+    # ------------------------------------------------------------------
+    # First-run dialog
+    # ------------------------------------------------------------------
 
     def _show_first_run_dialog(self) -> None:
         """Show welcome dialog to choose annotations root folder."""
@@ -221,7 +245,6 @@ class MainWindow(QMainWindow):
         ok_btn.clicked.connect(dialog.accept)
         layout.addWidget(ok_btn)
 
-        # Style the dialog
         dialog.setStyleSheet("""
             #firstRunDialog { background: #1e1e1e; }
             #browseBtn {
@@ -240,7 +263,6 @@ class MainWindow(QMainWindow):
 
         dialog.exec()
 
-        # Save settings
         AppSettings.set_annotations_root(self._first_run_path)
         AppState().library_manager = LibraryManager(self._first_run_path)
 
@@ -267,8 +289,9 @@ class MainWindow(QMainWindow):
 
     def show_manager(self) -> None:
         """Switch to the file manager view."""
-        self._manager_view.load_grid(AppState().current_folder)
-        self._stack.setCurrentIndex(0)
+        self._stack_transition.switch_to(0)
+        # Yield to event loop to allow cross-fade animation to render smoothly
+        QTimer.singleShot(150, lambda: self._manager_view.load_grid(AppState().current_folder))
 
     def show_viewer(self, path: Path) -> None:
         """Switch to the viewer and open the given PDF.
@@ -276,13 +299,15 @@ class MainWindow(QMainWindow):
         Args:
             path: Path to the PDF file to open.
         """
-        self._viewer_window.open_pdf(path)
-        self._stack.setCurrentIndex(1)
+        self._viewer_window.clear_ui()
+        self._stack_transition.switch_to(1)
+        # Yield to event loop to allow cross-fade animation to render smoothly
+        QTimer.singleShot(150, lambda: self._viewer_window.open_pdf(path))
 
     def show_settings(self, page: str = "display") -> None:
         """Switch to the settings screen."""
         self._settings_view.show_page(page)
-        self._stack.setCurrentIndex(3)
+        self._stack_transition.switch_to(2)
 
     # ------------------------------------------------------------------
     # Drag & Drop
@@ -302,4 +327,3 @@ class MainWindow(QMainWindow):
             if file_path.lower().endswith(".pdf"):
                 self.show_viewer(Path(file_path))
                 break
-

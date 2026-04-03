@@ -345,6 +345,20 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         )
         undo_stack.push(cmd)
 
+    def clear_ui(self) -> None:
+        """Instantly blanks out the viewer UI to hide previous documents during transitions."""
+        self._page_scene.clear()
+        if hasattr(self._page_scene, '_page_items'):
+            self._page_scene._page_items.clear()
+            self._page_scene._page_rects.clear()
+            self._page_scene._tile_cache._cache.clear()
+        self._sidebar.clear()
+        self._title_label.setText("Lädt ...")
+        self._ext_label.setText("")
+        self._breadcrumb_label.setText("")
+        if hasattr(self, '_total_pages_label'):
+            self._total_pages_label.setText("0")
+
     def _on_back_clicked(self) -> None:
         """Save zoom and navigate back to manager."""
         self._save_current_zoom()
