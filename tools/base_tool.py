@@ -68,6 +68,15 @@ class BaseTool(QObject):
         """
         ...
 
+    def on_double_click(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
+        """Handle mouse double click in the scene. Default is no-op.
+
+        Args:
+            event: The mouse double click event in scene coordinates.
+            scene: The PageScene instance.
+        """
+        pass
+
     def activate(self, scene: PageScene) -> None:
         """Called when this tool becomes the active tool.
 

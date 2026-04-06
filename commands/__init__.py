@@ -25,6 +25,9 @@ __all__ = [
     "ReorderPagesCommand",
     "AddPageCommand",
     "DeletePageCommand",
+    "MoveImageCommand",
+    "ResizeImageCommand",
+    "RotateImageCommand",
 ]
 
 from .add_item_command import AddItemCommand
@@ -51,3 +54,7 @@ from .resize_shape_command import ResizeShapeCommand
 from .reorder_pages_command import ReorderPagesCommand
 from .add_page_command import AddPageCommand
 from .delete_page_command import DeletePageCommand
+from .move_image_command import MoveImageCommand
+from .resize_image_command import ResizeImageCommand
+from .rotate_image_command import RotateImageCommand
+

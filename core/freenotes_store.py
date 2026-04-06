@@ -17,6 +17,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 
 if TYPE_CHECKING:
     from ui.scene.page_scene import PageScene
@@ -46,6 +47,7 @@ class FreenotesStore:
         all_pages.update(scene._highlight_items.keys())
         all_pages.update(scene._text_box_items.keys())
         all_pages.update(scene._shape_items.keys())
+        all_pages.update(scene._image_items.keys())
 
         for page_idx in sorted(all_pages):
             page_data: dict = {
@@ -53,6 +55,7 @@ class FreenotesStore:
                 "highlights": [],
                 "textboxes": [],
                 "shapes": [],
+                "images": [],
             }
 
             for item in scene._stroke_items.get(page_idx, []):
@@ -66,6 +69,9 @@ class FreenotesStore:
 
             for item in scene._shape_items.get(page_idx, []):
                 page_data["shapes"].append(item.to_dict())
+
+            for item in scene._image_items.get(page_idx, []):
+                page_data["images"].append(item.to_dict())
 
             # Skip pages with no annotations
             if any(v for v in page_data.values()):
@@ -140,6 +146,14 @@ class FreenotesStore:
                 except Exception as e:
                     logger.warning("Shape laden fehlgeschlagen: %s", e)
 
+            for d in page_data.get("images", []):
+                try:
+                    item = ImageItem.from_dict(d)
+                    scene.addItem(item)
+                    scene.add_item_to_registry(item)
+                except Exception as e:
+                    logger.warning("Image laden fehlgeschlagen: %s", e)
+
         return pdf_path, structural_modified
 
     # ------------------------------------------------------------------
@@ -151,13 +165,14 @@ class FreenotesStore:
         """Remove all annotation items from the scene."""
         for item in list(scene.items()):
             if isinstance(item, (StrokeItem, HighlightItem,
-                                 TextBoxItem, ShapeItem)):
+                                 TextBoxItem, ShapeItem, ImageItem)):
                 scene.removeItem(item)
 
         scene._stroke_items.clear()
         scene._highlight_items.clear()
         scene._text_box_items.clear()
         scene._shape_items.clear()
+        scene._image_items.clear()
 
     # ------------------------------------------------------------------
     # Path resolution

@@ -300,7 +300,10 @@ class DragReorderController(QObject):
 
             if new_order != self._saved_order:
                 self._on_reorder(new_order)
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"[DRAG-ERROR] Exception during drag end: {e}")
             # Show card if anything goes wrong
             if self._drag_card:
                 try:

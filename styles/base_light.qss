@@ -109,13 +109,15 @@ QStackedWidget {
     color: #d0d0d0;
 }
 
-/* Settings Button */
-QToolButton#settingsBtn {
+/* Settings & Multi-Select Buttons */
+QToolButton#settingsBtn,
+QToolButton#multiSelectBtn {
     background: transparent;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
 }
-QToolButton#settingsBtn:hover {
+QToolButton#settingsBtn:hover,
+QToolButton#multiSelectBtn:hover {
     background: #e0e0e0;
     border-color: #b0b0b0;
 }

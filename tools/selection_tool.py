@@ -31,7 +31,8 @@ def _get_selectable_types() -> tuple:
         from items.highlight_item import HighlightItem
         from items.text_box_item import TextBoxItem
         from items.shape_item import ShapeItem
-        _SELECTABLE_TYPES = (StrokeItem, HighlightItem, TextBoxItem, ShapeItem)
+        from items.image_item import ImageItem
+        _SELECTABLE_TYPES = (StrokeItem, HighlightItem, TextBoxItem, ShapeItem, ImageItem)
     return _SELECTABLE_TYPES
 
 
@@ -207,6 +208,16 @@ class SelectionTool(BaseTool):
         self._drag_start = None
         self._cleanup_visuals(scene)
 
+    def on_double_click(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
+        from items.text_box_item import TextBoxItem
+        items_at = scene.items(event.scenePos())
+        for item in items_at:
+            if isinstance(item, TextBoxItem):
+                scene.tool_switch_requested.emit("text")
+                item.mousePressEvent(event)
+                item.mouseDoubleClickEvent(event)
+                break
+
     # ── Rect visual ────────────────────────────────────────────
 
     def _start_rect_visual(self, scene: PageScene, pos: QPointF) -> None:
@@ -317,91 +328,6 @@ class SelectionTool(BaseTool):
     def _show_context_menu(
         self, event: QGraphicsSceneMouseEvent, scene: PageScene
     ) -> None:
-        """Show right-click context menu for selected items."""
-        from PySide6.QtWidgets import QMenu
-        from PySide6.QtGui import QAction
-        from items.text_box_item import TextBoxItem
-        from items.selection_overlay_item import SelectionOverlayItem
-        from app.app_state import AppState
-
-        pos = event.scenePos()
-        sel_types = _get_selectable_types()
-
-        # Check if right-click is on an item
-        items_at = scene.items(QRectF(pos.x() - 3, pos.y() - 3, 6, 6))
-        hit_item = next(
-            (i for i in items_at
-             if isinstance(i, sel_types)
-             and not isinstance(i, SelectionOverlayItem)),
-            None,
-        )
-
-        # If hit an item not in selection, select it first
-        if hit_item and hit_item not in scene._selected_items:
-            scene.set_selection([hit_item])
-
-        # If no selection, nothing to show
-        if not scene._selected_items:
-            return
-
-        # Skip for single TextBoxItem (it has its own popup)
-        if (len(scene._selected_items) == 1
-                and isinstance(next(iter(scene._selected_items)), TextBoxItem)):
-            return
-
-        has_clipboard = bool(AppState().items_clipboard)
-
-        # Build context menu
-        menu = QMenu()
-        menu.setObjectName("selectionContextMenu")
-        menu.setStyleSheet("""
-            QMenu#selectionContextMenu {
-                background-color: #2d2d2d;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px 0;
-                font-family: "Segoe UI", sans-serif;
-                font-size: 13px;
-            }
-            QMenu#selectionContextMenu::item {
-                padding: 8px 32px 8px 12px;
-                color: #cccccc;
-            }
-            QMenu#selectionContextMenu::item:selected {
-                background-color: #3B7BF5;
-                color: #ffffff;
-            }
-            QMenu#selectionContextMenu::item:disabled {
-                color: #666666;
-            }
-            QMenu#selectionContextMenu::separator {
-                height: 1px;
-                background: #3a3a3a;
-                margin: 4px 8px;
-            }
-        """)
-
-        copy_action = QAction("Kopieren\tStrg+C", menu)
-        copy_action.triggered.connect(scene.copy_selected)
-        menu.addAction(copy_action)
-
-        cut_action = QAction("Ausschneiden\tStrg+X", menu)
-        cut_action.triggered.connect(scene.cut_selected)
-        menu.addAction(cut_action)
-
-        menu.addSeparator()
-
-        paste_action = QAction("Einfügen\tStrg+V", menu)
-        paste_action.setEnabled(has_clipboard)
-        paste_action.triggered.connect(scene.paste_clipboard)
-        menu.addAction(paste_action)
-
-        menu.addSeparator()
-
-        delete_action = QAction("Löschen\tEntf", menu)
-        delete_action.triggered.connect(scene.delete_selected)
-        menu.addAction(delete_action)
-
-        # Show at screen position
-        screen_pos = event.screenPos()
-        menu.exec(screen_pos)
+        """Show unified right-click context menu."""
+        from tools.tool_context_menu import build_tool_context_menu
+        build_tool_context_menu(event, scene)

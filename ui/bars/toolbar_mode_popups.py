@@ -80,8 +80,10 @@ class ToolbarModePopupsMixin:
         menu.exec(pos)
 
     def _set_eraser_mode(self, mode: str) -> None:
-        """Set eraser mode and update tooltip."""
+        """Set eraser mode, update tooltip, and persist to settings."""
         self._eraser_mode = mode
+        from core.app_settings import AppSettings
+        AppSettings.set_eraser_mode(mode)
         self._update_eraser_tooltip()
         self.eraser_mode_changed.emit(mode)
 
@@ -158,8 +160,10 @@ class ToolbarModePopupsMixin:
         menu.exec(pos)
 
     def _set_selection_mode(self, mode: str) -> None:
-        """Set selection mode and update tooltip."""
+        """Set selection mode, update tooltip, and persist to settings."""
         self._selection_mode = mode
+        from core.app_settings import AppSettings
+        AppSettings.set_selection_mode(mode)
         self._update_selection_tooltip()
         self.selection_mode_changed.emit(mode)
 

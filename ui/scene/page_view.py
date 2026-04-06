@@ -4,8 +4,9 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
     Signal,
+    QPointF,
 )
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsView
 
 from app.app_state import AppState
@@ -52,6 +53,7 @@ class PageView(QGraphicsView):
             QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate
         )
         self.setBackgroundBrush(Qt.GlobalColor.transparent)
+        self.setAcceptDrops(True)
 
         # Track scrolling to detect current visible page
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
@@ -312,3 +314,111 @@ class PageView(QGraphicsView):
         else:
             mip = MipLevel.FULL
         self._page_scene._current_mip = mip
+
+    # ------------------------------------------------------------------
+    # Drag & Drop for image files
+    # ------------------------------------------------------------------
+
+    _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+    def dragEnterEvent(self, event) -> None:
+        """Accept drag if it contains image files or image data."""
+        mime = event.mimeData()
+        if mime.hasUrls():
+            for url in mime.urls():
+                if url.isLocalFile():
+                    path = url.toLocalFile().lower()
+                    if any(path.endswith(ext) for ext in self._IMAGE_EXTENSIONS):
+                        event.acceptProposedAction()
+                        return
+        if mime.hasImage():
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        """Accept move during drag."""
+        event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        """Handle image file drop — create ImageItem annotation."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        mime = event.mimeData()
+        drop_pos = self.mapToScene(event.position().toPoint())
+
+        # Determine target page
+        page_idx = self._page_scene.get_page_index_at(drop_pos)
+        if page_idx < 0:
+            # Drop outside any page — use current page
+            page_idx = self._app_state.current_page
+            page_rect = self._page_scene.get_page_rect(page_idx)
+            if not page_rect.isEmpty():
+                drop_pos = QPointF(page_rect.center().x(), page_rect.top() + 50)
+
+        items_created = []
+
+        if mime.hasUrls():
+            for url in mime.urls():
+                if not url.isLocalFile():
+                    continue
+                file_path = url.toLocalFile()
+                if not any(file_path.lower().endswith(ext) for ext in self._IMAGE_EXTENSIONS):
+                    continue
+                try:
+                    from items.image_item import ImageItem
+                    item = ImageItem.from_image_file(file_path, drop_pos, page_idx)
+                    # Scale down large images to fit page width
+                    page_rect = self._page_scene.get_page_rect(page_idx)
+                    if not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
+                        scale = (page_rect.width() * 0.8) / item._rect.width()
+                        new_w = item._rect.width() * scale
+                        new_h = item._rect.height() * scale
+                        from PySide6.QtCore import QRectF
+                        item.set_rect(QRectF(drop_pos.x(), drop_pos.y(), new_w, new_h))
+                    self._page_scene.addItem(item)
+                    self._page_scene.add_item_to_registry(item)
+                    items_created.append(item)
+                    # Offset next image slightly
+                    drop_pos = QPointF(drop_pos.x() + 20, drop_pos.y() + 20)
+                except Exception as e:
+                    logger.warning("Image drop failed: %s", e)
+
+        elif mime.hasImage():
+            try:
+                from items.image_item import ImageItem
+                from PySide6.QtGui import QImage
+                image = QImage(mime.imageData())
+                if not image.isNull():
+                    item = ImageItem.from_qimage(image, drop_pos, page_idx)
+                    # Scale down large images
+                    page_rect = self._page_scene.get_page_rect(page_idx)
+                    if not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
+                        scale = (page_rect.width() * 0.8) / item._rect.width()
+                        new_w = item._rect.width() * scale
+                        new_h = item._rect.height() * scale
+                        from PySide6.QtCore import QRectF
+                        item.set_rect(QRectF(drop_pos.x(), drop_pos.y(), new_w, new_h))
+                    self._page_scene.addItem(item)
+                    self._page_scene.add_item_to_registry(item)
+                    items_created.append(item)
+            except Exception as e:
+                logger.warning("Image clipboard drop failed: %s", e)
+
+        if items_created:
+            # Push undo command
+            from commands.paste_items_command import PasteItemsCommand
+            from core import undo_stack
+            cmd = PasteItemsCommand(items_created, self._page_scene)
+            undo_stack.push(cmd)
+
+            # Select dropped items
+            self._page_scene.set_selection(items_created)
+
+            # Auto-switch to hand tool
+            self._page_scene.tool_switch_requested.emit("hand")
+
+            event.acceptProposedAction()
+        else:
+            event.ignore()

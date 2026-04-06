@@ -122,8 +122,7 @@ class DisplayPage(QWidget):
         from core.app_settings import AppSettings
         from app.app_state import AppState
         AppSettings.set_default_font_size(size)
-        if hasattr(AppState(), "default_font_size"):
-            AppState().default_font_size = size
+        AppState().update_style(font_size=size)
 
     # ------------------------------------------------------------------
     # Widget helpers

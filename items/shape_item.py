@@ -94,6 +94,7 @@ class ShapeItem(QGraphicsItem):
     def set_selected(self, selected: bool) -> None:
         self.prepareGeometryChange()
         self._is_selected = selected
+        self._cached_br = None
         self.update()
 
     def set_selected_custom(self, selected: bool) -> None:
@@ -101,6 +102,7 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._is_selected = selected
         self._is_selected_custom = selected
+        self._cached_br = None
         self._set_handles_visible(selected)
         if selected:
             self._update_handle_positions()
@@ -165,13 +167,15 @@ class ShapeItem(QGraphicsItem):
                 HandlePosition.BOT_RIGHT: p2,
             }
         else:
+            # Offset handles outward to sit on the dashed selection border
+            pad = self._style.stroke_width / 2.0 + 3.0
             positions = {
-                HandlePosition.TOP_LEFT: QPointF(r.left(), r.top()),
-                HandlePosition.TOP_RIGHT: QPointF(r.right(), r.top()),
-                HandlePosition.MID_LEFT: QPointF(r.left(), r.center().y()),
-                HandlePosition.MID_RIGHT: QPointF(r.right(), r.center().y()),
-                HandlePosition.BOT_LEFT: QPointF(r.left(), r.bottom()),
-                HandlePosition.BOT_RIGHT: QPointF(r.right(), r.bottom()),
+                HandlePosition.TOP_LEFT: QPointF(r.left() - pad, r.top() - pad),
+                HandlePosition.TOP_RIGHT: QPointF(r.right() + pad, r.top() - pad),
+                HandlePosition.MID_LEFT: QPointF(r.left() - pad, r.center().y()),
+                HandlePosition.MID_RIGHT: QPointF(r.right() + pad, r.center().y()),
+                HandlePosition.BOT_LEFT: QPointF(r.left() - pad, r.bottom() + pad),
+                HandlePosition.BOT_RIGHT: QPointF(r.right() + pad, r.bottom() + pad),
             }
             
         for pos, point in positions.items():
@@ -180,11 +184,26 @@ class ShapeItem(QGraphicsItem):
                 self._handles[pos].set_is_endpoint(is_linear)
                 
         if hasattr(self, '_move_handle'):
-            self._move_handle.update_position(self._rect)
+            if not is_linear:
+                pad = self._style.stroke_width / 2.0 + 3.0
+                padded = self._rect.adjusted(-pad, -pad, pad, pad)
+                self._move_handle.update_position(padded)
+            else:
+                self._move_handle.update_position(self._rect)
         if hasattr(self, '_rotate_handle'):
-            self._rotate_handle.update_position(self._rect)
+            if not is_linear:
+                pad = self._style.stroke_width / 2.0 + 3.0
+                padded = self._rect.adjusted(-pad, -pad, pad, pad)
+                self._rotate_handle.update_position(padded)
+            else:
+                self._rotate_handle.update_position(self._rect)
         if hasattr(self, '_options_handle') and self._options_handle.isVisible():
-            self._options_handle.update_position(self._rect)
+            if not is_linear:
+                pad = self._style.stroke_width / 2.0 + 3.0
+                padded = self._rect.adjusted(-pad, -pad, pad, pad)
+                self._options_handle.update_position(padded)
+            else:
+                self._options_handle.update_position(self._rect)
 
     def _set_handles_visible(self, visible: bool) -> None:
         is_linear = self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)

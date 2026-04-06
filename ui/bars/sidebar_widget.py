@@ -184,11 +184,6 @@ class SidebarWidget(QScrollArea):
         )
         undo_stack.push(cmd)
 
-        self._scene.reorder_annotations(new_order)
-        self._doc_manager.reorder_pages(new_order)
-        self._scene.rebuild_after_reorder(self._doc_manager, order=new_order)
-        self.refresh_order(new_order)
-
     def refresh_order(self, new_order: list[int]) -> None:
         """Reorder cards to match new_order and update page numbers.
 

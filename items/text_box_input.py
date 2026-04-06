@@ -87,6 +87,39 @@ class TextBoxInputMixin:
                 fmt = self._cursor.charFormat()
                 self.apply_strikethrough(not fmt.fontStrikeOut())
                 event.accept(); return
+            # Ctrl+V: paste plain text from system clipboard
+            if key == Qt.Key.Key_V:
+                from PySide6.QtWidgets import QApplication
+                clip_text = QApplication.clipboard().text()
+                if clip_text:
+                    self._mark_undo_pending()
+                    self._cursor.insertText(clip_text)
+                    self._on_text_modified()
+                    self._on_cursor_moved()
+                    event.accept(); return
+                # No system text → let scene handle object paste
+                event.ignore(); return
+
+            # Ctrl+C: copy selected text to system clipboard
+            if key == Qt.Key.Key_C:
+                if self._cursor.hasSelection():
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.clipboard().setText(
+                        self._cursor.selectedText())
+                event.accept(); return
+
+            # Ctrl+X: cut selected text to system clipboard
+            if key == Qt.Key.Key_X:
+                if self._cursor.hasSelection():
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.clipboard().setText(
+                        self._cursor.selectedText())
+                    self._mark_undo_pending()
+                    self._cursor.removeSelectedText()
+                    self._on_text_modified()
+                    self._on_cursor_moved()
+                event.accept(); return
+
             # Other Ctrl combos (e.g. Ctrl+Z) → pass to scene
             event.ignore(); return
 

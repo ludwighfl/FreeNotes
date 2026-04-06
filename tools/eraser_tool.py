@@ -13,6 +13,7 @@ from items.eraser_cursor_item import EraserCursorItem
 from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 from tools.base_tool import BaseTool
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ class EraserTool(BaseTool):
     EraserMode = EraserMode  # Expose enum as class attribute
 
     DEFAULT_RADIUS: float = 15.0
-    AFFECTED_ITEM_TYPES = (StrokeItem, HighlightItem, ShapeItem)
+    AFFECTED_ITEM_TYPES = (StrokeItem, HighlightItem, ShapeItem, ImageItem)
 
     def __init__(
         self,
@@ -222,8 +223,8 @@ class EraserTool(BaseTool):
             if item in self._erased_items:
                 continue  # Already fully deleted this drag
 
-            # ShapeItems cannot be partially erased — delete whole item
-            if isinstance(item, ShapeItem):
+            # ShapeItems and ImageItems cannot be partially erased — delete whole item
+            if isinstance(item, (ShapeItem, ImageItem)):
                 if item not in self._erased_items:
                     self._erased_items.append(item)
                     self._affected_items.append((item, None))

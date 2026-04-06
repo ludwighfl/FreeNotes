@@ -6,6 +6,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 
 
 class SceneRegistryMixin:
@@ -16,6 +17,7 @@ class SceneRegistryMixin:
         _highlight_items: dict[int, list[HighlightItem]]
         _text_box_items: dict[int, list[TextBoxItem]]
         _shape_items: dict[int, list[ShapeItem]]
+        _image_items: dict[int, list[ImageItem]]
         removeItem(): method (from QGraphicsScene)
         update(): method
     """
@@ -129,6 +131,13 @@ class SceneRegistryMixin:
                     return
                 except ValueError:
                     continue
+        elif isinstance(item, ImageItem):
+            for page_items in self._image_items.values():
+                try:
+                    page_items.remove(item)
+                    return
+                except ValueError:
+                    continue
 
     def add_item_to_registry(self, item: object) -> None:
         """Add an annotation item to the correct tracking registry.
@@ -167,9 +176,17 @@ class SceneRegistryMixin:
             if item not in existing:
                 existing.append(item)
                 self._shape_items[page_idx] = existing
+        elif isinstance(item, ImageItem):
+            page_idx = item.page_index
+            if page_idx < 0:
+                return
+            existing = self._image_items.get(page_idx, [])
+            if item not in existing:
+                existing.append(item)
+                self._image_items[page_idx] = existing
 
     def get_all_annotation_items(self) -> list:
-        """Return all StrokeItems, HighlightItems, and TextBoxItems from all pages."""
+        """Return all annotation items from all pages."""
         result = []
         for items in self._stroke_items.values():
             result.extend(items)
@@ -178,5 +195,7 @@ class SceneRegistryMixin:
         for items in self._text_box_items.values():
             result.extend(items)
         for items in self._shape_items.values():
+            result.extend(items)
+        for items in self._image_items.values():
             result.extend(items)
         return result

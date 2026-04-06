@@ -20,6 +20,7 @@ class DocumentManager:
 
     def __init__(self) -> None:
         self._document: fitz.Document | None = None
+        self._structurally_modified: bool = False
         self._path: Path | None = None
         self._renderer: PdfRenderer = PdfRenderer()
         self.page_map: list[int] = []
@@ -46,13 +47,16 @@ class DocumentManager:
                 return False
 
     def close_document(self) -> None:
-        """Close the currently open document and clear the cache."""
+        """Close the currently open document safely."""
         with self._lock:
-            if self._document is not None:
-                self._document.close()
+            if self._document:
+                try:
+                    self._document.close()
+                except ValueError:
+                    pass
                 self._document = None
             self._path = None
-            self.page_map = []
+            self.page_map.clear()
             self._cache.clear()
 
     def get_page_count(self) -> int:
@@ -111,6 +115,7 @@ class DocumentManager:
         with self._lock:
             if self._document is None:
                 return
+            self._structurally_modified = True
             self._document.select(new_order)
             self.page_map = [self.page_map[i] for i in new_order]
             
@@ -133,6 +138,7 @@ class DocumentManager:
         with self._lock:
             if self._document is None:
                 return
+            self._structurally_modified = True
             if source_idx is None:
                 self._document.insert_page(at_index, width=595, height=842)
                 self.page_map.insert(at_index, -1)
@@ -158,6 +164,7 @@ class DocumentManager:
         with self._lock:
             if self._document is None:
                 return
+            self._structurally_modified = True
             self._document.delete_page(page_idx)
             self.page_map.pop(page_idx)
             
@@ -203,6 +210,7 @@ class DocumentManager:
         with self._lock:
             if self._document is None:
                 return
+            self._structurally_modified = True
             old_count = self._document.page_count
             new_doc = fitz.open()
             old_doc = self._document
@@ -237,6 +245,35 @@ class DocumentManager:
         Returns None if no document is open.
         """
         return str(self._path) if self._path else None
+        
+    @property
+    def is_structurally_modified(self) -> bool:
+        return self._structurally_modified
+        
+    def reset_structurally_modified(self) -> None:
+        self._structurally_modified = False
+
+    def overwrite_pdf(self) -> None:
+        """Safely overwrite the original PDF file with current structural changes.
+        Must be called ONLY when TileRenderer has been temporarily stopped and its
+        connection pool has been closed, to avoid file lock errors on Windows.
+        """
+        import os
+        with self._lock:
+            if not self._document or not self._path:
+                return
+            temp_path = self._path.with_suffix(".tmp.pdf")
+            self._document.save(str(temp_path), garbage=3, deflate=True)
+            self._document.close()
+            os.replace(str(temp_path), str(self._path))
+            
+            import fitz
+            self._document = fitz.open(str(self._path))
+            
+            # The physical file now exactly matches the UI layout!
+            # We must reset page_map to identity map
+            self.page_map = list(range(self._document.page_count))
+            self._structurally_modified = False
 
     def search_text(self, query: str) -> list[dict]:
         """Search for text across all pages.

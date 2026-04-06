@@ -72,9 +72,11 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._popup: ColorPickerPopup | None = None
         self._active_color_index: int = 0
         self._editing_chip_index: int = -1
-        self._current_tool_name: str = "hand"
-        self._selection_mode: str = "rect"  # "rect" or "lasso"
-        self._eraser_mode: str = "object"  # "object" or "pixel"
+        from core.app_settings import AppSettings
+        
+        self._current_tool_name: str = AppSettings.get_active_tool()
+        self._selection_mode: str = AppSettings.get_selection_mode()
+        self._eraser_mode: str = AppSettings.get_eraser_mode()
 
         # Eraser tool double-click detection
         self._eraser_click_timer: QTimer = QTimer(self)
@@ -98,16 +100,22 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._shape_pending_id: int = -1
 
         # Per-tool style memory: tool_name -> (color_chip_index, width_btn_index)
-        self._tool_memory: dict[str, tuple[int, int]] = {
+        default_memory = {
             "pen": (0, 0),
-            "highlighter": (7, 1),  # default: yellow (#fdd835), medium width
-            "eraser": (0, 1),       # default: black, medium radius
-            "text": (0, 0),         # default: black, width ignored
-            "shape": (0, 1),        # default: black, medium width
+            "highlighter": (7, 1),
+            "eraser": (0, 1),
+            "text": (0, 0),
+            "shape": (0, 1),
+        }
+        loaded_memory = AppSettings.get_tool_memory()
+        # Convert list back to tuple since JSON saves as list
+        self._tool_memory: dict[str, tuple[int, int]] = {
+            k: tuple(loaded_memory.get(k, default_memory.get(k, (0, 0))))
+            for k in default_memory.keys()
         }
 
-        # Live color palette (mutable copy of defaults)
-        self._chip_colors: list[str] = list(self.DEFAULT_COLORS)
+        # Live color palette
+        self._chip_colors: list[str] = AppSettings.get_pen_colors()
 
         # Double-click detection
         self._last_click_chip: int = -1
@@ -171,7 +179,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
             if tool_id in self.ENABLED_TOOLS:
                 btn.setEnabled(True)
-                if tool_id == "hand":
+                if tool_id == self._current_tool_name:
                     btn.setChecked(True)
             else:
                 btn.setEnabled(False)
@@ -304,6 +312,16 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         # Clear/update chips safely for current tool state
         self.update_width_buttons(self._current_tool_name)
 
+    def showEvent(self, event) -> None:
+        """Reload settings from AppSettings when toolbar becomes visible."""
+        super().showEvent(event)
+        from core.app_settings import AppSettings
+        self._chip_colors = list(AppSettings.get_pen_colors())
+        self._update_chip_icons()
+        
+        # Bring in default color/width if they were out of sync
+        # Though the active chip is managed by tool_memory, we just ensure colors are correct.
+
     # ------------------------------------------------------------------
     # Undo / Redo tooltip slots
     # ------------------------------------------------------------------
@@ -372,6 +390,9 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
             self._app_state.update_style(color=color)
             self.style_changed.emit(self._app_state.tool_style)
+            
+            from core.app_settings import AppSettings
+            AppSettings.set_pen_colors(self._chip_colors)
 
     # ------------------------------------------------------------------
     # Chip icon management
@@ -422,6 +443,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 self._active_color_index,
                 width_id,
             )
+            from core.app_settings import AppSettings
+            AppSettings.set_tool_memory(self._tool_memory)
 
     def _restore_tool_memory(self, tool_name: str) -> None:
         """Restore saved color and width selection for the given tool."""
@@ -494,6 +517,10 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             # Normal tool switch
             self._save_tool_memory()
             self._current_tool_name = tool_id
+            
+            from core.app_settings import AppSettings
+            AppSettings.set_active_tool(tool_id)
+            
             self.tool_changed.emit(tool_id)
 
     def _show_shape_menu(self) -> None:
@@ -512,6 +539,10 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._shape_btn.setChecked(True)
         self._save_tool_memory()
         self._current_tool_name = "shape"
+        
+        from core.app_settings import AppSettings
+        AppSettings.set_active_tool("shape")
+        
         self.tool_changed.emit("shape")
 
     def _clear_color_selection(self) -> None:

@@ -1,5 +1,7 @@
 """Stroke item – a QGraphicsItem representing a single pen/highlighter stroke."""
 
+from __future__ import annotations
+
 from PySide6.QtCore import QRectF, QPointF
 from PySide6.QtGui import QPainter, QPainterPath, QPainterPathStroker, QPen, QColor, QBrush
 from PySide6.QtWidgets import (
@@ -240,4 +242,39 @@ class StrokeItem(QGraphicsItem):
         self.setPos(pos)
         self._cached_br = None
         self.update()
+
+    # ------------------------------------------------------------------
+    # Serialization (for clone_page_annotations)
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        points = []
+        for i in range(self._path.elementCount()):
+            el = self._path.elementAt(i)
+            points.append((el.x, el.y))
+        return {
+            "type": "stroke",
+            "points": points,
+            "color": self._style.color.name(),
+            "width": self._style.width,
+            "page_index": self._page_index,
+            "pos": (self.pos().x(), self.pos().y()),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> StrokeItem:
+        path = QPainterPath()
+        pts = d.get("points", [])
+        if pts:
+            path.moveTo(pts[0][0], pts[0][1])
+            for px, py in pts[1:]:
+                path.lineTo(px, py)
+        style = ToolStyle(
+            color=QColor(d["color"]),
+            width=d["width"],
+        )
+        item = cls(path=path, style=style, page_index=d.get("page_index", -1))
+        if "pos" in d:
+            item.setPos(QPointF(*d["pos"]))
+        return item
 

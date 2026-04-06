@@ -26,8 +26,12 @@ from PySide6.QtWidgets import (
 from ui.components.icon_factory import IconFactory
 from ui.components.pdf_card import PdfCard
 
+from ui.windows.manager_action_bar_mixin import ManagerActionBarMixin
+from ui.windows.manager_sidebar_mixin import ManagerSidebarMixin
+from ui.windows.manager_grid_mixin import ManagerGridMixin
 
-class ManagerView(QWidget):
+
+class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGridMixin):
     """File manager screen with folder sidebar and PDF card grid."""
 
     open_pdf_requested = Signal(Path)
@@ -98,14 +102,9 @@ class ManagerView(QWidget):
         content_layout.setContentsMargins(20, 16, 20, 12)
         content_layout.setSpacing(12)
 
-        # Header row
+        # Header row using Mixin (it defines _folder_title)
         header = QHBoxLayout()
-        self._folder_title = QLabel("Alle Dokumente")
-        self._folder_title.setFont(
-            QFont("Segoe UI", 16, QFont.Weight.Bold))
-        self._folder_title.setStyleSheet("color: #ffffff;")
-        header.addWidget(self._folder_title)
-        header.addStretch()
+        self.init_action_bar(header)
 
         # Search input with Lucide icon
         self._search_input = QLineEdit()
@@ -117,7 +116,7 @@ class ManagerView(QWidget):
             IconFactory.create("search", color="#666666", size=14),
             QLineEdit.ActionPosition.LeadingPosition)
         self._search_input.textChanged.connect(self._on_search_changed)
-        header.addWidget(self._search_input)
+        self._default_header_right_layout.addWidget(self._search_input)
 
         # Create button with Lucide file_plus icon
         create_btn = QToolButton()
@@ -145,7 +144,18 @@ class ManagerView(QWidget):
 
         act_import.triggered.connect(self._on_import_pdf)
         act_folder.triggered.connect(self._on_create_folder)
-        header.addWidget(create_btn)
+        self._default_header_right_layout.addWidget(create_btn)
+
+        # Multi Select toggle button
+        multi_select_btn = QToolButton()
+        multi_select_btn.setIcon(
+            IconFactory.create("check_square", color="#cccccc", size=20))
+        multi_select_btn.setIconSize(QSize(20, 20))
+        multi_select_btn.setObjectName("multiSelectBtn")
+        multi_select_btn.setFixedSize(36, 36)
+        multi_select_btn.setToolTip("Mehrfachauswahl umschalten")
+        multi_select_btn.clicked.connect(self.toggle_multi_select)
+        self._default_header_right_layout.addWidget(multi_select_btn)
 
         # Settings button (gear)
         settings_btn = QToolButton()
@@ -157,7 +167,7 @@ class ManagerView(QWidget):
         settings_btn.setToolTip("Einstellungen")
         settings_btn.clicked.connect(
             self.settings_requested.emit)
-        header.addWidget(settings_btn)
+        self._default_header_right_layout.addWidget(settings_btn)
 
         content_layout.addLayout(header)
 
@@ -200,231 +210,6 @@ class ManagerView(QWidget):
         self._select_folder(None)
 
     # ------------------------------------------------------------------
-    # Sidebar – folders only
-    # ------------------------------------------------------------------
-
-    def load_sidebar(self) -> None:
-        """Populate the folder sidebar from LibraryManager."""
-        from app.app_state import AppState
-        lm = AppState().library_manager
-        if lm is None:
-            return
-
-        # Clear existing items
-        for w in self._sidebar_widgets:
-            self._sidebar_layout.removeWidget(w)
-            w.deleteLater()
-        self._sidebar_widgets.clear()
-
-        # "Alle Dokumente"
-        all_item = self._make_sidebar_item(
-            icon_name="layout_grid",
-            text="Alle Dokumente",
-            indent=0,
-            active=(self._active_folder is None
-                    and self._active_mode != "recent"),
-            on_click=lambda: self._select_folder(None))
-        self._sidebar_layout.insertWidget(
-            self._sidebar_layout.count() - 1, all_item)
-        self._sidebar_widgets.append(all_item)
-
-        # "Zuletzt geöffnet"
-        from core.app_settings import AppSettings
-        if AppSettings.get_last_opened():
-            recent_item = self._make_sidebar_item(
-                icon_name="clock",
-                text="Zuletzt geöffnet",
-                indent=0,
-                active=(self._active_mode == "recent"),
-                on_click=self._select_recent)
-            self._sidebar_layout.insertWidget(
-                self._sidebar_layout.count() - 1, recent_item)
-            self._sidebar_widgets.append(recent_item)
-
-        # Recursive folder tree
-        self._add_folders_to_sidebar(lm.root, depth=0)
-
-    def _add_folders_to_sidebar(
-        self, parent: Path, depth: int
-    ) -> None:
-        from app.app_state import AppState
-        lm = AppState().library_manager
-        if lm is None:
-            return
-
-        for folder in lm.get_folders(parent):
-            is_expanded = folder in self._expanded_folders
-            is_active = folder == self._active_folder
-
-            chevron = "▼ " if is_expanded else "▶ "
-            icon_name = "folder_open" if is_expanded else "folder"
-
-            item = self._make_sidebar_item(
-                icon_name=icon_name,
-                text=f"{chevron}{folder.name}",
-                indent=depth,
-                active=is_active,
-                on_click=lambda f=folder: self._toggle_folder(f))
-            self._sidebar_layout.insertWidget(
-                self._sidebar_layout.count() - 1, item)
-            self._sidebar_widgets.append(item)
-
-            if is_expanded:
-                self._add_folders_to_sidebar(folder, depth + 1)
-
-    def _make_sidebar_item(
-        self,
-        icon_name: str,
-        text: str,
-        indent: int,
-        active: bool,
-        on_click: object,
-    ) -> QWidget:
-        """Create a clickable sidebar item widget."""
-        item = QWidget()
-        item.setObjectName("sidebarItem")
-        item.setFixedHeight(32)
-        item.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        layout = QHBoxLayout(item)
-        layout.setContentsMargins(8 + indent * 16, 4, 8, 4)
-        layout.setSpacing(8)
-
-        icon_lbl = QLabel()
-        color = "#ffffff" if active else "#cccccc"
-        icon_lbl.setPixmap(
-            IconFactory.create(icon_name, color=color, size=16).pixmap(16, 16))
-        icon_lbl.setFixedSize(16, 16)
-        icon_lbl.setStyleSheet("background: transparent;")
-
-        text_lbl = QLabel(text)
-        text_lbl.setStyleSheet(
-            f"color: {'#ffffff' if active else '#cccccc'};"
-            " font-size: 13px;"
-            " background: transparent;")
-
-        layout.addWidget(icon_lbl)
-        layout.addWidget(text_lbl, 1)
-
-        if active:
-            item.setStyleSheet(
-                "QWidget#sidebarItem {"
-                " background: #3B7BF5;"
-                " border-radius: 6px; }")
-        else:
-            item.setStyleSheet(
-                "QWidget#sidebarItem {"
-                " background: transparent;"
-                " border-radius: 6px; }"
-                "QWidget#sidebarItem:hover {"
-                " background: #2d2d2d; }")
-
-        item.mousePressEvent = lambda e, fn=on_click: fn()
-        return item
-
-    # ------------------------------------------------------------------
-    # Sidebar actions
-    # ------------------------------------------------------------------
-
-    def _toggle_folder(self, folder: Path) -> None:
-        if folder in self._expanded_folders:
-            self._expanded_folders.discard(folder)
-        else:
-            self._expanded_folders.add(folder)
-        self._select_folder(folder)
-
-    def _select_folder(self, folder: Path | None) -> None:
-        self._active_folder = folder
-        self._active_mode = "folder"
-        self.load_sidebar()
-        self.load_grid(folder)
-
-    def _select_recent(self) -> None:
-        self._active_mode = "recent"
-        self._active_folder = None
-        self.load_sidebar()
-        self._load_recent_grid()
-
-    # ------------------------------------------------------------------
-    # Grid – recursive loading
-    # ------------------------------------------------------------------
-
-    def load_grid(self, folder: Path | None) -> None:
-        from app.app_state import AppState
-        lm = AppState().library_manager
-        if lm is None:
-            return
-
-        AppState().current_folder = folder
-
-        if folder is None:
-            self._folder_title.setText("Alle Dokumente")
-        else:
-            self._folder_title.setText(folder.name)
-
-        docs = lm.get_documents_recursive(folder)
-        self._search_input.clear()
-        self._all_docs = docs
-        self._display_docs(docs)
-
-    def _display_docs(self, docs: list[dict]) -> None:
-        self._clear_grid()
-
-        if not docs:
-            self._show_empty_state()
-            return
-        self._hide_empty_state()
-
-        for i, doc in enumerate(docs):
-
-            card = PdfCard(
-                pdf_path=doc["pdf"],
-                freenotes_path=doc["freenotes"],
-                name=doc["name"],
-                modified=doc["modified"],
-                thumbnail_cache=self._thumbnail_cache,
-            )
-            card.double_clicked.connect(self._on_card_double_clicked)
-            card.rename_requested.connect(
-                lambda name, d=doc: self._on_rename(d, name))
-            card.delete_requested.connect(
-                lambda d=doc: self._on_delete(d))
-            row = i // 4
-            col = i % 4
-            self._grid_layout.addWidget(card, row, col)
-            self._cards.append(card)
-
-        # Stagger animate the new cards
-        from ui.animations import StaggerFadeAnimation
-        self._stagger_anim = StaggerFadeAnimation(self._cards, delay_ms=20, max_total_ms=400)
-        self._stagger_anim.start()
-
-        QTimer.singleShot(50, self._check_visible_cards)
-
-    def _load_recent_grid(self) -> None:
-        from core.app_settings import AppSettings
-
-        self._folder_title.setText("Zuletzt geöffnet")
-        self._search_input.clear()
-
-        paths = AppSettings.get_last_opened()
-        docs: list[dict] = []
-        for p_str in paths:
-            p = Path(p_str)
-            if not p.exists():
-                continue
-            pdf = p.with_suffix(".pdf")
-            docs.append({
-                "pdf": pdf if pdf.exists() else None,
-                "freenotes": p,
-                "name": p.stem,
-                "modified": p.stat().st_mtime,
-                "folder": p.parent,
-            })
-        self._all_docs = docs
-        self._display_docs(docs)
-
-    # ------------------------------------------------------------------
     # Live search
     # ------------------------------------------------------------------
 
@@ -436,77 +221,6 @@ class ManagerView(QWidget):
         filtered = [d for d in self._all_docs if query in d["name"].lower()]
         self._display_docs(filtered)
 
-    # ------------------------------------------------------------------
-    # Grid helpers
-    # ------------------------------------------------------------------
-
-    def _clear_grid(self) -> None:
-        for card in self._cards:
-            self._grid_layout.removeWidget(card)
-            card.deleteLater()
-        self._cards.clear()
-
-    def _check_visible_cards(self) -> None:
-        """Check which cards are visible and start progressive rendering."""
-        if not self._cards:
-            return
-        viewport_rect = self._scroll.viewport().rect()
-        vp_global = self._scroll.viewport().mapToGlobal(QPoint(0, 0))
-
-        for card in self._cards:
-            if card._rendered:
-                continue
-            card_global = card.mapToGlobal(QPoint(0, 0))
-            rel = card_global - vp_global
-            card_rect = card.rect().translated(rel.x(), rel.y())
-            if viewport_rect.intersects(card_rect):
-                card.render_if_needed()
-                # Yield to event loop after each render for smooth UI
-                QTimer.singleShot(0, self._check_visible_cards)
-                return
-
-    def _show_empty_state(self) -> None:
-        if not hasattr(self, "_empty_container"):
-            # Create overlay widget parented to scroll viewport
-            self._empty_container = QWidget(self._scroll.viewport())
-            self._empty_container.setObjectName("emptyState")
-            self._empty_container.setStyleSheet(
-                "QWidget#emptyState { background: transparent; }")
-            empty_layout = QVBoxLayout(self._empty_container)
-            empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty_layout.setSpacing(12)
-
-            icon_lbl = QLabel()
-            icon_lbl.setPixmap(
-                IconFactory.create_pixmap(
-                    "folder_x", color="#444444", size=64))
-            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            icon_lbl.setStyleSheet("background: transparent;")
-            empty_layout.addWidget(icon_lbl)
-
-            title_lbl = QLabel("Keine Dokumente")
-            title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title_lbl.setStyleSheet(
-                "color: #555555; font-size: 18px; font-weight: bold;"
-                " background: transparent;")
-            empty_layout.addWidget(title_lbl)
-
-            desc_lbl = QLabel("Importiere ein PDF über 'Erstellen'")
-            desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            desc_lbl.setStyleSheet(
-                "color: #444444; font-size: 13px;"
-                " background: transparent;")
-            empty_layout.addWidget(desc_lbl)
-        # Size to fill the entire viewport and raise above grid
-        vp = self._scroll.viewport()
-        self._empty_container.setGeometry(vp.rect())
-        self._empty_container.raise_()
-        self._empty_container.setVisible(True)
-
-    def _hide_empty_state(self) -> None:
-        if hasattr(self, "_empty_container"):
-            self._empty_container.setVisible(False)
-
     def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._lazy_timer.start()
@@ -516,6 +230,9 @@ class ManagerView(QWidget):
             self._empty_container.setGeometry(vp.rect())
 
     def _on_card_double_clicked(self, doc: dict) -> None:
+        if hasattr(self, "clear_selection"):
+            self.clear_selection()
+            
         pdf_path = doc.get("pdf")
         if pdf_path and pdf_path.exists():
             fn = doc.get("freenotes")
@@ -549,12 +266,22 @@ class ManagerView(QWidget):
 
     def _on_rename(self, doc: dict, new_name: str) -> None:
         from app.app_state import AppState
-        lm = AppState().library_manager
+        app_state = AppState()
+        lm = app_state.library_manager
         if lm:
-            lm.rename_document(doc, new_name)
-            if doc.get("pdf"):
-                self._thumbnail_cache.invalidate(doc["pdf"])
-            self.load_grid(AppState().current_folder)
+            was_open = app_state.current_pdf_path and doc.get("pdf") and app_state.current_pdf_path.resolve() == doc["pdf"].resolve()
+            
+            new_doc = lm.rename_document(doc, new_name)
+            
+            if was_open:
+                app_state.current_pdf_path = new_doc.get("pdf")
+                if new_doc.get("freenotes"):
+                    app_state.freenotes_path = str(new_doc["freenotes"])
+                app_state.document_renamed.emit()
+                
+            if new_doc.get("pdf"):
+                self._thumbnail_cache.invalidate(new_doc["pdf"])
+            self.load_grid(app_state.current_folder)
 
     def _on_delete(self, doc: dict) -> None:
         from app.app_state import AppState
@@ -569,5 +296,7 @@ class ManagerView(QWidget):
     def load_folder(self, folder: Path | None) -> None:
         """Alias for load_grid (backward compatibility)."""
         self.load_grid(folder)
+
+
 
 

@@ -9,6 +9,7 @@ from .rotate_handle_item import RotateHandleItem
 from .move_handle_item import MoveHandleItem
 from .selection_overlay_item import SelectionOverlayItem
 from .shape_item import ShapeItem
+from .image_item import ImageItem
 
 __all__ = [
     "StrokeItem", "HighlightItem", "EraserCursorItem",
@@ -16,4 +17,6 @@ __all__ = [
     "RotateHandleItem", "MoveHandleItem",
     "SelectionOverlayItem",
     "ShapeItem",
+    "ImageItem",
 ]
+

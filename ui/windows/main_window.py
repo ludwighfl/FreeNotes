@@ -165,18 +165,19 @@ class MainWindow(QMainWindow):
         self._manager_view._all_docs = docs
         self._manager_view._display_docs(docs)
 
-        # Open last document if available
+        # Open last document if available, but only if viewer was active
         target_index = 0
-        last_doc = AppSettings.get_last_opened_doc()
-        if last_doc:
-            last_path = Path(last_doc)
-            if last_path.exists():
-                if last_path.suffix == ".freenotes":
-                    self._viewer_window.open_freenotes(str(last_path))
-                    target_index = 1
-                elif last_path.suffix == ".pdf":
-                    self._viewer_window.open_pdf(last_path)
-                    target_index = 1
+        if AppSettings.get_last_active_view() == "viewer":
+            last_doc = AppSettings.get_last_opened_doc()
+            if last_doc:
+                last_path = Path(last_doc)
+                if last_path.exists():
+                    if last_path.suffix == ".freenotes":
+                        self._viewer_window.open_freenotes(str(last_path))
+                        target_index = 1
+                    elif last_path.suffix == ".pdf":
+                        self._viewer_window.open_pdf(last_path)
+                        target_index = 1
 
         self._stack.setCurrentIndex(target_index)
         self._dismiss_splash()
@@ -287,8 +288,20 @@ class MainWindow(QMainWindow):
     def _handle_redo(self) -> None:
         undo_stack.redo()
 
-    def show_manager(self) -> None:
+    def show_manager(self, closed_path: Path | None = None) -> None:
         """Switch to the file manager view."""
+        if closed_path and hasattr(self._manager_view, '_thumbnail_cache'):
+            self._manager_view._thumbnail_cache.invalidate(closed_path)
+            
+        # Clean up visual state immediately before the crossfade pixel snapshot
+        if hasattr(self._manager_view, "_multi_select_mode"):
+            self._manager_view._multi_select_mode = False
+            for card in getattr(self._manager_view, "_cards", []):
+                if hasattr(card, "set_checkbox_visible"):
+                    card.set_checkbox_visible(False)
+        if hasattr(self._manager_view, "clear_selection"):
+            self._manager_view.clear_selection()
+            
         self._stack_transition.switch_to(0)
         # Yield to event loop to allow cross-fade animation to render smoothly
         QTimer.singleShot(150, lambda: self._manager_view.load_grid(AppState().current_folder))
@@ -303,6 +316,15 @@ class MainWindow(QMainWindow):
         self._stack_transition.switch_to(1)
         # Yield to event loop to allow cross-fade animation to render smoothly
         QTimer.singleShot(150, lambda: self._viewer_window.open_pdf(path))
+
+    def closeEvent(self, event: object) -> None:
+        """Save settings before window closes."""
+        current_index = self._stack.currentIndex()
+        if current_index == 1:
+            AppSettings.set_last_active_view("viewer")
+        else:
+            AppSettings.set_last_active_view("manager")
+        super().closeEvent(event)
 
     def show_settings(self, page: str = "display") -> None:
         """Switch to the settings screen."""

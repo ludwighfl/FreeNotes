@@ -24,6 +24,7 @@ class AppState(QObject):
     style_changed = Signal(object)  # ToolStyle (object for QObject signal compat)
     library_ready = Signal()
     total_pages_changed = Signal(int)
+    document_renamed = Signal()
 
     _instance: "AppState | None" = None
 
@@ -43,9 +44,21 @@ class AppState(QObject):
         self._zoom_factor: float = 1.0
         self._total_pages: int = 0
         self._active_tool_name: str = "hand"
+        
+        from core.app_settings import AppSettings
         self._tool_style: ToolStyle = ToolStyle()
+        self._tool_style.font_size = AppSettings.get_default_font_size()
+        
         self.clipboard_box = None  # TextBoxItem clone for Copy/Cut
         self.items_clipboard: list[dict] = []  # Serialized items for Copy/Paste
+        self.items_clipboard_time: float = 0.0
+        self.sys_clipboard_time: float = 0.0
+
+        # Hook system clipboard changes
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.clipboard().dataChanged.connect(self._on_sys_clipboard_changed)
 
         # Shape tool state
         from core.shape_style import ShapeType
@@ -61,6 +74,10 @@ class AppState(QObject):
         # Library manager
         self._library_manager: object | None = None
         self.current_folder: Path | None = None
+
+    def _on_sys_clipboard_changed(self) -> None:
+        import time
+        self.sys_clipboard_time = time.time()
 
     @property
     def library_manager(self) -> object | None:
@@ -175,7 +192,10 @@ class AppState(QObject):
         self._zoom_factor = 1.0
         self._total_pages = 0
         self._active_tool_name = "hand"
+        
+        from core.app_settings import AppSettings
         self._tool_style = ToolStyle()
+        self._tool_style.font_size = AppSettings.get_default_font_size()
         
         self.clipboard_box = None
         self.items_clipboard = []

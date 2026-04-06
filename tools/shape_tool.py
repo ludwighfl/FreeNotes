@@ -54,6 +54,17 @@ class ShapeTool(BaseTool):
         from items.shape_item import ShapeItem
         from items.selection_overlay_item import SelectionOverlayItem
         items_at = scene.items(QRectF(pos.x() - 3, pos.y() - 3, 6, 6))
+        
+        # Check if we clicked on a control handle. If so, let Qt's default dispatch handle it.
+        from items.bounding_box_handle_manager import BoundingBoxHandle
+        from items.handle_item import ResizeHandleItem
+        from items.rotate_handle_item import RotateHandleItem
+        from items.options_handle_item import OptionsHandleItem
+        from items.move_handle_item import MoveHandleItem
+
+        if any(isinstance(i, (BoundingBoxHandle, ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
+            return
+
         hit = next(
             (i for i in items_at
              if isinstance(i, ShapeItem)

@@ -55,10 +55,18 @@ class RotateHandleItem(QGraphicsItem):
         r = self.RADIUS
         # Must include connecting line which extends up to -(r + OFFSET_Y)
         top = -(r + self.OFFSET_Y + 2)
-        bottom = r + 2
-        left = -(r + 2)
-        right = r + 2
+        bottom = r + 10  # 8px padding + 2
+        left = -(r + 10) # 8px padding + 2
+        right = r + 10   # 8px padding + 2
         return QRectF(left, top, right - left, bottom - top).adjusted(-4, -4, 4, 4)
+
+    def shape(self) -> QPainterPath:
+        """Expand hit area of the circle for easier clicking."""
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        r = self.RADIUS + 8.0  # 8px extra padding
+        path.addEllipse(-r, -r, r * 2, r * 2)
+        return path
 
     def update_position(self, box_rect: QRectF) -> None:
         """Reposition below bottom-center of *box_rect* (local coords)."""

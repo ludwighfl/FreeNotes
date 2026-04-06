@@ -111,6 +111,50 @@ class AppSettings:
         cls._get().setValue("pen_width", width)
 
     # ------------------------------------------------------------------
+    # Toolbar state
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_tool_memory(cls) -> dict:
+        import json
+        val = cls._get().value("tool_memory", None)
+        if val:
+            try:
+                return json.loads(val)
+            except Exception:
+                pass
+        return {}
+
+    @classmethod
+    def set_tool_memory(cls, memory: dict) -> None:
+        import json
+        cls._get().setValue("tool_memory", json.dumps(memory))
+
+    @classmethod
+    def get_active_tool(cls) -> str:
+        return cls._get().value("active_tool", "hand")
+
+    @classmethod
+    def set_active_tool(cls, tool: str) -> None:
+        cls._get().setValue("active_tool", tool)
+
+    @classmethod
+    def get_eraser_mode(cls) -> str:
+        return cls._get().value("eraser_mode", "object")
+
+    @classmethod
+    def set_eraser_mode(cls, mode: str) -> None:
+        cls._get().setValue("eraser_mode", mode)
+
+    @classmethod
+    def get_selection_mode(cls) -> str:
+        return cls._get().value("selection_mode", "rect")
+
+    @classmethod
+    def set_selection_mode(cls, mode: str) -> None:
+        cls._get().setValue("selection_mode", mode)
+
+    # ------------------------------------------------------------------
     # Language
     # ------------------------------------------------------------------
 
@@ -151,3 +195,16 @@ class AppSettings:
     @classmethod
     def set_last_opened_doc(cls, path: str) -> None:
         cls._get().setValue("last_opened_doc", path)
+
+    # ------------------------------------------------------------------
+    # Last active view (manager or viewer)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_last_active_view(cls) -> str:
+        """Return 'manager' or 'viewer' depending on what was open last."""
+        return str(cls._get().value("last_active_view", "manager"))
+
+    @classmethod
+    def set_last_active_view(cls, view: str) -> None:
+        cls._get().setValue("last_active_view", view)

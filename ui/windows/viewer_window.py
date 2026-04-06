@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QFont, QIntValidator, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QWidget,
@@ -32,6 +32,7 @@ from tools.selection_tool import SelectionTool
 from tools.shape_tool import ShapeTool
 from ui.bars.formatting_bar import FormattingBar
 from ui.popups.three_dot_menu import ThreeDotMenu
+from ui.components.editable_title_label import EditableTitleLabel
 
 from ui.windows.viewer_file_io import ViewerFileIOMixin
 from ui.windows.viewer_tool_manager import ViewerToolManagerMixin
@@ -45,7 +46,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         ViewerToolManagerMixin – Tool switching, style updates, undo routing
     """
 
-    back_requested = Signal()
+    # Emits the path of the closed PDF (or None)
+    back_requested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -93,9 +95,10 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         header_layout.addWidget(self._back_btn)
 
         # Document title
-        self._title_label = QLabel("Dokument")
+        self._title_label = EditableTitleLabel("Dokument")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: #ffffff;")
+        self._title_label.rename_requested.connect(self._on_title_rename_requested)
         header_layout.addWidget(self._title_label)
 
         # Extension label
@@ -114,12 +117,10 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
         # Three-dot menu (rightmost in header)
         self._three_dot_menu = ThreeDotMenu(self)
-        self._three_dot_menu.set_save_enabled(False)
         self._three_dot_menu.load_requested.connect(self._on_load)
-        self._three_dot_menu.save_requested.connect(self._on_save)
-        self._three_dot_menu.save_as_requested.connect(self._on_save_as)
         self._three_dot_menu.export_requested.connect(self._on_export)
         self._three_dot_menu.export_as_requested.connect(self._on_export_as)
+        self._three_dot_menu.clear_annotations_requested.connect(self._on_clear_annotations)
         header_layout.addWidget(self._three_dot_menu)
 
         top_layout.addWidget(header)
@@ -219,6 +220,14 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
         # Connect global undo stack events to update file modification state
         undo_stack.get_stack().indexChanged.connect(self._on_stack_changed)
+        
+        self._app_state.document_renamed.connect(self._update_title)
+        
+        # Autosave timer
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setInterval(1000)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.timeout.connect(self.save_document)
 
         # Formatting bar (floating, child of self)
         self._formatting_bar = FormattingBar(parent=self)
@@ -364,14 +373,21 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._save_current_zoom()
         self._clear_search()
         
-        # Safely shut down scene and unlock files before returning
+        # Ensure all pending changes are saved before closing
+        self.save_document()
+        
+        closed_path = self._app_state.current_pdf_path
+        
         self._page_scene.set_tool(None)
+        if hasattr(self._page_scene, '_tile_renderer'):
+            self._page_scene._tile_renderer.cancel_all()
+            self._page_scene._tile_renderer.wait_for_idle()
         self._page_scene.clear()
         self._doc_manager.close_document()
         self._app_state.current_pdf_path = None
         self._app_state.freenotes_path = None
         
-        self.back_requested.emit()
+        self.back_requested.emit(closed_path)
 
     # ------------------------------------------------------------------
     # Full-text search
@@ -505,3 +521,18 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
                 self._search_bar._on_close()
                 return
         super().keyPressEvent(event)
+
+    def _on_title_rename_requested(self, new_name: str) -> None:
+        """Called when the user renames the document via the EditableTitleLabel."""
+        if not new_name or not self._app_state.freenotes_path:
+            return
+            
+        from commands.rename_document_command import RenameDocumentCommand
+        from core.undo_stack import get_stack
+        
+        old_name = self._title_label.text()
+        if old_name == new_name:
+            return
+            
+        cmd = RenameDocumentCommand(self, old_name, new_name)
+        get_stack().push(cmd)

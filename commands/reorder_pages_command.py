@@ -33,10 +33,11 @@ class ReorderPagesCommand(QUndoCommand):
         self._scene_ref = weakref.ref(scene)
         self._doc_manager_ref = weakref.ref(doc_manager)
         self._sidebar_ref = weakref.ref(sidebar)
-        self._first_redo = True
+        self._first_redo = False
 
     def undo(self) -> None:
-        # compute inverse permutation of self._new_order
+        # Compute inverse permutation: if new_order moved page X to position Y,
+        # the inverse moves position Y back to position X.
         inv_order = [0] * len(self._new_order)
         for i, original_index in enumerate(self._new_order):
             inv_order[original_index] = i

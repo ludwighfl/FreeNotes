@@ -38,6 +38,7 @@ def main() -> None:
     splash_proc = subprocess.Popen([sys.executable, sys.argv[0], "--splash"])
 
     app = QApplication(sys.argv)
+    app.setDoubleClickInterval(300)
     app.setStyle("Fusion") # Prevent PyInstaller from losing style plugins
     from styles.loader import load_stylesheet
     app.setStyleSheet(load_stylesheet())

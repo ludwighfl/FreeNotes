@@ -12,12 +12,10 @@ class ThreeDotMenu(QToolButton):
 
     Provides Save, Save As, Export PDF, Export PDF As actions.
     """
-
-    save_requested = Signal()
-    save_as_requested = Signal()
     load_requested = Signal()
     export_requested = Signal()
     export_as_requested = Signal()
+    clear_annotations_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -34,30 +32,23 @@ class ThreeDotMenu(QToolButton):
         # Actions
         self._action_load = QAction("Öffnen …", self)
         self._action_load.setShortcut("Ctrl+O")
-        self._action_save = QAction("Speichern", self)
-        self._action_save.setShortcut("Ctrl+S")
-        self._action_save_as = QAction("Speichern unter …", self)
-        self._action_save_as.setShortcut("Ctrl+Shift+S")
         self._action_export = QAction("Als PDF exportieren", self)
         self._action_export_as = QAction("PDF exportieren als …", self)
-
+        
+        self._action_clear = QAction("Annotationen löschen …", self)
+        # Assuming there is a way to style the action red, or we just rely on the warning dialog
+        
         self._menu.addAction(self._action_load)
-        self._menu.addSeparator()
-        self._menu.addAction(self._action_save)
-        self._menu.addAction(self._action_save_as)
         self._menu.addSeparator()
         self._menu.addAction(self._action_export)
         self._menu.addAction(self._action_export_as)
+        self._menu.addSeparator()
+        self._menu.addAction(self._action_clear)
 
         self.setMenu(self._menu)
 
         # Connect signals
         self._action_load.triggered.connect(self.load_requested)
-        self._action_save.triggered.connect(self.save_requested)
-        self._action_save_as.triggered.connect(self.save_as_requested)
         self._action_export.triggered.connect(self.export_requested)
         self._action_export_as.triggered.connect(self.export_as_requested)
-
-    def set_save_enabled(self, enabled: bool) -> None:
-        """Enable/disable the 'Save' action (disabled when no file path known)."""
-        self._action_save.setEnabled(enabled)
+        self._action_clear.triggered.connect(self.clear_annotations_requested)

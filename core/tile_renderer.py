@@ -115,6 +115,7 @@ class TileRenderTask(QRunnable):
         doc_pool: PdfConnectionPool,
         cache: TileCache,
         callback: Callable[[TileKey], None],
+        orig_page_idx: int,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__()
@@ -125,6 +126,7 @@ class TileRenderTask(QRunnable):
         self._doc_pool = doc_pool
         self._cache = cache
         self._callback = callback
+        self._orig_page_idx = orig_page_idx
         self._is_cancelled = is_cancelled
 
     # ---- worker entry point -----------------------------------------------
@@ -145,11 +147,42 @@ class TileRenderTask(QRunnable):
 
         doc: fitz.Document | None = None
         try:
-            doc = self._doc_pool.acquire()
-            if self._key.page_index >= doc.page_count:
+            scene_w = self._page_rect.width()
+            scene_h = self._page_rect.height()
+            
+            if scene_w <= 0.0 or scene_h <= 0.0:
                 return
 
-            page = doc.load_page(self._key.page_index)
+            if self._orig_page_idx == -1:
+                # Inserted blank page - render blank tile
+                col = self._key.tile_col
+                row = self._key.tile_row
+                tile_scene = QRectF(0, row * TILE_SIZE_PX, scene_w, TILE_SIZE_PX)
+                tile_scene = tile_scene.intersected(QRectF(0, 0, scene_w, scene_h))
+                if tile_scene.isEmpty():
+                    return
+                # Create white image
+                dpi = MIP_DPI[self._key.mip_level]
+                dpr = _device_pixel_ratio()
+                effective_dpr = dpi * dpr / SCENE_DPI
+                # Calculate pixel dimensions exactly like PyMuPDF would
+                px_w = int(tile_scene.width() * effective_dpr)
+                px_h = int(tile_scene.height() * effective_dpr)
+                px_w = max(1, px_w)
+                px_h = max(1, px_h)
+                img = QImage(px_w, px_h, QImage.Format.Format_RGB888)
+                img.fill(Qt.GlobalColor.white)
+                img.setDevicePixelRatio(effective_dpr)
+                self._cache.put(self._key, img)
+                if self._is_cancelled is None or not self._is_cancelled():
+                    self._callback(self._key)
+                return
+
+            doc = self._doc_pool.acquire()
+            if self._orig_page_idx >= doc.page_count:
+                return
+
+            page = doc.load_page(self._orig_page_idx)
             page_pdf_rect = page.rect  # fitz.Rect in PDF points
 
             # Account for page rotation when computing the usable dimensions
@@ -209,7 +242,7 @@ class TileRenderTask(QRunnable):
                 doc._dl_cache = OrderedDict()
                 
             dl_cache = doc._dl_cache
-            page_idx = self._key.page_index
+            page_idx = self._orig_page_idx
             
             if page_idx not in dl_cache:
                 # Compile display list once per thread (annots=False ignores native PDF annotations)
@@ -320,6 +353,7 @@ class TileRenderer(QObject):
         page_rect: QRectF,
         doc_path: str,
         priority: int | None = None,
+        orig_page_idx: int = -1,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> None:
         """Enqueue a single tile render task.
@@ -338,6 +372,7 @@ class TileRenderer(QObject):
             doc_pool=self._get_doc_pool(doc_path),
             cache=self._cache,
             callback=self._on_tile_rendered,
+            orig_page_idx=orig_page_idx,
             is_cancelled=is_cancelled,
         )
         self._pool.start(task, priority)
@@ -347,6 +382,7 @@ class TileRenderer(QObject):
         keys: list[TileKey],
         page_rect: QRectF,
         doc_path: str,
+        orig_page_idx: int = -1,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> None:
         """Batch-enqueue multiple tile render tasks.
@@ -365,6 +401,7 @@ class TileRenderer(QObject):
                 doc_pool=self._get_doc_pool(doc_path),
                 cache=self._cache,
                 callback=self._on_tile_rendered,
+                orig_page_idx=orig_page_idx,
                 is_cancelled=is_cancelled,
             )
             self._pool.start(task, priority)
@@ -376,6 +413,10 @@ class TileRenderer(QObject):
             for pool in self._doc_pools.values():
                 pool.close_all()
             self._doc_pools.clear()
+
+    def wait_for_idle(self) -> None:
+        """Block until all background tasks finish. Call cancel_all() first!"""
+        self._pool.waitForDone()
 
     def set_priority(self, key: TileKey, priority: int) -> None:
         """Hint the pool to re-prioritise a pending task.

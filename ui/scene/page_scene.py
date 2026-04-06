@@ -77,6 +77,7 @@ class PageScene(
         self._highlight_items: dict[int, list[HighlightItem]] = {}
         self._text_box_items: dict[int, list[TextBoxItem]] = {}
         self._shape_items: dict[int, list] = {}
+        self._image_items: dict[int, list] = {}
 
         # Disable BSP tree for dynamic item compatibility (fixes zoom ghosts)
         self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
@@ -142,6 +143,7 @@ class PageScene(
         self._highlight_items.clear()
         self._text_box_items.clear()
         self._shape_items.clear()
+        self._image_items.clear()
         self._selected_items.clear()
         self._doc_manager = doc_manager
 
@@ -329,11 +331,16 @@ class PageScene(
 
         for _dist, key in tiles_to_request:
             self._pending_tiles.add(key)
+            orig_idx = -1
+            if self._doc_manager and key.page_index < len(self._doc_manager.page_map):
+                orig_idx = self._doc_manager.page_map[key.page_index]
+                
             self._tile_renderer.request_tile(
                 key,
                 page_rect,
                 doc_path,
                 priority,
+                orig_page_idx=orig_idx,
                 is_cancelled=lambda k=key: k not in self._pending_tiles
             )
 
@@ -540,7 +547,7 @@ class PageScene(
         from tools.text_tool import TextTool
 
         if not isinstance(self._active_tool, TextTool):
-            # Check if click is NOT on a TextBoxItem
+            # Check if click is NOT on a TextBoxItem (or its handles)
             items_at = self.items(
                 QRectF(
                     event.scenePos().x() - 2,
@@ -549,7 +556,15 @@ class PageScene(
                     4,
                 )
             )
-            has_textbox = any(isinstance(i, TextBoxItem) for i in items_at)
+            has_textbox = False
+            for i in items_at:
+                if isinstance(i, TextBoxItem):
+                    has_textbox = True
+                    break
+                if hasattr(i, "parentItem") and isinstance(i.parentItem(), TextBoxItem):
+                    has_textbox = True
+                    break
+
             if not has_textbox:
                 self.deselect_all_textboxes()
 
@@ -574,17 +589,8 @@ class PageScene(
         super().mouseDoubleClickEvent(event)
         
         # Tools might override double click behavior
-        from tools.selection_tool import SelectionTool
-        if isinstance(self._active_tool, SelectionTool):
-            items_at = self.items(event.scenePos())
-            for item in items_at:
-                if isinstance(item, TextBoxItem):
-                    # Request a tool switch to "text" which will start editing it
-                    self.tool_switch_requested.emit("text")
-                    # Forward the click to position the cursor and start editing
-                    item.mousePressEvent(event)
-                    item.mouseDoubleClickEvent(event)
-                    break
+        if self._active_tool is not None:
+            self._active_tool.on_double_click(event, self)
 
     # ------------------------------------------------------------------
     # Key events
@@ -694,3 +700,73 @@ class PageScene(
         # TextBox selection frames are handled in their respective paint methods dynamically.
 
         return items
+
+    # ------------------------------------------------------------------
+    # Action Handlers
+    # ------------------------------------------------------------------
+
+    def insert_image_from_file_dialog(self, pos: QPointF | None = None) -> None:
+        """Open a file dialog to select an image, then insert it at the given pos or center."""
+        from PySide6.QtWidgets import QFileDialog
+        import os
+
+        # Use the first view to get a parent widget for the dialog
+        views = self.views()
+        parent_widget = views[0] if views else None
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            parent_widget,
+            "Bild einfügen",
+            "",
+            "Bilder (*.png *.jpg *.jpeg *.webp);;Alle Dateien (*.*)"
+        )
+
+        if not file_path or not os.path.exists(file_path):
+            return
+
+        from app.app_state import AppState
+        page_idx = -1
+
+        if pos is None:
+            # Drop at center of current page
+            page_idx = AppState().current_page
+            page_rect = self.get_page_rect(page_idx)
+            if not page_rect.isEmpty():
+                pos = QPointF(page_rect.center().x(), page_rect.top() + 50)
+            else:
+                pos = QPointF(100, 100)
+        else:
+            page_idx = self.get_page_index_at(pos)
+            if page_idx < 0:
+                page_idx = AppState().current_page
+
+        try:
+            from items.image_item import ImageItem
+            item = ImageItem.from_image_file(file_path, pos, page_idx)
+            
+            # Scale down large images
+            page_rect = self.get_page_rect(page_idx)
+            if not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
+                scale = (page_rect.width() * 0.8) / item._rect.width()
+                new_w = item._rect.width() * scale
+                new_h = item._rect.height() * scale
+                from PySide6.QtCore import QRectF
+                item.set_rect(QRectF(pos.x(), pos.y(), new_w, new_h))
+                
+            self.addItem(item)
+            self.add_item_to_registry(item)
+
+            # Push undo command
+            from commands.paste_items_command import PasteItemsCommand
+            from core import undo_stack
+            cmd = PasteItemsCommand([item], self)
+            undo_stack.push(cmd)
+
+            # Select dropped items
+            self.set_selection([item])
+
+            # Auto-switch to hand tool
+            self.tool_switch_requested.emit("hand")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Image insert failed: %s", e)

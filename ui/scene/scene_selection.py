@@ -6,6 +6,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 from items.selection_overlay_item import SelectionOverlayItem
 
 if TYPE_CHECKING:
@@ -72,7 +73,7 @@ class SceneSelectionMixin:
 
         if isinstance(item, TextBoxItem):
             item.set_selected_custom(True)
-        elif isinstance(item, ShapeItem):
+        elif isinstance(item, (ShapeItem, ImageItem)):
             item.set_selected_custom(True)
         elif isinstance(item, (StrokeItem, HighlightItem)):
             item.set_selected(True)
@@ -81,7 +82,7 @@ class SceneSelectionMixin:
         """Remove selection visual from *item*."""
         if isinstance(item, TextBoxItem):
             item.set_selected_custom(False)
-        elif isinstance(item, ShapeItem):
+        elif isinstance(item, (ShapeItem, ImageItem)):
             item.set_selected_custom(False)
         elif isinstance(item, (StrokeItem, HighlightItem)):
             item.set_selected(False)
@@ -113,7 +114,7 @@ class SceneSelectionMixin:
             for item in items:
                 if isinstance(item, TextBoxItem):
                     item.set_selected_custom(False)
-                elif isinstance(item, ShapeItem):
+                elif isinstance(item, (ShapeItem, ImageItem)):
                     item.set_selected_custom(False)
                 elif isinstance(item, (StrokeItem, HighlightItem)):
                     item.set_selected(False)
@@ -122,7 +123,7 @@ class SceneSelectionMixin:
             item = items[0]
             if isinstance(item, TextBoxItem):
                 item.set_selected_custom(True)
-            elif isinstance(item, ShapeItem):
+            elif isinstance(item, (ShapeItem, ImageItem)):
                 item.set_selected_custom(True)
             elif isinstance(item, (StrokeItem, HighlightItem)):
                 item.set_selected(True)

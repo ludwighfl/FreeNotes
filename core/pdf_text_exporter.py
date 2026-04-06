@@ -66,6 +66,9 @@ class PdfTextExporter:
             center = fitz.Point(cx, cy)
             morph = (center, fitz.Matrix(rotation))
 
+        # Force QTextDocument to calculate its layout (critical for headless export)
+        doc_qt.documentLayout().documentSize()
+
         # Iterate QTextDocument blocks
         block = doc_qt.begin()
         y_cursor = y0 + pad_y

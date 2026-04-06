@@ -8,6 +8,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 
 if TYPE_CHECKING:
     from ui.scene.page_scene import PageScene
@@ -22,6 +23,7 @@ class ScenePageManagerMixin:
         _highlight_items: dict
         _text_box_items: dict
         _shape_items: dict
+        _image_items: dict
         _page_items: list
         _page_rects: list
         PAGE_GAP: int
@@ -41,10 +43,9 @@ class ScenePageManagerMixin:
                 if old_idx in d:
                     items = d[old_idx]
                     new_d[new_pos] = items
-                    # We store the old_page_index so rebuild_after_reorder knows where it came from
                     for item in items:
                         if hasattr(item, '_page_index'):
-                            item._old_page_index = getattr(item, '_old_page_index', item._page_index)
+                            item._old_page_index = item._page_index
                             item._page_index = new_pos
             return new_d
 
@@ -52,6 +53,7 @@ class ScenePageManagerMixin:
         self._highlight_items = remap(self._highlight_items)
         self._text_box_items = remap(self._text_box_items)
         self._shape_items = remap(self._shape_items)
+        self._image_items = remap(self._image_items)
 
     def rebuild_after_reorder(self, doc_manager: DocumentManager, order: list[int] = None) -> None:
         """Rebuild page pixmaps and reposition annotations after reorder.
@@ -66,6 +68,14 @@ class ScenePageManagerMixin:
         if hasattr(self, '_tile_renderer'):
             self._tile_renderer.cancel_all()
 
+        # Remove stale tile pixmap items from scene
+        if hasattr(self, '_tile_items'):
+            for tile_item in self._tile_items.values():
+                self.removeItem(tile_item)
+            self._tile_items.clear()
+        if hasattr(self, '_pending_tiles'):
+            self._pending_tiles.clear()
+
         page_count = doc_manager.get_page_count()
         if page_count == 0:
             return
@@ -75,7 +85,7 @@ class ScenePageManagerMixin:
         for idx in range(page_count):
             items = []
             for d in (self._stroke_items, self._highlight_items,
-                      self._text_box_items, self._shape_items):
+                      self._text_box_items, self._shape_items, self._image_items):
                 items.extend(d.get(idx, []))
             all_annotations[idx] = items
 
@@ -155,7 +165,8 @@ class ScenePageManagerMixin:
             new_rect = self._page_rects[idx]
             for item in all_annotations.get(idx, []):
                 old_pos = item.pos()
-                old_page_idx = getattr(item, '_old_page_index', idx)
+                # Derive old index from order array if available (guaranteed correct), else fallback
+                old_page_idx = order[idx] if order else getattr(item, '_old_page_index', idx)
                 if old_page_idx < len(old_page_rects):
                     old_rect = old_page_rects[old_page_idx]
                     rel_x = old_pos.x() - old_rect.x()
@@ -164,12 +175,13 @@ class ScenePageManagerMixin:
                 if hasattr(item, '_old_page_index'):
                     delattr(item, '_old_page_index')
                     
-        # Update render loop
-        if hasattr(self, '_viewport_rect'):
-            vt = self._viewport_rect
-            # Trick the zoom/scroll update to render newly visible pages
-            if hasattr(self, '_on_scroll_changed'):
-                self._on_scroll_changed()
+        # Trigger tile rendering for newly visible pages.
+        # Use QGraphicsScene.views() to reach the PageView's render timer,
+        # since _viewport_rect / _on_scroll_changed live on PageView, not Scene.
+        from PySide6.QtCore import QTimer
+        for view in self.views():
+            if hasattr(view, '_on_render_timer'):
+                QTimer.singleShot(50, view._on_render_timer)
 
     def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
         """Insert an empty annotation slot at at_index.
@@ -177,27 +189,42 @@ class ScenePageManagerMixin:
         Shifts all annotation indices >= at_index up by 1.
         """
         for d in (self._stroke_items, self._highlight_items,
-                  self._text_box_items, self._shape_items):
+                  self._text_box_items, self._shape_items, self._image_items):
             new_d: dict = {}
             for idx, items in d.items():
                 new_idx = idx + 1 if idx >= at_index else idx
                 for item in items:
                     if hasattr(item, '_page_index'):
-                        item._old_page_index = getattr(item, '_old_page_index', item._page_index)
+                        item._old_page_index = item._page_index
                         if item._page_index >= at_index:
                             item._page_index += 1
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
 
-        # Invalidate tile cache — page indices have shifted
+        # Invalidate tile system — page indices have shifted
         if hasattr(self, '_tile_cache'):
             self._tile_cache.invalidate_all()
+        if hasattr(self, '_tile_items'):
+            for tile_item in self._tile_items.values():
+                self.removeItem(tile_item)
+            self._tile_items.clear()
+        if hasattr(self, '_pending_tiles'):
+            self._pending_tiles.clear()
+
+    def clear_all_annotations(self) -> None:
+        """Clear all annotation dicts and remove items from scene, leaving pages intact."""
+        for d in (self._stroke_items, self._highlight_items,
+                  self._text_box_items, self._shape_items, self._image_items):
+            for items in d.values():
+                for item in items:
+                    self.removeItem(item)
+            d.clear()
 
     def remove_page(self, page_idx: int, doc_manager: DocumentManager) -> None:
         """Remove all annotations on page_idx and shift indices down."""
         for d in (self._stroke_items, self._highlight_items,
-                  self._text_box_items, self._shape_items):
+                  self._text_box_items, self._shape_items, self._image_items):
             # Remove items on the deleted page from scene
             for item in d.get(page_idx, []):
                 self.removeItem(item)
@@ -209,16 +236,22 @@ class ScenePageManagerMixin:
                 new_idx = idx - 1 if idx > page_idx else idx
                 for item in items:
                     if hasattr(item, '_page_index'):
-                        item._old_page_index = getattr(item, '_old_page_index', item._page_index)
+                        item._old_page_index = item._page_index
                         if item._page_index > page_idx:
                             item._page_index -= 1
                 new_d[new_idx] = items
             d.clear()
             d.update(new_d)
 
-        # Invalidate tile cache — page indices have shifted
+        # Invalidate tile system — page indices have shifted
         if hasattr(self, '_tile_cache'):
             self._tile_cache.invalidate_all()
+        if hasattr(self, '_tile_items'):
+            for tile_item in self._tile_items.values():
+                self.removeItem(tile_item)
+            self._tile_items.clear()
+        if hasattr(self, '_pending_tiles'):
+            self._pending_tiles.clear()
 
     def clone_page_annotations(
         self, source_idx: int, target_idx: int
@@ -229,6 +262,7 @@ class ScenePageManagerMixin:
             (self._highlight_items, HighlightItem),
             (self._text_box_items, TextBoxItem),
             (self._shape_items, ShapeItem),
+            (self._image_items, ImageItem),
         ]
         for d, item_cls in mapping:
             for item in d.get(source_idx, []):
@@ -249,6 +283,7 @@ class ScenePageManagerMixin:
             "highlights": list(self._highlight_items.get(page_idx, [])),
             "textboxes": list(self._text_box_items.get(page_idx, [])),
             "shapes": list(self._shape_items.get(page_idx, [])),
+            "images": list(self._image_items.get(page_idx, [])),
         }
         return saved
 
@@ -261,6 +296,7 @@ class ScenePageManagerMixin:
             "highlights": self._highlight_items,
             "textboxes": self._text_box_items,
             "shapes": self._shape_items,
+            "images": self._image_items,
         }
         for key, items in saved.items():
             d = mapping[key]

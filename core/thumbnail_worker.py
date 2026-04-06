@@ -26,6 +26,9 @@ class ThumbnailWorker(QThread):
         for i in self._indices:
             if self._cancelled:
                 break
-            img = self._doc_manager.get_page_image(i, self._dpi, use_hidpi=self._use_hidpi)
+            try:
+                img = self._doc_manager.get_page_image(i, self._dpi, use_hidpi=self._use_hidpi)
+            except ValueError:  # document closed
+                continue
             if not self._cancelled:
                 self.thumbnail_ready.emit(self._generation_id, i, img)

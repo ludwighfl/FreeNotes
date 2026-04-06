@@ -35,9 +35,10 @@ class LibraryManager:
         return sorted(p for p in base.iterdir() if p.is_dir()
                        and not p.name.startswith("_"))
 
-    def get_all_folders(self) -> list[Path]:
+    def get_all_folders(self, parent: Path | None = None) -> list[Path]:
         """Return all folders recursively (for sidebar tree)."""
-        return sorted(p for p in self._root.rglob("*")
+        base = parent or self._root
+        return sorted(p for p in base.rglob("*")
                        if p.is_dir() and not p.name.startswith("_"))
 
     def create_folder(
@@ -173,6 +174,68 @@ class LibraryManager:
                 else:
                     path.unlink(missing_ok=True)
 
+    def duplicate_document(self, doc: dict) -> dict:
+        """Duplicate a document (both pdf and freenotes if they exist)."""
+        folder = doc["folder"]
+        
+        # Determine base path for the duplicate
+        base_path = folder / doc["name"]
+        dup_pdf = self._resolve_name_conflict(base_path.with_suffix(".pdf"))
+        new_name = dup_pdf.stem
+        
+        dup_fn = folder / f"{new_name}.freenotes"
+        
+        # Copy files
+        if doc.get("pdf") and doc["pdf"].exists():
+            shutil.copy2(doc["pdf"], dup_pdf)
+            
+        if doc.get("freenotes") and doc["freenotes"].exists():
+            shutil.copy2(doc["freenotes"], dup_fn)
+            # Update internal PDF path reference if PDF was copied
+            if doc.get("pdf"):
+                self._update_freenotes_pdf_path(dup_fn, dup_pdf)
+                
+        # Return new doc
+        for d in self.get_documents(folder):
+            if d["name"] == new_name:
+                return d
+        
+        return {
+            "pdf": dup_pdf if (doc.get("pdf") and doc["pdf"].exists()) else None,
+            "freenotes": dup_fn if (doc.get("freenotes") and doc["freenotes"].exists()) else None,
+            "name": new_name,
+            "modified": dup_pdf.stat().st_mtime if dup_pdf.exists() else 0.0,
+            "folder": folder
+        }
+        
+    def move_document(self, doc: dict, target_folder: Path) -> dict:
+        """Move a document to a different folder."""
+        if not target_folder.exists() or doc["folder"] == target_folder:
+            return doc
+            
+        new_pdf = None
+        new_fn = None
+        new_name = doc["name"]
+        
+        if doc.get("pdf") and doc["pdf"].exists():
+            dest = self._resolve_name_conflict(target_folder / doc["pdf"].name)
+            new_name = dest.stem
+            shutil.move(str(doc["pdf"]), str(dest))
+            new_pdf = dest
+            
+        if doc.get("freenotes") and doc["freenotes"].exists():
+            dest = target_folder / f"{new_name}.freenotes"
+            shutil.move(str(doc["freenotes"]), str(dest))
+            new_fn = dest
+            if new_pdf:
+                self._update_freenotes_pdf_path(new_fn, new_pdf)
+                
+        for d in self.get_documents(target_folder):
+            if d["name"] == new_name:
+                return d
+                
+        return doc
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -219,11 +282,6 @@ class LibraryManager:
             print(f"Warning: pdf_path update failed: {e}")
 
     def _move_to_trash(self, path: Path) -> None:
-        """Move *path* to OS trash, or a fallback _Papierkorb folder."""
-        try:
-            import send2trash
-            send2trash.send2trash(str(path))
-        except ImportError:
-            trash = self._root / "_Papierkorb"
-            trash.mkdir(exist_ok=True)
-            shutil.move(str(path), str(trash / path.name))
+        """Move *path* to OS trash."""
+        import send2trash
+        send2trash.send2trash(str(path))

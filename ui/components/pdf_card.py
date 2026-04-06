@@ -195,6 +195,7 @@ class PdfCard(QFrame):
             if data:
                 from core.freenotes_store import FreenotesStore
                 from items.shape_item import ShapeItem
+                from items.image_item import ImageItem
                 
                 page_data = data.get("pages", {}).get("0", {})
                 
@@ -221,6 +222,11 @@ class PdfCard(QFrame):
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     scene.addItem(item)
 
+                for d in page_data.get("images", []):
+                    item = ImageItem.from_dict(d)
+                    item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
+                    scene.addItem(item)
+
             # Render scene seamlessly
             final_pixmap = QPixmap(int(page0_w), int(h))
             final_pixmap.fill(Qt.GlobalColor.white)
@@ -244,38 +250,80 @@ class PdfCard(QFrame):
     # Events
     # ------------------------------------------------------------------
 
+    def mousePressEvent(self, event: object) -> None:
+        """Handle single clicks for selection."""
+        # Check if click was on the checkbox (if visible)
+        if hasattr(self, "_checkbox") and self._checkbox.isVisible() and self._checkbox.geometry().contains(event.pos()):
+            # Clicked checkbox directly
+            from ui.windows.manager_view import ManagerView
+            parent = self.parent()
+            while parent and not isinstance(parent, ManagerView):
+                parent = parent.parent()
+            if parent:
+                parent.handle_card_click(self)
+        else:
+            # Emulation of a signal that can be caught by manager view
+            # By passing up the chain
+            from ui.windows.manager_view import ManagerView
+            parent = self.parent()
+            while parent and not isinstance(parent, ManagerView):
+                parent = parent.parent()
+            if parent:
+                parent.handle_card_click(self)
+                
+        super().mousePressEvent(event)
+
     def mouseDoubleClickEvent(self, event: object) -> None:
         """Emit document data on double click."""
-        self.double_clicked.emit({
+        self.double_clicked.emit(self.get_doc_data())
+        super().mouseDoubleClickEvent(event)
+
+    def get_doc_data(self) -> dict:
+        parent_folder = None
+        if self._pdf_path and self._pdf_path.exists():
+            parent_folder = self._pdf_path.parent
+        elif self._freenotes_path and self._freenotes_path.exists():
+            parent_folder = self._freenotes_path.parent
+            
+        return {
             "pdf": self._pdf_path,
             "freenotes": self._freenotes_path,
             "name": self._name,
-        })
-        super().mouseDoubleClickEvent(event)
+            "folder": parent_folder,
+        }
 
-    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """Show context menu for rename and delete."""
-        menu = QMenu(self)
-        menu.setObjectName("pageContextMenu")
-        rename_act = QAction("Umbenennen", self)
-        delete_act = QAction("Löschen", self)
-        menu.addAction(rename_act)
-        menu.addSeparator()
-        menu.addAction(delete_act)
-        rename_act.triggered.connect(self._on_rename_clicked)
-        delete_act.triggered.connect(self._on_delete_clicked)
-        menu.exec(event.globalPos())
+    # ------------------------------------------------------------------
+    # Selection State
+    # ------------------------------------------------------------------
 
-    def _on_rename_clicked(self) -> None:
-        name, ok = QInputDialog.getText(
-            self, "Umbenennen", "Neuer Name:", text=self._name)
-        if ok and name.strip():
-            self.rename_requested.emit(name.strip())
+    def set_selected(self, selected: bool) -> None:
+        """Update selection visuals."""
+        from ui.components.icon_factory import IconFactory
+        
+        if selected:
+            self.setStyleSheet("""
+                QFrame#pdfCard {
+                    background: rgba(59, 123, 245, 0.15);
+                    border: 2px solid #3B7BF5;
+                    border-radius: 8px;
+                }
+            """)
+            if hasattr(self, "_checkbox") and self._checkbox.isVisible():
+                self._checkbox.setPixmap(IconFactory.create_pixmap("check_square", "#3B7BF5", 20))
+        else:
+            self.setStyleSheet("") # Default is clean
+            if hasattr(self, "_checkbox") and self._checkbox.isVisible():
+                self._checkbox.setPixmap(IconFactory.create_pixmap("square", "#666666", 20))
 
-    def _on_delete_clicked(self) -> None:
-        reply = QMessageBox.question(
-            self, "Löschen",
-            f'"{self._name}" in Papierkorb verschieben?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            self.delete_requested.emit()
+    def set_checkbox_visible(self, visible: bool) -> None:
+        from ui.components.icon_factory import IconFactory
+        if not hasattr(self, "_checkbox"):
+            self._checkbox = QLabel(self)
+            self._checkbox.setFixedSize(24, 24)
+            self._checkbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._checkbox.move(12, 12)
+            
+        self._checkbox.setVisible(visible)
+        if visible:
+            # Set unselected state by default
+            self._checkbox.setPixmap(IconFactory.create_pixmap("square", "#666666", 20))

@@ -74,26 +74,39 @@ class ViewerFileIOMixin:
 
         # Check if corresponding .freenotes exists and load it automatically
         freenotes_path = path.with_suffix(".freenotes")
-        if auto_load_freenotes and freenotes_path.exists():
-            try:
-                _, structural_modified = FreenotesStore.load(
-                    path=str(freenotes_path), scene=self._page_scene, doc_manager=self._doc_manager)
-                if structural_modified:
-                    page_count = self._doc_manager.get_page_count()
-                    self._app_state.total_pages = page_count
-                    self._total_pages_label.setText(str(page_count))
-                    self._page_input.setValidator(QIntValidator(1, page_count, self))
-                self._app_state.freenotes_path = str(freenotes_path)
-                self._sidebar.load_document(self._doc_manager, self._page_scene)
-                self._sidebar.set_viewer(self)  # type: ignore
-                
-                # Clear undo stack for new document
-                undo_stack.clear()
-                
-                self._app_state.is_modified = False
-                self._three_dot_menu.set_save_enabled(True)
-            except Exception as e:
-                print(f"Auto-load freenotes failed: {e}")
+        if auto_load_freenotes:
+            if not freenotes_path.exists():
+                try:
+                    # Create empty .freenotes file immediately
+                    FreenotesStore.save(
+                        path=str(freenotes_path),
+                        scene=self._page_scene,
+                        pdf_path=str(path),
+                        doc_manager=self._doc_manager,
+                    )
+                except Exception as e:
+                    print(f"Failed to create empty freenotes file: {e}")
+
+            if freenotes_path.exists():
+                try:
+                    _, structural_modified = FreenotesStore.load(
+                        path=str(freenotes_path), scene=self._page_scene, doc_manager=self._doc_manager)
+                    if structural_modified:
+                        page_count = self._doc_manager.get_page_count()
+                        self._app_state.total_pages = page_count
+                        self._total_pages_label.setText(str(page_count))
+                        self._page_input.setValidator(QIntValidator(1, page_count, self))
+                    self._app_state.freenotes_path = str(freenotes_path)
+                    self._sidebar.load_document(self._doc_manager, self._page_scene)
+                    self._sidebar.set_viewer(self)  # type: ignore
+                    
+                    # Clear undo stack for new document
+                    undo_stack.clear()
+                except Exception as e:
+                    print(f"Auto-load freenotes failed: {e}")
+                    self._app_state.freenotes_path = None
+                    self._fallback_open_pdf_setup()
+            else:
                 self._app_state.freenotes_path = None
                 self._fallback_open_pdf_setup()
         else:
@@ -125,8 +138,6 @@ class ViewerFileIOMixin:
         self._sidebar.load_document(self._doc_manager, self._page_scene)
         self._sidebar.set_viewer(self)  # type: ignore
         undo_stack.clear()
-        self._app_state.is_modified = False
-        self._three_dot_menu.set_save_enabled(True)
 
     def open_freenotes(self, path: str) -> None:
         """Open a .freenotes file: load PDF first, then annotations."""
@@ -152,8 +163,6 @@ class ViewerFileIOMixin:
                 self._sidebar.set_viewer(self)  # type: ignore
 
             self._app_state.freenotes_path = path
-            self._app_state.is_modified = False
-            self._three_dot_menu.set_save_enabled(True)
             undo_stack.clear()
             self._update_title()
 
@@ -173,51 +182,58 @@ class ViewerFileIOMixin:
             return
         self.open_freenotes(path)
 
-    def _on_save(self) -> None:
-        """Slot for Save action from ThreeDotMenu."""
+    def save_document(self) -> None:
+        """Execute the autosave operation."""
         path = self._app_state.freenotes_path
-        if path is None:
-            if self._app_state.current_pdf_path:
-                pdf_path = Path(self._app_state.current_pdf_path)
-                path = str(pdf_path.with_suffix(".freenotes"))
-            else:
-                self._on_save_as()
-                return
-        self._save_to(path)
-
-    def _on_save_as(self) -> None:
-        """Slot for Save As action from ThreeDotMenu."""
-        default_name = ""
-        if self._app_state.current_pdf_path:
-            pdf_path = Path(self._app_state.current_pdf_path)
-            default_name = str(pdf_path.with_suffix(".freenotes"))
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Speichern unter", default_name,  # type: ignore
-            "FreeNotes (*.freenotes)",
-        )
         if not path:
             return
-        if not path.endswith(".freenotes"):
-            path += ".freenotes"
-        self._save_to(path)
-
-    def _save_to(self, path: str) -> None:
-        """Execute the save operation."""
+        
         try:
             pdf_path = str(self._app_state.current_pdf_path or "")
+            doc_mgr = self._doc_manager
+            
+            if doc_mgr and getattr(doc_mgr, 'is_structurally_modified', False):
+                # Structural changes occurred. We must save them to the physical PDF.
+                # Stop caching and free locks.
+                if hasattr(self, '_page_scene') and hasattr(self._page_scene, '_tile_renderer'):
+                    renderer = self._page_scene._tile_renderer
+                    renderer.cancel_all()
+                    renderer.wait_for_idle()
+                
+                doc_mgr.overwrite_pdf()
+                
+                # Invalidate cache, so that next tile requests trigger new pool connections
+                if hasattr(self, '_page_scene') and hasattr(self._page_scene, '_tile_cache'):
+                    self._page_scene._tile_cache.invalidate_all()
+            
             FreenotesStore.save(
                 path=path,
                 scene=self._page_scene,
                 pdf_path=pdf_path,
                 doc_manager=self._doc_manager,
             )
-            self._app_state.freenotes_path = path
-            self._app_state.is_modified = False
-            undo_stack.get_stack().setClean()
-            self._three_dot_menu.set_save_enabled(True)
-            self._update_title()
+            # Autosave complete. No feedback required.
         except Exception as e:
-            QMessageBox.critical(self, "Fehler beim Speichern", str(e))  # type: ignore
+            print(f"Autosave failed: {e}")
+
+    def _on_clear_annotations(self) -> None:
+        """Slot for Clear Annotations action from ThreeDotMenu."""
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.warning(
+            self,  # type: ignore
+            "Annotationen löschen",
+            "Möchtest du wirklich ALLE Annotationen auf ALLEN Seiten löschen?\nDies kann über 'Rückgängig' widerrufen werden.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            from commands.clear_annotations_command import ClearAnnotationsCommand
+            cmd = ClearAnnotationsCommand(
+                scene=self._page_scene,
+                doc_manager=self._doc_manager,
+                sidebar=self._sidebar
+            )
+            undo_stack.push(cmd)
 
     def _on_export(self) -> None:
         """Slot for Export action from ThreeDotMenu."""
@@ -283,14 +299,13 @@ class ViewerFileIOMixin:
         else:
             name = "FreeNotes"
             ext = ""
-        mod = " •" if self._app_state.is_modified else ""
-        self._title_label.setText(f"{name}{mod}")
+        self._title_label.setText(name)
         self._ext_label.setText(ext)
 
     def _on_stack_changed(self, _idx: int) -> None:
-        """Mark document as modified when undo stack changes."""
-        self._app_state.is_modified = not undo_stack.get_stack().isClean()
-        self._update_title()
+        """Start autosave timer when undo stack changes."""
+        if hasattr(self, '_autosave_timer'):
+            self._autosave_timer.start(1000)
 
     def _save_current_zoom(self) -> None:
         """Persist current zoom level for the active document."""

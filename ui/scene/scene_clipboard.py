@@ -8,6 +8,7 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.shape_item import ShapeItem
+from items.image_item import ImageItem
 
 
 class SceneClipboardMixin:
@@ -69,32 +70,104 @@ class SceneClipboardMixin:
         undo_stack.push(cmd)
 
     def paste_clipboard(self) -> None:
-        """Paste items from internal clipboard into the scene."""
+        """Paste items from internal clipboard or system clipboard image/url."""
         from app.app_state import AppState
-        clipboard = AppState().items_clipboard
-        if not clipboard:
+        app_state = AppState()
+        clipboard = app_state.items_clipboard
+
+        from PySide6.QtWidgets import QApplication
+        sys_clipboard = QApplication.clipboard()
+        mime = sys_clipboard.mimeData()
+        
+        has_sys_image = False
+        image_to_paste = sys_clipboard.image()
+        image_path_to_paste = None
+        
+        from items.image_item import ImageItem
+        _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+        
+        if mime.hasUrls():
+            for url in mime.urls():
+                if url.isLocalFile():
+                    path = url.toLocalFile()
+                    if any(path.lower().endswith(ext) for ext in _IMAGE_EXTENSIONS):
+                        has_sys_image = True
+                        image_path_to_paste = path
+                        break
+                        
+        if not has_sys_image and image_to_paste is not None and not image_to_paste.isNull():
+            has_sys_image = True
+            
+        use_internal = False
+        if clipboard and has_sys_image:
+            use_internal = app_state.items_clipboard_time >= app_state.sys_clipboard_time
+        elif clipboard:
+            use_internal = True
+        elif has_sys_image:
+            use_internal = False
+        else:
             return
 
-        paste_offset = QPointF(16, 16)
-        new_items = []
-        for entry in clipboard:
-            item = self._deserialize_item(entry, paste_offset)
-            if item is not None:
-                new_items.append(item)
+        if use_internal:
+            paste_offset = QPointF(16, 16)
+            new_items = []
+            for entry in clipboard:
+                item = self._deserialize_item(entry, paste_offset)
+                if item is not None:
+                    new_items.append(item)
 
-        if not new_items:
+            if new_items:
+                for item in new_items:
+                    self.addItem(item)
+                    self.add_item_to_registry(item)
+
+                from commands.paste_items_command import PasteItemsCommand
+                from core import undo_stack
+                cmd = PasteItemsCommand(new_items, self)
+                undo_stack.push(cmd)
+                self.set_selection(new_items)
             return
 
-        # Add items to scene
-        for item in new_items:
+        # Paste system image
+        page_idx = app_state.current_page
+        page_rect = self.get_page_rect(page_idx) if hasattr(self, 'get_page_rect') else None
+
+        if page_rect and not page_rect.isEmpty():
+            pos = QPointF(page_rect.center().x(), page_rect.top() + 50)
+        else:
+            pos = QPointF(100, 100)
+
+        try:
+            if image_path_to_paste:
+                item = ImageItem.from_image_file(image_path_to_paste, pos, page_idx)
+            else:
+                pos = QPointF(pos.x() - image_to_paste.width() / 2, pos.y())
+                item = ImageItem.from_qimage(image_to_paste, pos, page_idx)
+
+            # Scale down large images
+            if page_rect and not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
+                scale = (page_rect.width() * 0.8) / item._rect.width()
+                new_w = item._rect.width() * scale
+                new_h = item._rect.height() * scale
+                item.set_rect(QRectF(item._rect.x(), item._rect.y(), new_w, new_h))
+
             self.addItem(item)
             self.add_item_to_registry(item)
 
-        from commands.paste_items_command import PasteItemsCommand
-        from core import undo_stack
-        cmd = PasteItemsCommand(new_items, self)
-        undo_stack.push(cmd)
-        self.set_selection(new_items)
+            from commands.paste_items_command import PasteItemsCommand
+            from core import undo_stack
+            cmd = PasteItemsCommand([item], self)
+            undo_stack.push(cmd)
+            self.set_selection([item])
+            
+            # Switch to hand tool like dropEvent
+            # tool_switch_requested comes from PageScene
+            if hasattr(self, 'tool_switch_requested'):
+                self.tool_switch_requested.emit("hand")
+                
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Clipboard image paste failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -108,7 +181,10 @@ class SceneClipboardMixin:
             entry = self._serialize_item(item)
             if entry is not None:
                 entries.append(entry)
-        AppState().items_clipboard = entries
+        app_state = AppState()
+        app_state.items_clipboard = entries
+        import time
+        app_state.items_clipboard_time = time.time()
 
     def _serialize_item(self, item) -> dict | None:
         """Serialize a single item to a dict for clipboard storage."""
@@ -152,6 +228,8 @@ class SceneClipboardMixin:
                 "style": item._style.to_dict(),
             }
         elif isinstance(item, ShapeItem):
+            return item.to_dict()
+        elif isinstance(item, ImageItem):
             return item.to_dict()
         return None
 
@@ -219,6 +297,11 @@ class SceneClipboardMixin:
         elif item_type == "shape":
             from core.shape_style import ShapeStyle
             item = ShapeItem.from_dict(entry)
+            item.setPos(new_pos)
+            return item
+
+        elif item_type == "image":
+            item = ImageItem.from_dict(entry)
             item.setPos(new_pos)
             return item
 

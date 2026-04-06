@@ -555,3 +555,38 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     @property
     def style(self) -> ToolStyle:
         return self._style
+
+    # ==================================================================
+    # Serialization (for clone_page_annotations)
+    # ==================================================================
+
+    def to_dict(self) -> dict:
+        r = self.get_rect()
+        return {
+            "type": "textbox",
+            "html": self._document.toHtml(),
+            "rect": (r.x(), r.y(), r.width(), r.height()),
+            "rotation": self.rotation(),
+            "page_index": self._page_index,
+            "pos": (self.pos().x(), self.pos().y()),
+            "style_color": self._style.color.name(),
+            "font_family": self._style.font_family,
+            "font_size": self._style.font_size,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TextBoxItem:
+        rx, ry, rw, rh = d["rect"]
+        style = ToolStyle(
+            color=QColor(d.get("style_color", "#000000")),
+            font_family=d.get("font_family", "Segoe UI"),
+            font_size=d.get("font_size", 14),
+        )
+        item = cls(
+            rect=QRectF(rx, ry, rw, rh),
+            style=style,
+            page_index=d.get("page_index", -1),
+        )
+        item._document.setHtml(d["html"])
+        item.setRotation(d.get("rotation", 0.0))
+        return item

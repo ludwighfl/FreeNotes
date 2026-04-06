@@ -46,6 +46,7 @@ class PdfExporter:
         from core.pdf_path_exporter import PdfPathExporter
         from core.pdf_shape_exporter import PdfShapeExporter
         from core.pdf_text_exporter import PdfTextExporter
+        from core.pdf_image_exporter import PdfImageExporter
 
         # Clone the in-memory document so we don't modify the one actively viewed
         if self._doc_manager._document is None:
@@ -59,6 +60,9 @@ class PdfExporter:
             page = doc[page_idx]
             sx, sy, page_origin = self._get_scale(page, page_idx)
 
+            # Images first (lowest Z-value, behind all other annotations)
+            PdfImageExporter.export(
+                self._scene, page, page_idx, sx, sy, page_origin)
             PdfPathExporter.export_strokes(
                 self._scene, page, page_idx, sx, sy, page_origin)
             PdfPathExporter.export_highlights(
