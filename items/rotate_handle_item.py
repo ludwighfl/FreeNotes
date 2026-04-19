@@ -152,11 +152,16 @@ class RotateHandleItem(QGraphicsItem):
             return
         self._dragging = True
         box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
-        local_center = QPointF(
-            box._rect.width() / 2.0,
-            box._rect.height() / 2.0,
-        )
-        self._rotation_center = box.mapToScene(local_center)
+        
+        # Safely update transformOriginPoint without jumping
+        new_origin = QPointF(box._rect.width() / 2.0, box._rect.height() / 2.0)
+        if new_origin != box.transformOriginPoint():
+            p1 = box.mapToScene(QPointF(0, 0))
+            box.setTransformOriginPoint(new_origin)
+            p2 = box.mapToScene(QPointF(0, 0))
+            box.setPos(box.pos() + (p1 - p2))
+            
+        self._rotation_center = box.mapToScene(new_origin)
         self._start_angle = self._angle_to(event.scenePos())
         self._start_rotation = box.rotation()
         self.update()
@@ -166,12 +171,13 @@ class RotateHandleItem(QGraphicsItem):
         if not self._dragging:
             return
         delta = self._angle_to(event.scenePos()) - self._start_angle
+        new_rotation = self._start_rotation + delta
+        
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            new_rotation = round(new_rotation / 45.0) * 45.0
+            
         box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
-        box.setTransformOriginPoint(
-            box._rect.width() / 2.0,
-            box._rect.height() / 2.0,
-        )
-        box.setRotation(self._start_rotation + delta)
+        box.setRotation(new_rotation)
         self.update()
         event.accept()
 

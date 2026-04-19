@@ -240,6 +240,9 @@ class ImageItem(QGraphicsItem):
         self._cached_br = None
         new_rect = QRectF(start_rect)
 
+        from PySide6.QtGui import QGuiApplication
+        shift = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+
         match handle_pos:
             case HandlePosition.TOP_LEFT:
                 new_rect.setTopLeft(start_rect.topLeft() + delta)
@@ -253,6 +256,30 @@ class ImageItem(QGraphicsItem):
                 new_rect.setBottomLeft(start_rect.bottomLeft() + delta)
             case HandlePosition.BOT_RIGHT:
                 new_rect.setBottomRight(start_rect.bottomRight() + delta)
+
+        if shift and handle_pos in (HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT, HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT):
+            orig_w = max(self.MIN_SIZE, start_rect.width())
+            orig_h = max(self.MIN_SIZE, start_rect.height())
+            aspect = orig_w / orig_h
+            w = new_rect.width()
+            h = new_rect.height()
+            
+            if w < self.MIN_SIZE: w = self.MIN_SIZE
+            if h < self.MIN_SIZE: h = self.MIN_SIZE
+            
+            if abs(w - orig_w) > abs(h - orig_h):
+                h = w / aspect
+            else:
+                w = h * aspect
+                
+            if handle_pos == HandlePosition.TOP_LEFT:
+                new_rect.setTopLeft(QPointF(start_rect.right() - w, start_rect.bottom() - h))
+            elif handle_pos == HandlePosition.TOP_RIGHT:
+                new_rect.setTopRight(QPointF(start_rect.left() + w, start_rect.bottom() - h))
+            elif handle_pos == HandlePosition.BOT_LEFT:
+                new_rect.setBottomLeft(QPointF(start_rect.right() - w, start_rect.top() + h))
+            elif handle_pos == HandlePosition.BOT_RIGHT:
+                new_rect.setBottomRight(QPointF(start_rect.left() + w, start_rect.top() + h))
 
         new_rect = new_rect.normalized()
         if new_rect.width() < self.MIN_SIZE:

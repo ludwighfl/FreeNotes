@@ -118,3 +118,44 @@ class TileCache:
         """
         with self._lock:
             return key in self._cache
+
+    def remap_after_insert(self, at_index: int) -> None:
+        """Shift tile indices up by 1 for pages >= *at_index*.
+
+        Tiles for pages before *at_index* are left untouched.
+        """
+        with self._lock:
+            new_cache: OrderedDict[TileKey, QImage] = OrderedDict()
+            for key, img in self._cache.items():
+                if key.page_index >= at_index:
+                    new_key = TileKey(
+                        page_index=key.page_index + 1,
+                        tile_col=key.tile_col,
+                        tile_row=key.tile_row,
+                        mip_level=key.mip_level,
+                    )
+                    new_cache[new_key] = img
+                else:
+                    new_cache[key] = img
+            self._cache = new_cache
+
+    def remap_after_delete(self, at_index: int) -> None:
+        """Remove tiles for *at_index* and shift indices down by 1 for
+        pages > *at_index*.
+        """
+        with self._lock:
+            new_cache: OrderedDict[TileKey, QImage] = OrderedDict()
+            for key, img in self._cache.items():
+                if key.page_index == at_index:
+                    continue  # drop deleted page's tiles
+                elif key.page_index > at_index:
+                    new_key = TileKey(
+                        page_index=key.page_index - 1,
+                        tile_col=key.tile_col,
+                        tile_row=key.tile_row,
+                        mip_level=key.mip_level,
+                    )
+                    new_cache[new_key] = img
+                else:
+                    new_cache[key] = img
+            self._cache = new_cache

@@ -240,6 +240,9 @@ class ShapeItem(QGraphicsItem):
         self.prepareGeometryChange()
         self._cached_br = None
         new_rect = QRectF(start_rect)
+        
+        from PySide6.QtGui import QGuiApplication
+        shift = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
 
         match handle_pos:
             case HandlePosition.TOP_LEFT:
@@ -257,6 +260,36 @@ class ShapeItem(QGraphicsItem):
 
         # Enforce minimum size (except lines/arrows which can be 1D)
         if self._style.shape_type not in (ShapeType.LINE, ShapeType.ARROW):
+            # Proportional scaling (Shift)
+            if shift and handle_pos in (HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT, HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT):
+                orig_w = max(self.MIN_SIZE, start_rect.width())
+                orig_h = max(self.MIN_SIZE, start_rect.height())
+                aspect = orig_w / orig_h
+                w = new_rect.width()
+                h = new_rect.height()
+                
+                # Check which axis drove the change more, or arbitrarily pick one
+                # Usually we pick the larger relative change
+                if w < self.MIN_SIZE: w = self.MIN_SIZE
+                if h < self.MIN_SIZE: h = self.MIN_SIZE
+                
+                # Force aspect
+                # e.g., if we scaled height more, adjust width
+                if abs(w - orig_w) > abs(h - orig_h):
+                    h = w / aspect
+                else:
+                    w = h * aspect
+                    
+                # Apply constrained dimensions based on anchor
+                if handle_pos == HandlePosition.TOP_LEFT:
+                    new_rect.setTopLeft(QPointF(start_rect.right() - w, start_rect.bottom() - h))
+                elif handle_pos == HandlePosition.TOP_RIGHT:
+                    new_rect.setTopRight(QPointF(start_rect.left() + w, start_rect.bottom() - h))
+                elif handle_pos == HandlePosition.BOT_LEFT:
+                    new_rect.setBottomLeft(QPointF(start_rect.right() - w, start_rect.top() + h))
+                elif handle_pos == HandlePosition.BOT_RIGHT:
+                    new_rect.setBottomRight(QPointF(start_rect.left() + w, start_rect.top() + h))
+
             new_rect = new_rect.normalized()
             if new_rect.width() < self.MIN_SIZE:
                 new_rect.setWidth(self.MIN_SIZE)
@@ -281,6 +314,24 @@ class ShapeItem(QGraphicsItem):
                 p1 = p1 + delta
             elif handle_pos == HandlePosition.BOT_RIGHT:
                 p2 = p2 + delta
+                
+            if shift:
+                # Snap angle to 45 degree increments
+                dx = p2.x() - p1.x()
+                dy = p2.y() - p1.y()
+                length = math.hypot(dx, dy)
+                if length > 0:
+                    angle = math.degrees(math.atan2(dy, dx))
+                    snapped = round(angle / 45.0) * 45.0
+                    rad = math.radians(snapped)
+                    dx = math.cos(rad) * length
+                    dy = math.sin(rad) * length
+                    
+                # Reconstruct points
+                if handle_pos == HandlePosition.TOP_LEFT:
+                    p1 = QPointF(p2.x() - dx, p2.y() - dy)
+                elif handle_pos == HandlePosition.BOT_RIGHT:
+                    p2 = QPointF(p1.x() + dx, p1.y() + dy)
                 
             # Find new extents
             sx, sy = p1.x(), p1.y()

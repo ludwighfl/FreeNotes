@@ -286,6 +286,9 @@ class SidebarWidget(QScrollArea):
         act_add_above = QAction("Leere Seite davor einfügen", self)
         act_add_below = QAction("Leere Seite danach einfügen", self)
         act_duplicate = QAction("Seite duplizieren", self)
+        act_copy = QAction("Seite kopieren", self)
+        act_paste = QAction("Seite einfügen", self)
+        act_paste.setEnabled(self._app_state.page_clipboard is not None)
         act_delete = QAction("Seite löschen", self)
         act_delete.setEnabled(len(self._cards) > 1)
 
@@ -293,6 +296,9 @@ class SidebarWidget(QScrollArea):
         menu.addAction(act_add_below)
         menu.addSeparator()
         menu.addAction(act_duplicate)
+        menu.addSeparator()
+        menu.addAction(act_copy)
+        menu.addAction(act_paste)
         menu.addSeparator()
         menu.addAction(act_delete)
 
@@ -304,6 +310,10 @@ class SidebarWidget(QScrollArea):
             lambda: viewer.add_page(idx, "after"))
         act_duplicate.triggered.connect(
             lambda: viewer.duplicate_page(idx))
+        act_copy.triggered.connect(
+            lambda: self._copy_page(idx))
+        act_paste.triggered.connect(
+            lambda: self._paste_page(idx))
         act_delete.triggered.connect(
             lambda: viewer.delete_page(idx))
 
@@ -489,3 +499,51 @@ class SidebarWidget(QScrollArea):
             # ---------------------------
             
             self._cards[idx].set_thumbnail(pixmap)
+
+    # ------------------------------------------------------------------
+    # Page copy / paste
+    # ------------------------------------------------------------------
+
+    def _copy_page(self, page_idx: int) -> None:
+        """Copy page PDF bytes + serialized annotations to AppState clipboard."""
+        if self._doc_manager is None or self._scene is None:
+            return
+
+        from core.freenotes_store import FreenotesStore
+
+        pdf_bytes = self._doc_manager.save_page_bytes(page_idx)
+        annotations = FreenotesStore.serialize_page_annotations(
+            self._scene, page_idx)
+
+        # Store source page rect for position offset calculation on paste
+        source_rect = self._scene.get_page_rect(page_idx)
+        self._app_state.page_clipboard = {
+            "pdf_bytes": pdf_bytes,
+            "annotations": annotations,
+            "source_rect": (source_rect.x(), source_rect.y(),
+                            source_rect.width(), source_rect.height())
+                           if source_rect else None,
+        }
+
+    def _paste_page(self, after_idx: int) -> None:
+        """Insert a copied page after *after_idx*."""
+        clipboard = self._app_state.page_clipboard
+        if clipboard is None or self._viewer is None:
+            return
+        if self._doc_manager is None or self._scene is None:
+            return
+
+        from commands.add_page_command import AddPageCommand
+        from core import undo_stack
+
+        insert_at = after_idx + 1
+        cmd = AddPageCommand(
+            insert_at=insert_at,
+            source_page_idx=None,
+            scene=self._scene,
+            doc_manager=self._doc_manager,
+            sidebar=self,
+            label="Seite einfügen",
+            source_page_data=clipboard,
+        )
+        undo_stack.push(cmd)

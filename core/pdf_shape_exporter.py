@@ -72,6 +72,17 @@ class PdfShapeExporter:
 
         shape = page.new_shape()
 
+        # Get the actual line points based on line_dir
+        line_dir = getattr(shape_item, "_line_dir", 0)
+        if line_dir == 0:
+            px1, py1, px2, py2 = x0, y0, x1, y1
+        elif line_dir == 1:
+            px1, py1, px2, py2 = x1, y1, x0, y0
+        elif line_dir == 2:
+            px1, py1, px2, py2 = x1, y0, x0, y1
+        else:
+            px1, py1, px2, py2 = x0, y1, x1, y0
+
         match st.shape_type:
             case ShapeType.RECT:
                 shape.draw_rect(fitz_rect)
@@ -86,11 +97,11 @@ class PdfShapeExporter:
 
             case ShapeType.LINE:
                 shape.draw_line(
-                    fitz.Point(x0, y0), fitz.Point(x1, y1))
+                    fitz.Point(px1, py1), fitz.Point(px2, py2))
 
             case ShapeType.ARROW:
                 PdfShapeExporter._draw_arrow_shape(
-                    shape, page, fitz_rect, stroke_c, stroke_w,
+                    shape, page, px1, py1, px2, py2, stroke_c, stroke_w,
                     morph, fill_opacity, dashes)
                 return  # arrow handles its own finish/commit
 
@@ -120,7 +131,7 @@ class PdfShapeExporter:
     def _draw_arrow_shape(
         shape: fitz.Shape,
         page: fitz.Page,
-        rect: fitz.Rect,
+        px1: float, py1: float, px2: float, py2: float,
         color: tuple,
         width: float,
         morph,
@@ -128,8 +139,8 @@ class PdfShapeExporter:
         dashes: str | None,
     ) -> None:
         """Draw an arrow: line + filled arrowhead."""
-        p1 = fitz.Point(rect.x0, rect.y0)
-        p2 = fitz.Point(rect.x1, rect.y1)
+        p1 = fitz.Point(px1, py1)
+        p2 = fitz.Point(px2, py2)
 
         dx = p2.x - p1.x
         dy = p2.y - p1.y

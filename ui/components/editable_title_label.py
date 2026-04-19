@@ -1,6 +1,7 @@
 """Editable title label – double-click to rename."""
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QLabel, QLineEdit
 
 
@@ -12,6 +13,9 @@ class EditableTitleLabel(QLabel):
     """
 
     rename_requested = Signal(str)
+
+    MIN_EDIT_WIDTH: int = 120
+    MAX_EDIT_WIDTH: int = 500
 
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
@@ -33,6 +37,7 @@ class EditableTitleLabel(QLabel):
         )
         
         self._editor.editingFinished.connect(self._on_editing_finished)
+        self._editor.textChanged.connect(self._adjust_editor_width)
 
     def setFont(self, font):
         """Pass font updates to the editor as well."""
@@ -50,16 +55,20 @@ class EditableTitleLabel(QLabel):
     def start_editing(self):
         """Show the QLineEdit and set focus."""
         self._editor.setText(self.text())
-        # Make the editor cover the label entirely, but maybe slightly wider
-        rect = self.rect()
-        # Ensure minimum width so text doesn't clip
-        width = max(rect.width() + 20, 200)
-        self._editor.setGeometry(0, -2, width, rect.height() + 4)
+        self._adjust_editor_width(self.text())
         
         self._editor.show()
         self._editor.setFocus()
         self._editor.selectAll()
-        
+
+    def _adjust_editor_width(self, text: str) -> None:
+        """Resize the editor width to fit the current text."""
+        fm = QFontMetrics(self._editor.font())
+        text_width = fm.horizontalAdvance(text) + 24  # padding for cursor + border
+        width = max(self.MIN_EDIT_WIDTH, min(text_width, self.MAX_EDIT_WIDTH))
+        rect = self.rect()
+        self._editor.setGeometry(0, -2, width, rect.height() + 4)
+
     def _on_editing_finished(self):
         """Called when Enter is pressed or focus is lost."""
         self._editor.hide()

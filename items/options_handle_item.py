@@ -241,42 +241,44 @@ class OptionsHandleItem(QGraphicsItem):
         event.accept()
 
     def _execute_action(self, index: int) -> None:
-        box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
+        item = self.parentItem()
         if index == 0:
-            self._do_copy(box)
+            self._do_copy(item)
         elif index == 1:
-            self._do_cut(box)
+            self._do_cut(item)
         elif index == 2:
-            self._do_delete(box)
+            self._do_delete(item)
         self.hide()
 
-    def _do_copy(self, box: TextBoxItem) -> None:
-        from app.app_state import AppState
-        AppState().clipboard_box = box.clone()
-
-    def _do_cut(self, box: TextBoxItem) -> None:
-        from app.app_state import AppState
-        from commands.cut_textbox_command import CutTextBoxCommand
-        from core.undo_stack import get_stack
-
-        AppState().clipboard_box = box.clone()
-        scene = box.scene()
+    def _do_copy(self, item: QGraphicsItem) -> None:
+        scene = item.scene()
         if scene is None:
             return
-        cmd = CutTextBoxCommand(box, scene)
-        get_stack().push(cmd)
+        scene._copy_items_to_clipboard([item])
 
-    def _do_delete(self, box: TextBoxItem) -> None:
-        from commands.remove_textbox_command import RemoveTextBoxCommand
-        from core.undo_stack import get_stack
-
-        scene = box.scene()
+    def _do_cut(self, item: QGraphicsItem) -> None:
+        scene = item.scene()
         if scene is None:
             return
-        # Pre-remove (RemoveTextBoxCommand skips first redo)
-        box.stop_editing()
-        if box.scene() is scene:
-            scene.removeItem(box)
-        scene.remove_item_from_registry(box)
-        cmd = RemoveTextBoxCommand([box], scene)
+        scene.cut_selected()
+
+    def _do_delete(self, item: QGraphicsItem) -> None:
+        from commands.delete_items_command import DeleteItemsCommand
+        from core.undo_stack import get_stack
+
+        scene = item.scene()
+        if scene is None:
+            return
+        
+        # Pre-remove
+        scene.clear_selection()
+        if hasattr(item, "stop_editing"):
+            item.stop_editing()
+            
+        if item.scene() is scene:
+            scene.removeItem(item)
+        if hasattr(scene, "remove_item_from_registry"):
+            scene.remove_item_from_registry(item)
+            
+        cmd = DeleteItemsCommand([item], scene)
         get_stack().push(cmd)

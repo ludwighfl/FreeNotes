@@ -141,6 +141,8 @@ class EraserTool(BaseTool):
             self._cursor_item.setVisible(True)
             self._cursor_item.update_position(pos)
         if self._is_erasing:
+            if self._last_erase_pos and (pos - self._last_erase_pos).manhattanLength() < 5.0:
+                return
             self._erase_at(pos, scene)
 
     def on_release(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:

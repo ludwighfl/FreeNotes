@@ -195,6 +195,23 @@ class FreenotesStore:
     # ------------------------------------------------------------------
 
     @classmethod
+    def serialize_path(cls, path: QPainterPath) -> str:
+        from PySide6.QtCore import QByteArray, QDataStream, QIODevice
+        ba = QByteArray()
+        stream = QDataStream(ba, QIODevice.OpenModeFlag.WriteOnly)
+        stream << path
+        return ba.toBase64().data().decode("ascii")
+
+    @classmethod
+    def deserialize_path(cls, b64_str: str) -> QPainterPath:
+        from PySide6.QtCore import QByteArray, QDataStream, QIODevice
+        ba = QByteArray.fromBase64(b64_str.encode("ascii"))
+        stream = QDataStream(ba, QIODevice.OpenModeFlag.ReadOnly)
+        path = QPainterPath()
+        stream >> path
+        return path
+
+    @classmethod
     def _serialize_stroke(cls, item: StrokeItem) -> dict:
         path = item._path
         points = []
@@ -204,10 +221,12 @@ class FreenotesStore:
         return {
             "type": "stroke",
             "points": points,
+            "path_b64": cls.serialize_path(path),
             "color": item._style.color.name(),
             "width": item._style.width,
             "page_index": item.page_index,
             "pos": (item.pos().x(), item.pos().y()),
+            "outline_mode": getattr(item, "_outline_mode", False),
         }
 
     @classmethod
@@ -220,6 +239,7 @@ class FreenotesStore:
         return {
             "type": "highlight",
             "points": points,
+            "path_b64": cls.serialize_path(path),
             "color": item._style.color.name(),
             "width": item._style.width,
             "page_index": item.page_index,
@@ -243,12 +263,15 @@ class FreenotesStore:
 
     @classmethod
     def _deserialize_stroke(cls, d: dict, page_idx: int) -> StrokeItem:
-        path = QPainterPath()
-        pts = d.get("points", [])
-        if pts:
-            path.moveTo(pts[0][0], pts[0][1])
-            for px, py in pts[1:]:
-                path.lineTo(px, py)
+        if "path_b64" in d:
+            path = cls.deserialize_path(d["path_b64"])
+        else:
+            path = QPainterPath()
+            pts = d.get("points", [])
+            if pts:
+                path.moveTo(pts[0][0], pts[0][1])
+                for px, py in pts[1:]:
+                    path.lineTo(px, py)
         style = ToolStyle(
             color=QColor(d["color"]),
             width=d["width"],
@@ -258,18 +281,22 @@ class FreenotesStore:
             style=style,
             page_index=d.get("page_index", page_idx),
         )
+        item._outline_mode = d.get("outline_mode", False)
         if "pos" in d:
             item.setPos(QPointF(*d["pos"]))
         return item
 
     @classmethod
     def _deserialize_highlight(cls, d: dict, page_idx: int) -> HighlightItem:
-        path = QPainterPath()
-        pts = d.get("points", [])
-        if pts:
-            path.moveTo(pts[0][0], pts[0][1])
-            for px, py in pts[1:]:
-                path.lineTo(px, py)
+        if "path_b64" in d:
+            path = cls.deserialize_path(d["path_b64"])
+        else:
+            path = QPainterPath()
+            pts = d.get("points", [])
+            if pts:
+                path.moveTo(pts[0][0], pts[0][1])
+                for px, py in pts[1:]:
+                    path.lineTo(px, py)
         style = ToolStyle(
             color=QColor(d["color"]),
             width=d["width"],
@@ -299,3 +326,115 @@ class FreenotesStore:
         item._document.setHtml(d["html"])
         item.setRotation(d.get("rotation", 0.0))
         return item
+
+    # ------------------------------------------------------------------
+    # Page-level serialization (for page clipboard)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def serialize_page_annotations(cls, scene: "PageScene", page_idx: int) -> dict:
+        """Serialize all annotations on *page_idx* to a plain dict.
+
+        The returned dict has the same structure as a single page entry in
+        the .freenotes JSON format and can be stored in
+        ``AppState.page_clipboard['annotations']``.
+        """
+        page_data: dict = {
+            "strokes": [],
+            "highlights": [],
+            "textboxes": [],
+            "shapes": [],
+            "images": [],
+        }
+
+        for item in scene._stroke_items.get(page_idx, []):
+            page_data["strokes"].append(cls._serialize_stroke(item))
+
+        for item in scene._highlight_items.get(page_idx, []):
+            page_data["highlights"].append(cls._serialize_highlight(item))
+
+        for item in scene._text_box_items.get(page_idx, []):
+            page_data["textboxes"].append(cls._serialize_textbox(item))
+
+        for item in scene._shape_items.get(page_idx, []):
+            page_data["shapes"].append(item.to_dict())
+
+        for item in scene._image_items.get(page_idx, []):
+            page_data["images"].append(item.to_dict())
+
+        return page_data
+
+    @classmethod
+    def deserialize_page_annotations(
+        cls,
+        scene: "PageScene",
+        page_idx: int,
+        page_data: dict,
+        pos_offset: tuple[float, float] | None = None,
+    ) -> None:
+        """Deserialize annotations from *page_data* and add them to *scene*.
+
+        This is the inverse of :meth:`serialize_page_annotations`.  Items
+        are added to the scene's registries under *page_idx*.
+
+        Args:
+            pos_offset: Optional (dx, dy) offset to apply to every item's
+                position.  Used when pasting a page whose annotations
+                were serialized at a different scene Y-offset.
+        """
+        dx, dy = pos_offset if pos_offset else (0.0, 0.0)
+
+        for d in page_data.get("strokes", []):
+            try:
+                item = cls._deserialize_stroke(d, page_idx)
+                item._page_index = page_idx
+                if pos_offset:
+                    item.setPos(item.pos().x() + dx, item.pos().y() + dy)
+                scene.addItem(item)
+                scene.add_item_to_registry(item)
+            except Exception as e:
+                logger.warning("Stroke paste failed: %s", e)
+
+        for d in page_data.get("highlights", []):
+            try:
+                item = cls._deserialize_highlight(d, page_idx)
+                item._page_index = page_idx
+                if pos_offset:
+                    item.setPos(item.pos().x() + dx, item.pos().y() + dy)
+                scene.addItem(item)
+                scene.add_item_to_registry(item)
+            except Exception as e:
+                logger.warning("Highlight paste failed: %s", e)
+
+        for d in page_data.get("textboxes", []):
+            try:
+                item = cls._deserialize_textbox(d, page_idx)
+                item._page_index = page_idx
+                if pos_offset:
+                    item.setPos(item.pos().x() + dx, item.pos().y() + dy)
+                scene.addItem(item)
+                scene.add_item_to_registry(item)
+            except Exception as e:
+                logger.warning("Textbox paste failed: %s", e)
+
+        for d in page_data.get("shapes", []):
+            try:
+                item = ShapeItem.from_dict(d)
+                item._page_index = page_idx
+                if pos_offset:
+                    item.setPos(item.pos().x() + dx, item.pos().y() + dy)
+                scene.addItem(item)
+                scene.add_item_to_registry(item)
+            except Exception as e:
+                logger.warning("Shape paste failed: %s", e)
+
+        for d in page_data.get("images", []):
+            try:
+                item = ImageItem.from_dict(d)
+                item._page_index = page_idx
+                if pos_offset:
+                    item.setPos(item.pos().x() + dx, item.pos().y() + dy)
+                scene.addItem(item)
+                scene.add_item_to_registry(item)
+            except Exception as e:
+                logger.warning("Image paste failed: %s", e)

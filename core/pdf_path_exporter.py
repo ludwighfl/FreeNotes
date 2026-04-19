@@ -80,14 +80,33 @@ class PdfPathExporter:
             # Scale line width proportionally
             pdf_width = width * min(sx, sy)
 
-            shape.finish(
-                color=PdfExporter.qcolor_to_fitz(color),
-                fill=None,
-                width=pdf_width,
-                lineCap=1,      # Round cap
-                lineJoin=1,     # Round join
-                closePath=False,
-            )
+            rotation = stroke.rotation()
+            morph = None
+            if rotation != 0:
+                # The rotation center is the transform origin
+                to_scene = stroke.mapToScene(stroke.transformOriginPoint())
+                cx = (to_scene.x() - page_origin.x()) * sx
+                cy = (to_scene.y() - page_origin.y()) * sy
+                morph = (fitz.Point(cx, cy), fitz.Matrix(rotation))
+
+            if getattr(stroke, "_outline_mode", False):
+                shape.finish(
+                    color=None,
+                    fill=PdfExporter.qcolor_to_fitz(color),
+                    width=0,
+                    closePath=True,
+                    morph=morph,
+                )
+            else:
+                shape.finish(
+                    color=PdfExporter.qcolor_to_fitz(color),
+                    fill=None,
+                    width=pdf_width,
+                    lineCap=1,      # Round cap
+                    lineJoin=1,     # Round join
+                    closePath=False,
+                    morph=morph,
+                )
             shape.commit()
 
     @staticmethod
@@ -161,6 +180,15 @@ class PdfPathExporter:
             points.append(points[0])
 
             shape = page.new_shape()
+            
+            rotation = hl.rotation()
+            morph = None
+            if rotation != 0:
+                to_scene = hl.mapToScene(hl.transformOriginPoint())
+                cx = (to_scene.x() - page_origin.x()) * sx
+                cy = (to_scene.y() - page_origin.y()) * sy
+                morph = (fitz.Point(cx, cy), fitz.Matrix(rotation))
+                
             shape.draw_polyline(points)
             shape.finish(
                 color=None,
@@ -168,6 +196,7 @@ class PdfPathExporter:
                 fill_opacity=hl.DEFAULT_OPACITY,
                 width=0,
                 closePath=True,
+                morph=morph,
             )
             shape.commit()
 

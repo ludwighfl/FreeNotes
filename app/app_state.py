@@ -53,6 +53,7 @@ class AppState(QObject):
         self.items_clipboard: list[dict] = []  # Serialized items for Copy/Paste
         self.items_clipboard_time: float = 0.0
         self.sys_clipboard_time: float = 0.0
+        self.page_clipboard: dict | None = None  # {pdf_bytes, annotations} for page copy/paste
 
         # Hook system clipboard changes
         from PySide6.QtWidgets import QApplication

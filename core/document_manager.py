@@ -132,14 +132,30 @@ class DocumentManager:
             self._cache = new_cache
 
     def insert_page(
-        self, at_index: int, source_idx: int | None = None
+        self,
+        at_index: int,
+        source_idx: int | None = None,
+        source_bytes: bytes | None = None,
     ) -> None:
-        """Insert a page at the given index."""
+        """Insert a page at the given index.
+
+        Args:
+            at_index: Position to insert the new page.
+            source_idx: If given, duplicate this page from the current document.
+            source_bytes: If given, insert a page from raw PDF bytes (page clipboard).
+                          Takes precedence over *source_idx*.
+        """
         with self._lock:
             if self._document is None:
                 return
             self._structurally_modified = True
-            if source_idx is None:
+            if source_bytes is not None:
+                import fitz
+                temp = fitz.open("pdf", source_bytes)
+                self._document.insert_pdf(temp, start_at=at_index)
+                temp.close()
+                self.page_map.insert(at_index, -1)
+            elif source_idx is None:
                 self._document.insert_page(at_index, width=595, height=842)
                 self.page_map.insert(at_index, -1)
             else:

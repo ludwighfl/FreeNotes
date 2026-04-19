@@ -62,13 +62,16 @@ class ScenePageManagerMixin:
         If `order` is provided, it does a fast list rearrangement instead
         of destroying and recreating all scene items.
         """
-        # Invalidate tile cache — PDF page content has moved
-        if hasattr(self, '_tile_cache'):
-            self._tile_cache.invalidate_all()
+        # Tile cache management:
+        # - True reorder (order != None): content moved between indices → full invalidation
+        # - Insert/delete (order == None): indices already remapped by insert_page/remove_page
+        if order is not None:
+            if hasattr(self, '_tile_cache'):
+                self._tile_cache.invalidate_all()
         if hasattr(self, '_tile_renderer'):
             self._tile_renderer.cancel_all()
 
-        # Remove stale tile pixmap items from scene
+        # Remove stale tile pixmap items from scene (recreated cheaply from cache)
         if hasattr(self, '_tile_items'):
             for tile_item in self._tile_items.values():
                 self.removeItem(tile_item)
@@ -202,9 +205,11 @@ class ScenePageManagerMixin:
             d.clear()
             d.update(new_d)
 
-        # Invalidate tile system — page indices have shifted
+        # Remap tile cache indices instead of full invalidation
         if hasattr(self, '_tile_cache'):
-            self._tile_cache.invalidate_all()
+            self._tile_cache.remap_after_insert(at_index)
+        # Tile scene items must be cleared (they reference old page rects)
+        # — the render loop will recreate them cheaply from the remapped cache
         if hasattr(self, '_tile_items'):
             for tile_item in self._tile_items.values():
                 self.removeItem(tile_item)
@@ -243,9 +248,10 @@ class ScenePageManagerMixin:
             d.clear()
             d.update(new_d)
 
-        # Invalidate tile system — page indices have shifted
+        # Remap tile cache indices instead of full invalidation
         if hasattr(self, '_tile_cache'):
-            self._tile_cache.invalidate_all()
+            self._tile_cache.remap_after_delete(page_idx)
+        # Tile scene items must be cleared — render loop will recreate from cache
         if hasattr(self, '_tile_items'):
             for tile_item in self._tile_items.values():
                 self.removeItem(tile_item)

@@ -194,31 +194,5 @@ class ShapeTool(BaseTool):
         else:
             return 3  # BL to TR
 
-    def on_style_changed(self, scene: PageScene) -> None:
-        """Called when color/width changes while shape tool is active.
 
-        Updates all selected ShapeItems to the new color/width.
-        """
-        from items.shape_item import ShapeItem
-        from app.app_state import AppState
-        from commands.change_shape_style_command import ChangeShapeStyleCommand
-        from core import undo_stack
-
-        app = AppState()
-        items = [i for i in scene._selected_items
-                 if isinstance(i, ShapeItem)]
-        if not items:
-            return
-
-        for item in items:
-            old_style = item.style.copy()
-            new_style = old_style.copy()
-            new_style.stroke_color = app.tool_style.color
-            new_style.stroke_width = app.tool_style.width
-            if (old_style.stroke_color == new_style.stroke_color
-                    and old_style.stroke_width == new_style.stroke_width):
-                continue
-            cmd = ChangeShapeStyleCommand(
-                item, old_style, new_style, scene)
-            undo_stack.push(cmd)
 

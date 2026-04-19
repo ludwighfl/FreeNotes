@@ -19,6 +19,8 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   ├── zip_exporter.py      # Export `.zip` with annotated PDFs or backups
 │   ├── thumbnail_cache.py   # Caching system for fast UI images
 │   ├── thumbnail_worker.py  # QThread for background page rendering
+│   ├── tile_renderer.py     # Asynchronous tile-based rendering for zoom performance
+│   ├── tile_cache.py        # Memory management/caching for rendered PDF tiles
 │   ├── app_settings.py      # Application preferences and config
 │   ├── undo_stack.py        # Central history manager (Undo/Redo)
 │   ├── shape_style.py       # Dataclass for shape formatting
@@ -26,16 +28,19 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   └── pdf_exporter.py      # Export JSON to PDF overlays (Orchestrator)
 │       ├── pdf_text_exporter.py
 │       ├── pdf_shape_exporter.py
+│       ├── pdf_image_exporter.py
 │       └── pdf_path_exporter.py
 ├── items/                   # Canvas Elements (QGraphicsItem)
 │   ├── stroke_item.py       # Hand-drawn ink
 │   ├── highlight_item.py    # Transparent marker
 │   ├── text_box_item.py     # Text with mixins (Input, Formatting, PseudoLists)
 │   ├── shape_item.py        # Geometric shapes (Ellipse, Rect, Triangles)
+│   ├── image_item.py        # Inserted rasterized images
 │   ├── selection_overlay_item.py # Multi-selection grouped bounding box
 │   ├── handle_item.py       # Bounding box resize dots
 │   ├── rotate_handle_item.py# Rotation anchor dot
 │   ├── shape_handles.py     # Handle configurations for shapes
+│   ├── image_handles.py     # Handle configurations for image objects
 │   ├── search_highlight_item.py # Visual highlights for text search results
 │   └── move_handle_item.py  # Pan controls
 ├── tools/                   # Interaction Handlers
@@ -46,27 +51,34 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   ├── shape_tool.py        # Draws geometric ShapeItems
 │   ├── selection_tool.py    # Multi-item Selection & Dragging
 │   ├── eraser_tool.py       # Path-based deletion tool
-│   └── hand_tool.py         # Canvas panning
+│   ├── hand_tool.py         # Canvas panning
+│   └── tool_context_menu.py # Context menus for selections
 ├── commands/                # Command Pattern (Undo/Redo functionality)
-│   ├── add_item_command.py, remove_item_command.py
+│   ├── add_item_command.py, remove_item_command.py, clear_annotations_command.py
 │   ├── create_shape_command.py, move_shape_command.py, rotate_shape_command.py, resize_shape_command.py
+│   ├── move_image_command.py, resize_image_command.py, rotate_image_command.py
 │   ├── edit_text_command.py, format_text_command.py
+│   ├── rename_document_command.py
 │   ├── move_items_command.py, resize_items_command.py
 │   ├── modify_stroke_command.py
 │   └── reorder_pages_command.py, delete_page_command.py, add_page_command.py
 ├── ui/                      # UI components, logically grouped
 │   ├── windows/             # Top-Level Shells
 │   │   ├── main_window.py
-│   │   ├── manager_view.py
+│   │   ├── manager_view.py  # Uses Mixins (manager_grid_mixin.py, manager_sidebar_mixin.py, manager_action_bar_mixin.py)
 │   │   ├── settings_view.py
 │   │   ├── splash_screen.py
 │   │   ├── viewer_window.py # Uses Mixins (viewer_tool_manager.py, viewer_file_io.py)
 │   │   └── settings_pages/  # Detail pages (display_page, language_page, library_page)
 │   ├── scene/               # PDF graphics canvas and scene interaction
 │   │   ├── page_view.py
-│   │   ├── page_scene.py    # Uses Mixins (scene_registry.py, scene_page_manager.py)
+│   │   ├── page_scene.py    # Uses Mixins (registry, clipboard, selection, manager, tiling, image_manager)
 │   │   ├── scene_selection.py
-│   │   └── scene_clipboard.py
+│   │   ├── scene_clipboard.py
+│   │   ├── scene_page_manager.py
+│   │   ├── scene_registry.py
+│   │   ├── scene_tiling.py
+│   │   └── scene_image_manager.py
 │   ├── bars/                # Docked toolbars and sidebars
 │   │   ├── formatting_bar.py
 │   │   ├── search_bar.py
@@ -76,6 +88,7 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   │   ├── icon_factory.py
 │   │   ├── pdf_card.py
 │   │   ├── thumbnail_card.py
+│   │   ├── editable_title_label.py
 │   │   └── sidebar_item.py
 │   ├── popups/              # Floating menus and dialogs
 │   │   ├── color_picker_popup.py

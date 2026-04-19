@@ -321,18 +321,26 @@ class HighlightItem(QGraphicsItem):
 
         self.prepareGeometryChange()
         self._path = new_path_local
+        
+        # Scale the width proportionally to the new bounding box height
+        self._style.width *= sy
+        if self._style.width < 1.0:
+            self._style.width = 1.0
+            
         self._cached_br = None
         self.update()
 
     def get_path_state(self) -> tuple:
-        """Snapshot path + position for undo."""
-        return (QPainterPath(self._path), QPointF(self.pos()))
+        """Snapshot path + position + width for undo."""
+        return (QPainterPath(self._path), QPointF(self.pos()), self._style.width)
 
-    def set_path_state(self, path: QPainterPath, pos: QPointF) -> None:
-        """Restore path + position from undo snapshot."""
+    def set_path_state(self, path: QPainterPath, pos: QPointF, width: float = -1.0) -> None:
+        """Restore path + position + width from undo snapshot."""
         self.prepareGeometryChange()
         self._path = path
         self.setPos(pos)
+        if width > 0:
+            self._style.width = width
         self._cached_br = None
         self.update()
 

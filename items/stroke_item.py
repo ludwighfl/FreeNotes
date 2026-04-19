@@ -252,28 +252,36 @@ class StrokeItem(QGraphicsItem):
         for i in range(self._path.elementCount()):
             el = self._path.elementAt(i)
             points.append((el.x, el.y))
+        from core.freenotes_store import FreenotesStore
         return {
             "type": "stroke",
             "points": points,
+            "path_b64": FreenotesStore.serialize_path(self._path),
             "color": self._style.color.name(),
             "width": self._style.width,
             "page_index": self._page_index,
             "pos": (self.pos().x(), self.pos().y()),
+            "outline_mode": self._outline_mode,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> StrokeItem:
-        path = QPainterPath()
-        pts = d.get("points", [])
-        if pts:
-            path.moveTo(pts[0][0], pts[0][1])
-            for px, py in pts[1:]:
-                path.lineTo(px, py)
+        from core.freenotes_store import FreenotesStore
+        if "path_b64" in d:
+            path = FreenotesStore.deserialize_path(d["path_b64"])
+        else:
+            path = QPainterPath()
+            pts = d.get("points", [])
+            if pts:
+                path.moveTo(pts[0][0], pts[0][1])
+                for px, py in pts[1:]:
+                    path.lineTo(px, py)
         style = ToolStyle(
             color=QColor(d["color"]),
             width=d["width"],
         )
         item = cls(path=path, style=style, page_index=d.get("page_index", -1))
+        item._outline_mode = d.get("outline_mode", False)
         if "pos" in d:
             item.setPos(QPointF(*d["pos"]))
         return item

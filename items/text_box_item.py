@@ -56,7 +56,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     HANDLE_POSITIONS: list[HandlePosition] = list(HandlePosition)
 
     # Tools that are allowed to interact with TextBoxItems
-    INTERACTIVE_TOOLS: frozenset[str] = frozenset({"text", "hand"})
+    INTERACTIVE_TOOLS: frozenset[str] = frozenset({"text"})
 
     # Signal emitted when cursor position or format changes (QGraphicsObject supports signals)
     cursor_moved = Signal()

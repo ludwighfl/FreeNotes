@@ -212,6 +212,10 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._toolbar.selection_mode_changed.connect(
             self._selection_tool.set_mode)
 
+        # Manually sync the active eraser mode from the toolbar since it emitted before we connected
+        from core.app_settings import AppSettings
+        self._on_eraser_mode_changed(AppSettings.get_eraser_mode())
+
         # Connect tool_action_completed for undo stack
         self._pen_tool.tool_action_completed.connect(self._on_action_completed)
         self._highlighter_tool.tool_action_completed.connect(self._on_action_completed)
@@ -263,7 +267,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._page_view.scroll_to_page(page_index)
 
     def _on_visible_page_changed(self, page_index: int) -> None:
-        self._page_input.setText(str(page_index + 1))
+        if self._app_state.current_page != page_index:
+            self._app_state.current_page = page_index
 
     def _on_page_changed(self, page_index: int) -> None:
         self._page_input.setText(str(page_index + 1))

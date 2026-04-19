@@ -96,14 +96,48 @@ class ViewerToolManagerMixin:
         if isinstance(self._page_scene.active_tool, EraserTool):
             self._eraser_tool.radius = self._app_state.tool_style.width / 2.0
 
-        # Shape tool: propagate color/width to selected ShapeItems
-        if isinstance(self._page_scene.active_tool, ShapeTool):
-            self._page_scene.active_tool.on_style_changed(self._page_scene)
+        # Global selection style update
+        from items.stroke_item import StrokeItem
+        from items.highlight_item import HighlightItem
+        from items.shape_item import ShapeItem
+        
+        selected_items = self._page_scene.get_selected_items()
+        
+        stroke_data = [] # (item, old_style, new_style)
+        shape_cmds = []
+        
+        if selected_items:
+            for item in selected_items:
+                if isinstance(item, (StrokeItem, HighlightItem)):
+                    old_style = item.style.copy()
+                    new_style = old_style.copy()
+                    new_style.color = self._app_state.tool_style.color
+                    if isinstance(item, StrokeItem):
+                        new_style.width = self._app_state.tool_style.width
+                    
+                    if old_style.color != new_style.color or old_style.width != new_style.width:
+                        stroke_data.append((item, old_style, new_style))
+                elif isinstance(item, ShapeItem):
+                    from commands.change_shape_style_command import ChangeShapeStyleCommand
+                    old_style = item.style.copy()
+                    new_style = old_style.copy()
+                    new_style.stroke_color = self._app_state.tool_style.color
+                    new_style.stroke_width = self._app_state.tool_style.width
+                    if old_style.stroke_color != new_style.stroke_color or old_style.stroke_width != new_style.stroke_width:
+                        shape_cmds.append(ChangeShapeStyleCommand(item, old_style, new_style, self._page_scene))
+            
+            if stroke_data or shape_cmds:
+                undo_stack.get_stack().beginMacro("Stil ändern")
+                if stroke_data:
+                    from commands.change_stroke_style_command import ChangeStrokeStyleCommand
+                    undo_stack.push(ChangeStrokeStyleCommand(stroke_data, self._page_scene))
+                for cmd in shape_cmds:
+                    undo_stack.push(cmd)
+                undo_stack.get_stack().endMacro()
 
     def _on_eraser_mode_changed(self, mode_str: str) -> None:
         """Toggle eraser mode between object and pixel."""
-        if isinstance(self._page_scene.active_tool, EraserTool):
-            self._eraser_tool.mode = EraserTool.EraserMode(mode_str)
+        self._eraser_tool.mode = EraserTool.EraserMode(mode_str)
 
     def _on_tool_switch_requested(self, tool_name: str) -> None:
         """Handle tool switch request from page_scene (e.g. clicking TextBox with hand tool)."""
@@ -128,10 +162,9 @@ class ViewerToolManagerMixin:
 
         elif isinstance(tool, EraserTool):
             data = tool.get_last_action_data()
-            if not data:
-                return
-
             if tool.mode == EraserTool.EraserMode.OBJECT:
+                if not data:
+                    return
                 # Object eraser: all items fully deleted
                 items = [item for item, _ in data]
                 cmd = RemoveItemCommand(items, self._page_scene)
@@ -140,10 +173,25 @@ class ViewerToolManagerMixin:
                 # Pixel eraser: pass affected, deleted, and created items
                 deleted = tool._deleted_items
                 created = tool.get_created_items()
-                cmd = ModifyStrokeCommand(
-                    data, deleted, created, self._page_scene
-                )
-                undo_stack.push(cmd)
+                shapes_deleted = [it for it, _ in tool._affected_items]
+
+                if not data and not deleted and not created and not shapes_deleted:
+                    return
+
+                if shapes_deleted and (data or deleted or created):
+                    undo_stack.get_stack().beginMacro("Erase")
+                
+                if shapes_deleted:
+                    undo_stack.push(RemoveItemCommand(shapes_deleted, self._page_scene))
+
+                if data or deleted or created:
+                    cmd = ModifyStrokeCommand(
+                        data, deleted, created, self._page_scene
+                    )
+                    undo_stack.push(cmd)
+
+                if shapes_deleted and (data or deleted or created):
+                    undo_stack.get_stack().endMacro()
 
         elif isinstance(tool, TextTool):
             item = tool.last_completed_item

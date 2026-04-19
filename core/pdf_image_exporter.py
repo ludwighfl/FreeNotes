@@ -52,14 +52,33 @@ class PdfImageExporter:
         y1 = (pos.y() + r.height() - page_origin.y()) * sy
         fitz_rect = fitz.Rect(x0, y0, x1, y1)
 
-        # Image data as bytes stream
-        image_stream = image_item._image_bytes
-
-        # Rotation morph around center
         rotate = 0
+        
         if rotation != 0:
-            # fitz.insert_image supports rotation parameter directly
-            rotate = int(rotation) % 360
+            from PySide6.QtGui import QTransform
+            from PySide6.QtCore import Qt, QByteArray, QBuffer, QIODevice
+            
+            transform = QTransform().rotate(rotation)
+            rotated_pixmap = image_item._pixmap.transformed(transform, Qt.TransformationMode.SmoothTransformation)
+            
+            # Map the local rect to scene to get the exact unrotated bounds -> then bounding box
+            scene_rect = image_item.mapToScene(r).boundingRect()
+            
+            nx0 = (scene_rect.x() - page_origin.x()) * sx
+            ny0 = (scene_rect.y() - page_origin.y()) * sy
+            nx1 = (scene_rect.right() - page_origin.x()) * sx
+            ny1 = (scene_rect.bottom() - page_origin.y()) * sy
+            fitz_rect = fitz.Rect(nx0, ny0, nx1, ny1)
+            
+            qba = QByteArray()
+            qbuf = QBuffer(qba)
+            qbuf.open(QIODevice.OpenModeFlag.WriteOnly)
+            rotated_pixmap.toImage().save(qbuf, "PNG")
+            qbuf.close()
+            
+            image_stream = bytes(qba.data())
+        else:
+            image_stream = image_item._image_bytes
 
         try:
             page.insert_image(

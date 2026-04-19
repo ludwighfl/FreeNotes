@@ -29,7 +29,6 @@ class ChangeShapeStyleCommand(QUndoCommand):
         self._old_style = old_style.copy()
         self._new_style = new_style.copy()
         self._scene_ref = weakref.ref(scene)
-        self._first_redo = True
         self.setText("Form-Stil ändern")
 
     def undo(self) -> None:
@@ -38,9 +37,6 @@ class ChangeShapeStyleCommand(QUndoCommand):
         self._item.set_style(self._old_style)
 
     def redo(self) -> None:
-        if self._first_redo:
-            self._first_redo = False
-            return
         if self._scene_ref() is None:
             return
         self._item.set_style(self._new_style)

@@ -340,10 +340,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
     def _on_chip_raw_click(self, chip_id: int) -> None:
         """Handle raw chip click — detect single vs double click."""
-        if self._current_tool_name not in ("pen", "highlighter", "text", "shape"):
-            self._clear_color_selection()
-            return
-            
         if self._click_timer.isActive() and self._last_click_chip == chip_id:
             # Double-click detected
             self._click_timer.stop()
@@ -562,10 +558,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._width_group.setExclusive(True)
 
     def _on_width_clicked(self, width_id: int) -> None:
-        if self._current_tool_name not in ("pen", "highlighter", "eraser", "shape"):
-            self._clear_width_selection()
-            return
-            
         if 0 <= width_id < len(self._active_widths):
             self._app_state.update_style(width=self._active_widths[width_id])
             self.style_changed.emit(self._app_state.tool_style)
@@ -615,9 +607,11 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         if tool_name == "eraser":
             self._update_eraser_tooltip()
             
-        if not uses_color:
+        # We NO LONGER clear color/width selection for Hand/Selection tools
+        # because the user might want to apply the active style to selected items.
+        if not uses_color and tool_name not in ("hand", "selection"):
             self._clear_color_selection()
-        if not uses_width:
+        if not uses_width and tool_name not in ("hand", "selection"):
             self._clear_width_selection()
 
         # Restore saved color + width for this tool

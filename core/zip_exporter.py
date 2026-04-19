@@ -54,9 +54,9 @@ class ZipExporter:
 
                     if fn_src and fn_src.exists():
                         try:
-                            scene = self._build_temp_scene(
+                            scene, dm = self._build_temp_scene(
                                 fn_src, pdf_src)
-                            exporter = PdfExporter(scene)
+                            exporter = PdfExporter(scene, dm)
                             exporter.export(str(pdf_src), str(out_pdf))
                         except Exception as e:
                             print(
@@ -131,15 +131,15 @@ class ZipExporter:
     @staticmethod
     def _build_temp_scene(
         fn_path: Path, pdf_path: Path
-    ) -> "PageScene":
+    ) -> tuple["PageScene", "DocumentManager"]:
         """Build a minimal PageScene with loaded annotations for export."""
         from core.document_manager import DocumentManager
         from core.freenotes_store import FreenotesStore
         from ui.scene.page_scene import PageScene
 
         dm = DocumentManager()
-        dm.load(str(pdf_path))
+        dm.open_document(str(pdf_path))
         scene = PageScene()
         scene.load_document(dm)
-        FreenotesStore.load(str(fn_path), scene)
-        return scene
+        FreenotesStore.load(str(fn_path), scene, dm)
+        return scene, dm

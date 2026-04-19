@@ -63,13 +63,16 @@ class PdfExporter:
             # Images first (lowest Z-value, behind all other annotations)
             PdfImageExporter.export(
                 self._scene, page, page_idx, sx, sy, page_origin)
-            PdfPathExporter.export_strokes(
-                self._scene, page, page_idx, sx, sy, page_origin)
+            # Highlights (Z=5)
             PdfPathExporter.export_highlights(
                 self._scene, page, page_idx, sx, sy, page_origin)
-            PdfTextExporter.export(
+            # Strokes (Z=10)
+            PdfPathExporter.export_strokes(
                 self._scene, page, page_idx, sx, sy, page_origin)
+            # Shapes (Z=10) / TextBoxes (Z=15)
             PdfShapeExporter.export(
+                self._scene, page, page_idx, sx, sy, page_origin)
+            PdfTextExporter.export(
                 self._scene, page, page_idx, sx, sy, page_origin)
 
             if progress_callback:

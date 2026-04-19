@@ -101,6 +101,8 @@ class TextTool(BaseTool):
         if existing_box is not None:
             if self._current_box is not None and self._current_box is not existing_box:
                 self._current_box.set_selected_custom(False)
+            scene.clear_selection()
+            scene.set_selection([existing_box])
             self._current_box = existing_box
             existing_box.start_editing()
             return
@@ -114,6 +116,8 @@ class TextTool(BaseTool):
             self._current_box.set_selected_custom(False)
             self._current_box = None
 
+        scene.clear_selection()
+
         style = AppState().tool_style
         # Minimal initial rect: width 200, height 0 → auto-computed by TextBoxItem
         initial_rect = QRectF(pos.x(), pos.y(), 200.0, 0.0)
@@ -124,6 +128,7 @@ class TextTool(BaseTool):
         self._last_completed_item = box
         self.tool_action_completed.emit()
 
+        scene.set_selection([box])
         box.start_editing()
         self._current_box = box
 
