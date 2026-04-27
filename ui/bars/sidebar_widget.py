@@ -331,8 +331,17 @@ class SidebarWidget(QScrollArea):
         # Set new active
         if 0 <= page_index < len(self._cards):
             self._cards[page_index].set_active(True)
-            self.ensureWidgetVisible(self._cards[page_index], 50, 50)
         self._active_index = page_index
+
+    def set_scroll_progress(self, progress: float) -> None:
+        """Synchronize the sidebar's scrollbar with the PDF view proportionally."""
+        if getattr(self, '_ignore_scroll_sync', False):
+            return
+        vbar = self.verticalScrollBar()
+        if vbar.maximum() > 0:
+            self._ignore_scroll_sync = True
+            vbar.setValue(int(progress * vbar.maximum()))
+            self._ignore_scroll_sync = False
 
     def _on_card_clicked(self, page_index: int) -> None:
         self.page_clicked.emit(page_index)
@@ -340,6 +349,8 @@ class SidebarWidget(QScrollArea):
     def _on_scene_changed(self, rects: list) -> None:
         """Invalidate thumbnails that overlap with the changed area."""
         if getattr(self._scene, '_is_rendering_thumbnail', False):
+            return
+        if getattr(self._scene, '_suppress_scene_changed', False):
             return
         if self._scene is None or not self._cards:
             return

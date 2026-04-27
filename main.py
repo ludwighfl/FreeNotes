@@ -40,6 +40,8 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setDoubleClickInterval(300)
     app.setStyle("Fusion") # Prevent PyInstaller from losing style plugins
+    from core.i18n import init_i18n
+    init_i18n()
     from styles.loader import load_stylesheet
     app.setStyleSheet(load_stylesheet())
 

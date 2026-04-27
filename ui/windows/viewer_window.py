@@ -33,6 +33,7 @@ from tools.shape_tool import ShapeTool
 from ui.bars.formatting_bar import FormattingBar
 from ui.popups.three_dot_menu import ThreeDotMenu
 from ui.components.editable_title_label import EditableTitleLabel
+from core.i18n import tr
 
 from ui.windows.viewer_file_io import ViewerFileIOMixin
 from ui.windows.viewer_tool_manager import ViewerToolManagerMixin
@@ -95,7 +96,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         header_layout.addWidget(self._back_btn)
 
         # Document title
-        self._title_label = EditableTitleLabel("Dokument")
+        self._title_label = EditableTitleLabel(tr("viewer.document"))
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: #ffffff;")
         self._title_label.rename_requested.connect(self._on_title_rename_requested)
@@ -203,6 +204,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         # --- Connections ---
         self._sidebar.page_clicked.connect(self._on_sidebar_page_clicked)
         self._page_view.visible_page_changed.connect(self._on_visible_page_changed)
+        self._page_view.scroll_progress_changed.connect(self._sidebar.set_scroll_progress)
         self._app_state.page_changed.connect(self._on_page_changed)
         self._app_state.total_pages_changed.connect(self._on_total_pages_changed)
         self._page_input.returnPressed.connect(self._on_page_input_entered)
@@ -329,7 +331,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             scene=self._page_scene,
             doc_manager=self._doc_manager,
             sidebar=self._sidebar,
-            label="Leere Seite einfügen",
+            label=tr("viewer.add_page_label"),
         )
         undo_stack.push(cmd)
 
@@ -342,7 +344,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             scene=self._page_scene,
             doc_manager=self._doc_manager,
             sidebar=self._sidebar,
-            label="Seite duplizieren",
+            label=tr("viewer.duplicate_page_label"),
         )
         undo_stack.push(cmd)
 
@@ -367,7 +369,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             self._page_scene._page_rects.clear()
             self._page_scene._tile_cache._cache.clear()
         self._sidebar.clear()
-        self._title_label.setText("Lädt ...")
+        self._title_label.setText(tr("viewer.loading"))
         self._ext_label.setText("")
         self._breadcrumb_label.setText("")
         if hasattr(self, '_total_pages_label'):

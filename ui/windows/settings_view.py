@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components.icon_factory import IconFactory
+from core.i18n import tr
 
 
 class SettingsView(QWidget):
@@ -46,13 +47,13 @@ class SettingsView(QWidget):
         back_btn.setIconSize(QSize(20, 20))
         back_btn.setObjectName("backBtn")
         back_btn.setFixedSize(32, 32)
-        back_btn.setToolTip("Zurück")
+        back_btn.setToolTip(tr("settings.back"))
         back_btn.clicked.connect(self.back_requested)
         header_layout.addWidget(back_btn)
 
-        title = QLabel("Einstellungen")
+        title = QLabel(tr("settings.title"))
         title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        title.setStyleSheet("color: #ffffff;")
+        title.setObjectName("settingsTitleLabel")
         header_layout.addWidget(title)
         header_layout.addStretch()
         main_layout.addWidget(header)
@@ -91,7 +92,7 @@ class SettingsView(QWidget):
         for key in self._page_keys:
             placeholder = QLabel(f"[{key} – wird geladen]")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setStyleSheet("color: #555555;")
+            placeholder.setObjectName("settingsPlaceholder")
             self._pages[key] = placeholder
             self._stack.addWidget(placeholder)
 
@@ -113,10 +114,10 @@ class SettingsView(QWidget):
         self._sidebar_btns: dict[str, QToolButton] = {}
 
         entries = [
-            ("display", "monitor", "Anzeige"),
-            ("pen", "pen", "Stift"),
-            ("language", "globe", "Sprache"),
-            ("library", "folder", "Bibliothek"),
+            ("display", "monitor", tr("settings.tabs.display")),
+            ("pen", "pen", tr("settings.tabs.pen")),
+            ("language", "globe", tr("settings.tabs.language")),
+            ("library", "folder", tr("settings.tabs.library")),
         ]
 
         for key, icon_name, label in entries:

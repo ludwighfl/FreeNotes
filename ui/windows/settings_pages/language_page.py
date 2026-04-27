@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components.icon_factory import IconFactory
+from core.i18n import tr
 
 
 class LanguagePage(QWidget):
@@ -33,11 +34,11 @@ class LanguagePage(QWidget):
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        layout.addWidget(self._make_title("Sprache"))
+        layout.addWidget(self._make_title(tr("settings.tabs.language")))
         layout.addSpacing(16)
 
-        desc = QLabel("Wähle die Sprache der Benutzeroberfläche.")
-        desc.setStyleSheet("color: #888888; font-size: 13px;")
+        desc = QLabel(tr("settings.language.desc"))
+        desc.setObjectName("settingsLabel")
         desc.setWordWrap(True)
         layout.addWidget(desc)
         layout.addSpacing(20)
@@ -76,12 +77,10 @@ class LanguagePage(QWidget):
             IconFactory.create_pixmap(
                 "info", color="#5577cc", size=14))
         hint_icon.setFixedSize(14, 14)
-        hint_icon.setStyleSheet("background: transparent;")
+        hint_icon.setObjectName("settingsHintIcon")
         hint_row.addWidget(hint_icon)
-        hint_text = QLabel(
-            "Die Sprachänderung wird nach einem "
-            "Neustart vollständig wirksam.")
-        hint_text.setStyleSheet("color: #555555; font-size: 11px;")
+        hint_text = QLabel(tr("settings.language.restart_hint"))
+        hint_text.setObjectName("settingsHintText")
         hint_text.setWordWrap(True)
         hint_row.addWidget(hint_text, 1)
         layout.addLayout(hint_row)
@@ -111,13 +110,18 @@ class LanguagePage(QWidget):
         painter.setRenderHint(
             QPainter.RenderHint.TextAntialiasing, True)
 
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        bg_color = "#e0e0e0" if is_light else "#3a3a3a"
+        text_color = "#555555" if is_light else "#aaaaaa"
+
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#3a3a3a"))
+        painter.setBrush(QColor(bg_color))
         painter.drawRoundedRect(QRectF(0, 0, w, h), 3, 3)
 
         font = QFont("Segoe UI", 9, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.setPen(QColor("#aaaaaa"))
+        painter.setPen(QColor(text_color))
         painter.drawText(
             QRectF(0, 0, w, h),
             Qt.AlignmentFlag.AlignCenter,
@@ -131,10 +135,13 @@ class LanguagePage(QWidget):
         for c, btn in self._lang_btns.items():
             btn.setChecked(c == code)
 
-    @staticmethod
-    def _make_title(text: str) -> QLabel:
+    def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        lbl.setStyleSheet("color: #ffffff;")
+        lbl.setObjectName("settingsPageTitle")
         return lbl
 
+    def _make_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setObjectName("settingsLabel")
+        return lbl

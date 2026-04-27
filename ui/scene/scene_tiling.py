@@ -190,23 +190,27 @@ class SceneTilingMixin:
             self.addItem(item)
             self._tile_items[key] = item
 
-        item.setPixmap(pixmap)
-        item.setVisible(True)
+        self._suppress_scene_changed = True
+        try:
+            item.setPixmap(pixmap)
+            item.setVisible(True)
 
-        # Hide lower-quality tiles for the same position now that
-        # a higher-quality tile is available
-        if key.mip_level == MipLevel.FULL:
-            medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
-            thumb_key  = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
-            for lower_key in (medium_key, thumb_key):
-                lower_item = self._tile_items.get(lower_key)
-                if lower_item is not None:
-                    lower_item.setVisible(False)
-        elif key.mip_level == MipLevel.MEDIUM:
-            thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
-            thumb_item = self._tile_items.get(thumb_key)
-            if thumb_item is not None:
-                thumb_item.setVisible(False)
+            # Hide lower-quality tiles for the same position now that
+            # a higher-quality tile is available
+            if key.mip_level == MipLevel.FULL:
+                medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
+                thumb_key  = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+                for lower_key in (medium_key, thumb_key):
+                    lower_item = self._tile_items.get(lower_key)
+                    if lower_item is not None:
+                        lower_item.setVisible(False)
+            elif key.mip_level == MipLevel.MEDIUM:
+                thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+                thumb_item = self._tile_items.get(thumb_key)
+                if thumb_item is not None:
+                    thumb_item.setVisible(False)
+        finally:
+            self._suppress_scene_changed = False
 
         # Repaint only the affected tile region, not the whole scene
         page_rect = self._page_rects[key.page_index]
@@ -276,6 +280,15 @@ class SceneTilingMixin:
                 if distance > evict_threshold:
                     self.removeItem(item)
                     del self._tile_items[key]
+                    
+                    # Unhide lower mips so they act as placeholders if we scroll back
+                    medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
+                    thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+                    
+                    if medium_key in self._tile_items:
+                        self._tile_items[medium_key].setVisible(True)
+                    elif thumb_key in self._tile_items:
+                        self._tile_items[thumb_key].setVisible(True)
                     # Do not remove from cache — L1 cache handles its own eviction
 
         # Cancel pending tasks for evicted pages

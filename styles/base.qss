@@ -43,6 +43,62 @@ QStackedWidget {
     background-color: #1a1a1a;
 }
 
+#managerTitleLabel {
+    color: #ffffff;
+}
+
+#managerEmptyTitle {
+    color: #555555;
+    font-size: 18px;
+    font-weight: bold;
+    background: transparent;
+}
+
+#managerEmptyDesc {
+    color: #444444;
+    font-size: 13px;
+    background: transparent;
+}
+
+QLabel#colorPickerTitle {
+    color: #ffffff;
+    background: transparent;
+}
+QLabel#colorPickerLabel {
+    color: #888888;
+    background: transparent;
+}
+
+#sidebarScroll,
+#sidebarContainer {
+    background: transparent;
+    border: none;
+}
+
+#sidebarIcon {
+    background: transparent;
+}
+
+#sidebarItemText {
+    color: #cccccc;
+    font-size: 13px;
+    background: transparent;
+}
+
+QWidget#sidebarItem {
+    background: transparent;
+    border-radius: 6px;
+}
+QWidget#sidebarItem:hover {
+    background: #2d2d2d;
+}
+QWidget#sidebarItem[active="true"] {
+    background: #3B7BF5;
+}
+QWidget#sidebarItem[active="true"] #sidebarItemText {
+    color: #ffffff;
+}
+
 #managerScroll {
     background-color: #1a1a1a;
     border: none;
@@ -143,6 +199,79 @@ QMenu#settingsMenu::item:selected {
     color: #ffffff;
 }
 QMenu#settingsMenu::separator {
+    height: 1px;
+    background: #3a3a3a;
+    margin: 4px 8px;
+}
+
+/* ============================================================
+   NEW NOTE DIALOG
+   ============================================================ */
+
+QDialog#newNoteDialog { background: #1e1e1e; }
+QLabel#presetTitleLabel { color: #ffffff; }
+QLabel#newNoteNameLabel { color: #cccccc; font-size: 14px; }
+QLineEdit#newNoteNameInput { 
+    background: #2a2a2a; 
+    border: 1px solid #444; 
+    border-radius: 4px; 
+    padding: 8px; 
+    color: white; 
+    font-size: 14px; 
+}
+QLineEdit#newNoteNameInput:focus { border: 1px solid #3B7BF5; }
+
+QFrame#presetButton { background: #2A2A2A; border: 2px solid transparent; border-radius: 8px; }
+QFrame#presetButton:hover { background: #333333; border: 2px solid transparent; }
+QFrame#presetButton[selected="true"] { background: #333333; border: 2px solid #3B7BF5; }
+
+QPushButton#newNoteCancelBtn { background: #333333; color: #ffffff; border: none; border-radius: 4px; font-weight: bold; }
+QPushButton#newNoteCancelBtn:hover { background: #444444; }
+
+QPushButton#newNoteOkBtn { background: #3B7BF5; color: #ffffff; border: none; border-radius: 4px; font-weight: bold; }
+QPushButton#newNoteOkBtn:hover { background: #5090FF; }
+QPushButton#newNoteOkBtn:disabled { background: #555555; color: #888888; }
+
+/* ============================================================
+   TEXTBOX OPTIONS POPUP
+   ============================================================ */
+
+QToolButton#popupBtn, QToolButton#popupDeleteBtn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+}
+QToolButton#popupBtn:hover {
+    background: #333333;
+}
+QToolButton#popupDeleteBtn:hover {
+    background: #4a1515;
+}
+QFrame#PopupSeparator {
+    color: #3a3a3a;
+}
+
+/* ============================================================
+   TOOLBAR MENUS
+   ============================================================ */
+
+QMenu#eraserModeMenu, QMenu#selectionModeMenu, QMenu#shapeMenu {
+    background-color: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 4px 0;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+QMenu#eraserModeMenu::item, QMenu#selectionModeMenu::item, QMenu#shapeMenu::item {
+    padding: 8px 32px 8px 12px;
+    color: #cccccc;
+}
+QMenu#eraserModeMenu::item:selected, QMenu#selectionModeMenu::item:selected, QMenu#shapeMenu::item:selected {
+    background-color: #3B7BF5;
+    color: #ffffff;
+}
+QMenu#eraserModeMenu::separator, QMenu#selectionModeMenu::separator, QMenu#shapeMenu::separator {
     height: 1px;
     background: #3a3a3a;
     margin: 4px 8px;
@@ -433,6 +562,8 @@ QStackedWidget#settingsStack {
 QWidget#settingsPage {
     background: #1a1a1a;
 }
+QLabel#settingsTitleLabel { color: #ffffff; }
+QLabel#settingsPlaceholder { color: #555555; }
 
 /* Sidebar Buttons */
 QToolButton#settingsSidebarBtn {

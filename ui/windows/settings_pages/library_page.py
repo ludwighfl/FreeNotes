@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
+from core.i18n import tr
+
 
 class LibraryPage(QWidget):
     """Settings page for library path and export."""
@@ -31,16 +33,16 @@ class LibraryPage(QWidget):
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        layout.addWidget(self._make_title("Bibliothek"))
+        layout.addWidget(self._make_title(tr("settings.tabs.library")))
         layout.addSpacing(24)
 
         # ── Current path ──
-        layout.addWidget(self._make_label("Annotations-Verzeichnis"))
+        layout.addWidget(self._make_label(tr("settings.library.path")))
         layout.addSpacing(8)
 
         from core.app_settings import AppSettings
         current = AppSettings.get_annotations_root()
-        path_str = str(current) if current else "Nicht gesetzt"
+        path_str = str(current) if current else tr("settings.library.not_set")
 
         self._path_label = QLabel(path_str)
         self._path_label.setObjectName("settingsPathLabel")
@@ -48,7 +50,7 @@ class LibraryPage(QWidget):
         layout.addWidget(self._path_label)
         layout.addSpacing(10)
 
-        change_btn = QPushButton("Verzeichnis ändern …")
+        change_btn = QPushButton(tr("settings.library.change_path"))
         change_btn.setObjectName("settingsActionBtn")
         change_btn.setFixedWidth(200)
         change_btn.clicked.connect(self._on_change_path)
@@ -60,11 +62,11 @@ class LibraryPage(QWidget):
         layout.addSpacing(24)
 
         # ── Export ──
-        layout.addWidget(self._make_label("Export"))
+        layout.addWidget(self._make_label(tr("settings.library.export")))
         layout.addSpacing(8)
 
         export_pdf_btn = QPushButton(
-            "Bibliothek als PDFs exportieren …")
+            tr("settings.library.export_pdf"))
         export_pdf_btn.setObjectName("settingsActionBtn")
         export_pdf_btn.setFixedWidth(280)
         export_pdf_btn.clicked.connect(
@@ -73,7 +75,7 @@ class LibraryPage(QWidget):
         layout.addSpacing(8)
 
         export_backup_btn = QPushButton(
-            "Backup exportieren (.freenotes + .pdf) …")
+            tr("settings.library.export_backup"))
         export_backup_btn.setObjectName("settingsActionBtn")
         export_backup_btn.setFixedWidth(280)
         export_backup_btn.clicked.connect(
@@ -93,15 +95,14 @@ class LibraryPage(QWidget):
 
         current = str(AppSettings.get_annotations_root() or "")
         chosen = QFileDialog.getExistingDirectory(
-            self, "Neues Verzeichnis wählen", current)
+            self, tr("settings.library.choose_path"), current)
         if not chosen:
             return
 
         reply = QMessageBox.question(
             self,
-            "Verzeichnis ändern",
-            f"FreeNotes verwendet ab jetzt:\n{chosen}\n\n"
-            "Bestehende Dokumente werden nicht verschoben.",
+            tr("settings.library.change_path_title"),
+            tr("settings.library.change_path_msg").format(chosen),
             QMessageBox.StandardButton.Ok
             | QMessageBox.StandardButton.Cancel)
         if reply != QMessageBox.StandardButton.Ok:
@@ -119,12 +120,12 @@ class LibraryPage(QWidget):
         lm = AppState().library_manager
         if lm is None:
             QMessageBox.warning(
-                self, "Keine Bibliothek",
-                "Kein Annotations-Verzeichnis gesetzt.")
+                self, tr("settings.library.no_library_title"),
+                tr("settings.library.no_library_msg"))
             return
 
         target, _ = QFileDialog.getSaveFileName(
-            self, "ZIP speichern unter", "",
+            self, tr("settings.library.save_zip"), "",
             "ZIP-Archiv (*.zip)")
         if not target:
             return
@@ -132,14 +133,14 @@ class LibraryPage(QWidget):
             target += ".zip"
 
         progress = QProgressDialog(
-            "Exportiere …", "Abbrechen", 0, 100, self)
+            tr("settings.library.exporting"), tr("settings.library.cancel"), 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(300)
         progress.show()
 
         def on_progress(pct: int, name: str) -> None:
             progress.setValue(pct)
-            progress.setLabelText(f"Exportiere: {name}")
+            progress.setLabelText(tr("settings.library.export_progress").format(name))
             QApplication.processEvents()
 
         exporter = ZipExporter(lm)
@@ -152,28 +153,26 @@ class LibraryPage(QWidget):
                     Path(target), on_progress)
             progress.close()
             QMessageBox.information(
-                self, "Export erfolgreich",
-                f"ZIP gespeichert:\n{target}")
+                self, tr("settings.library.export_success"),
+                tr("settings.library.zip_saved").format(target))
         except Exception as e:
             progress.close()
             QMessageBox.critical(
-                self, "Export fehlgeschlagen", str(e))
+                self, tr("settings.library.export_failed"), str(e))
 
     # ------------------------------------------------------------------
     # Widget helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _make_title(text: str) -> QLabel:
+    def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        lbl.setStyleSheet("color: #ffffff;")
+        lbl.setObjectName("settingsPageTitle")
         return lbl
 
-    @staticmethod
-    def _make_label(text: str) -> QLabel:
+    def _make_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #aaaaaa; font-size: 13px;")
+        lbl.setObjectName("settingsLabel")
         return lbl
 
     @staticmethod

@@ -61,9 +61,6 @@ class PdfCard(QFrame):
         self._thumb_label.setFixedSize(self.THUMB_W, self.THUMB_H)
         self._thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_label.setObjectName("pdfCardThumb")
-        self._thumb_label.setStyleSheet(
-            "background: #3a3a3a; border-radius: 4px;"
-        )
         layout.addWidget(self._thumb_label)
 
         # Filename
@@ -72,7 +69,7 @@ class PdfCard(QFrame):
             display_name = display_name[:20] + "…"
         name_label = QLabel(display_name)
         name_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        name_label.setStyleSheet("color: #ffffff;")
+        name_label.setObjectName("pdfCardName")
         name_label.setWordWrap(False)
         layout.addWidget(name_label)
 
@@ -85,7 +82,7 @@ class PdfCard(QFrame):
         if date_str:
             date_label = QLabel(date_str)
             date_label.setFont(QFont("Segoe UI", 10))
-            date_label.setStyleSheet("color: #888888;")
+            date_label.setObjectName("pdfCardDate")
             layout.addWidget(date_label)
 
     # ------------------------------------------------------------------
@@ -120,9 +117,9 @@ class PdfCard(QFrame):
     def _show_placeholder(self) -> None:
         """Show placeholder icon if PDF could not be loaded."""
         self._thumb_label.setText("📄")
-        self._thumb_label.setStyleSheet(
-            "background: #3a3a3a; border-radius: 4px; "
-            "color: #888888; font-size: 40px;")
+        self._thumb_label.setProperty("placeholder", True)
+        self._thumb_label.style().unpolish(self._thumb_label)
+        self._thumb_label.style().polish(self._thumb_label)
 
     # ------------------------------------------------------------------
     # Thumbnail with annotations
@@ -300,18 +297,14 @@ class PdfCard(QFrame):
         """Update selection visuals."""
         from ui.components.icon_factory import IconFactory
         
+        self.setProperty("selected", selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
         if selected:
-            self.setStyleSheet("""
-                QFrame#pdfCard {
-                    background: rgba(59, 123, 245, 0.15);
-                    border: 2px solid #3B7BF5;
-                    border-radius: 8px;
-                }
-            """)
             if hasattr(self, "_checkbox") and self._checkbox.isVisible():
                 self._checkbox.setPixmap(IconFactory.create_pixmap("check_square", "#3B7BF5", 20))
         else:
-            self.setStyleSheet("") # Default is clean
             if hasattr(self, "_checkbox") and self._checkbox.isVisible():
                 self._checkbox.setPixmap(IconFactory.create_pixmap("square", "#666666", 20))
 

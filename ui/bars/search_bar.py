@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components.icon_factory import IconFactory
+from core.i18n import tr
 
 
 class SearchBar(QWidget):
@@ -50,7 +51,7 @@ class SearchBar(QWidget):
         # Search input
         self._input = QLineEdit()
         self._input.setObjectName("searchInput")
-        self._input.setPlaceholderText("Im PDF suchen …")
+        self._input.setPlaceholderText(tr("search.placeholder"))
         self._input.setFixedHeight(30)
         self._input.setMinimumWidth(200)
         layout.addWidget(self._input)
@@ -68,7 +69,7 @@ class SearchBar(QWidget):
             IconFactory.create("chevron_up", color="#cccccc", size=16))
         self._prev_btn.setObjectName("searchNavBtn")
         self._prev_btn.setFixedSize(28, 28)
-        self._prev_btn.setToolTip("Vorheriger Treffer")
+        self._prev_btn.setToolTip(tr("search.prev"))
         self._prev_btn.clicked.connect(self.navigate_prev)
         layout.addWidget(self._prev_btn)
 
@@ -78,7 +79,7 @@ class SearchBar(QWidget):
             IconFactory.create("chevron_down", color="#cccccc", size=16))
         self._next_btn.setObjectName("searchNavBtn")
         self._next_btn.setFixedSize(28, 28)
-        self._next_btn.setToolTip("Nächster Treffer")
+        self._next_btn.setToolTip(tr("search.next"))
         self._next_btn.clicked.connect(self.navigate_next)
         layout.addWidget(self._next_btn)
 
@@ -88,7 +89,7 @@ class SearchBar(QWidget):
             IconFactory.create("x", color="#cccccc", size=16))
         close_btn.setObjectName("searchCloseBtn")
         close_btn.setFixedSize(28, 28)
-        close_btn.setToolTip("Schließen (Esc)")
+        close_btn.setToolTip(tr("search.close"))
         close_btn.clicked.connect(self._on_close)
         layout.addWidget(close_btn)
 
@@ -135,14 +136,19 @@ class SearchBar(QWidget):
 
     def update_count(self, current: int, total: int) -> None:
         """Update the hit counter display."""
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        color_empty = "#888888"
+        color_hits = "#333333" if is_light else "#cccccc"
+
         if total == 0:
             self._count_label.setText("")
             self._count_label.setStyleSheet(
-                "color: #888888; background: transparent;")
+                f"color: {color_empty}; background: transparent;")
         else:
             self._count_label.setText(f"{current + 1} / {total}")
             self._count_label.setStyleSheet(
-                "color: #cccccc; background: transparent;")
+                f"color: {color_hits}; background: transparent;")
 
     def keyPressEvent(self, event) -> None:
         """Handle Escape to close."""
@@ -156,9 +162,14 @@ class SearchBar(QWidget):
     # ------------------------------------------------------------------
 
     def paintEvent(self, event) -> None:
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        bg_color = "#ffffff" if is_light else "#1e1e1e"
+        border_color = "#d0d0d0" if is_light else "#3a3a3a"
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor("#1e1e1e")))
-        painter.setPen(QPen(QColor("#3a3a3a"), 1))
+        painter.setBrush(QBrush(QColor(bg_color)))
+        painter.setPen(QPen(QColor(border_color), 1))
         painter.drawRoundedRect(
             self.rect().adjusted(0, 0, -1, -1), 8, 8)

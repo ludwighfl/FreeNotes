@@ -213,7 +213,7 @@ neues `commands/rotate_items_command.py`
 
 ## Phase 4 – Performance-Optimierung
 
-### 4.1 Ladeverhalten bei sehr großen PDFs (400+ Seiten, 200+ MB)
+### [x] 4.1 Ladeverhalten bei sehr großen PDFs (400+ Seiten, 200+ MB)
 **Problem:** Beim Öffnen sehr großer, unoptimierter PDFs (z. B. lange
 Slide-Präsentationen mit eingebetteten Hochauflösungs-Bildern) kommt es zu
 spürbaren Wartezeiten beim initialen Laden, obwohl das Tile-Rendering selbst
@@ -239,7 +239,7 @@ Sekunden, was den UI-Thread blockiert.
 
 ## Phase 5 – ManagerView Erweiterungen
 
-### 5.1 Neue Funktion „Neue Notiz" unter „Erstellen"
+### [x] 5.1 Neue Funktion „Neue Notiz" unter „Erstellen"
 **Verhalten:** Das bestehende „Erstellen"-Dropdown im ManagerView bekommt
 einen dritten Eintrag „Neue Notiz …". Ein Dialogfenster öffnet sich mit:
 - Auswahl eines Preset-PDFs aus `assets/presets/` (kleine Vorschau-Thumbnails,

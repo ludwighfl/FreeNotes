@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
 from ui.components.icon_factory import IconFactory
 from ui.components.pdf_card import PdfCard
+from core.i18n import tr
 
 if TYPE_CHECKING:
     pass
@@ -25,7 +26,7 @@ class ManagerGridMixin:
         AppState().current_folder = folder
 
         if folder is None:
-            self._folder_title.setText("Alle Dokumente")
+            self._folder_title.setText(tr("manager.all_documents"))
         else:
             self._folder_title.setText(folder.name)
 
@@ -71,7 +72,7 @@ class ManagerGridMixin:
     def _load_recent_grid(self) -> None:
         from core.app_settings import AppSettings
 
-        self._folder_title.setText("Zuletzt geöffnet")
+        self._folder_title.setText(tr("manager.recent"))
         self._search_input.clear()
 
         paths = AppSettings.get_last_opened()
@@ -135,23 +136,19 @@ class ManagerGridMixin:
             icon_lbl = QLabel()
             icon_lbl.setPixmap(
                 IconFactory.create_pixmap(
-                    "folder_x", color="#444444", size=64))
+                    "folder_x", color="#666666", size=64))
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_lbl.setStyleSheet("background: transparent;")
             empty_layout.addWidget(icon_lbl)
 
-            title_lbl = QLabel("Keine Dokumente")
+            title_lbl = QLabel(tr("manager.empty.title"))
             title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title_lbl.setStyleSheet(
-                "color: #555555; font-size: 18px; font-weight: bold;"
-                " background: transparent;")
+            title_lbl.setObjectName("managerEmptyTitle")
             empty_layout.addWidget(title_lbl)
 
-            desc_lbl = QLabel("Importiere ein PDF über 'Erstellen'")
+            desc_lbl = QLabel(tr("manager.empty.desc"))
             desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            desc_lbl.setStyleSheet(
-                "color: #444444; font-size: 13px;"
-                " background: transparent;")
+            desc_lbl.setObjectName("managerEmptyDesc")
             empty_layout.addWidget(desc_lbl)
         # Size to fill the entire viewport and raise above grid
         vp = self._scroll.viewport()

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from ui.components.icon_factory import IconFactory
 from ui.popups.font_size_widget import FontSizeWidget
+from core.i18n import tr
 
 if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem
@@ -79,20 +80,20 @@ class FormattingBar(QWidget):
         self._size_spin = FontSizeWidget()
 
         # --- Format toggle buttons (with visual style) ---
-        self._bold_btn = self._make_format_btn("B", "Fett (Ctrl+B)", "bold")
-        self._italic_btn = self._make_format_btn("I", "Kursiv (Ctrl+I)", "italic")
+        self._bold_btn = self._make_format_btn("B", tr("format.bold"), "bold")
+        self._italic_btn = self._make_format_btn("I", tr("format.italic"), "italic")
         self._underline_btn = self._make_format_btn(
-            "U", "Unterstrichen (Ctrl+U)", "underline")
+            "U", tr("format.underline"), "underline")
         self._strike_btn = self._make_format_btn(
-            "S", "Durchgestrichen (Ctrl+Shift+S)", "strikethrough")
+            "S", tr("format.strikethrough"), "strikethrough")
 
         # --- Alignment buttons (Lucide SVG icons) ---
         self._align_left_btn = self._make_icon_btn(
-            "align_left", "Linksbündig")
+            "align_left", tr("format.align_left"))
         self._align_center_btn = self._make_icon_btn(
-            "align_center", "Zentriert")
+            "align_center", tr("format.align_center"))
         self._align_right_btn = self._make_icon_btn(
-            "align_right", "Rechtsbündig")
+            "align_right", tr("format.align_right"))
 
         self._align_group = QButtonGroup(self)
         self._align_group.setExclusive(True)
@@ -348,8 +349,13 @@ class FormattingBar(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """Draw rounded-rect background (more reliable than QSS)."""
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        bg_color = "#ffffff" if is_light else "#1e1e1e"
+        border_color = "#d0d0d0" if is_light else "#3a3a3a"
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor("#1e1e1e")))
-        painter.setPen(QPen(QColor("#3a3a3a"), 1))
+        painter.setBrush(QBrush(QColor(bg_color)))
+        painter.setPen(QPen(QColor(border_color), 1))
         painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 8, 8)

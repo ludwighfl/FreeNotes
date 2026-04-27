@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from core.i18n import tr
+
 class ToolbarModePopupsMixin:
     """Mixin providing eraser and selection mode popup menus for ToolbarWidget.
 
@@ -30,39 +32,16 @@ class ToolbarModePopupsMixin:
 
         menu = QMenu(self)
         menu.setObjectName("eraserModeMenu")
-        menu.setStyleSheet("""
-            QMenu#eraserModeMenu {
-                background-color: #2d2d2d;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px 0;
-                font-family: "Segoe UI", sans-serif;
-                font-size: 13px;
-            }
-            QMenu#eraserModeMenu::item {
-                padding: 8px 32px 8px 12px;
-                color: #cccccc;
-            }
-            QMenu#eraserModeMenu::item:selected {
-                background-color: #3B7BF5;
-                color: #ffffff;
-            }
-            QMenu#eraserModeMenu::separator {
-                height: 1px;
-                background: #3a3a3a;
-                margin: 4px 8px;
-            }
-        """)
 
         check = "  ✓  "
         blank = "      "
 
         obj_action = QAction(
-            f"{check if self._eraser_mode == 'object' else blank}Objektradierer",
+            f"{check if self._eraser_mode == 'object' else blank}{tr('toolbar.eraser_object')}",
             menu,
         )
         px_action = QAction(
-            f"{check if self._eraser_mode == 'pixel' else blank}Präzisionsradierer",
+            f"{check if self._eraser_mode == 'pixel' else blank}{tr('toolbar.eraser_pixel')}",
             menu,
         )
 
@@ -91,10 +70,10 @@ class ToolbarModePopupsMixin:
         """Update the eraser button tooltip to show current mode."""
         eraser_idx = self.TOOL_IDS.index("eraser")
         if eraser_idx < len(self._tool_buttons):
-            mode_label = "Objektradierer" if self._eraser_mode == "object" else "Präzisionsradierer"
+            mode_label = tr("toolbar.eraser_object") if self._eraser_mode == "object" else tr("toolbar.eraser_pixel")
             self._tool_buttons[eraser_idx].setToolTip(
-                f"{mode_label}\nDoppelklick: Modus wechseln"
-        )
+                tr("toolbar.mode_hint").format(mode_label)
+            )
 
     # ------------------------------------------------------------------
     # Selection mode popup
@@ -111,39 +90,16 @@ class ToolbarModePopupsMixin:
 
         menu = QMenu(self)
         menu.setObjectName("selectionModeMenu")
-        menu.setStyleSheet("""
-            QMenu#selectionModeMenu {
-                background-color: #2d2d2d;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px 0;
-                font-family: "Segoe UI", sans-serif;
-                font-size: 13px;
-            }
-            QMenu#selectionModeMenu::item {
-                padding: 8px 32px 8px 12px;
-                color: #cccccc;
-            }
-            QMenu#selectionModeMenu::item:selected {
-                background-color: #3B7BF5;
-                color: #ffffff;
-            }
-            QMenu#selectionModeMenu::separator {
-                height: 1px;
-                background: #3a3a3a;
-                margin: 4px 8px;
-            }
-        """)
 
         check = "  ✓  "
         blank = "      "
 
         rect_action = QAction(
-            f"{check if self._selection_mode == 'rect' else blank}Rechteck-Auswahl",
+            f"{check if self._selection_mode == 'rect' else blank}{tr('toolbar.selection_rect')}",
             menu,
         )
         lasso_action = QAction(
-            f"{check if self._selection_mode == 'lasso' else blank}Lasso-Auswahl",
+            f"{check if self._selection_mode == 'lasso' else blank}{tr('toolbar.selection_lasso')}",
             menu,
         )
 
@@ -171,7 +127,7 @@ class ToolbarModePopupsMixin:
         """Update the selection button tooltip to show current mode."""
         sel_idx = self.TOOL_IDS.index("selection")
         if sel_idx < len(self._tool_buttons):
-            mode_label = "Rechteck-Auswahl" if self._selection_mode == "rect" else "Lasso-Auswahl"
+            mode_label = tr("toolbar.selection_rect") if self._selection_mode == "rect" else tr("toolbar.selection_lasso")
             self._tool_buttons[sel_idx].setToolTip(
-                f"{mode_label}\nDoppelklick: Modus wechseln"
+                tr("toolbar.mode_hint").format(mode_label)
             )

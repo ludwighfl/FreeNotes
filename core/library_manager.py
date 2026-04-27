@@ -145,6 +145,48 @@ class LibraryManager:
             "folder": dest_folder,
         }
 
+    def create_note_from_preset(self, name: str, preset_pdf_path: Path, target_folder: Path | None = None) -> dict:
+        """Create a new note from a preset PDF.
+        
+        Args:
+            name: The desired name for the note.
+            preset_pdf_path: Path to the preset PDF file.
+            target_folder: Folder to place the new note in (defaults to root).
+            
+        Returns:
+            The document dictionary of the new note.
+        """
+        dest_folder = target_folder or self._root
+        dest_folder.mkdir(parents=True, exist_ok=True)
+        
+        safe_name = self._sanitize(name)
+        if not safe_name:
+            safe_name = "Neue Notiz"
+            
+        base_path = dest_folder / safe_name
+        dest_pdf = self._resolve_name_conflict(base_path.with_suffix(".pdf"))
+        
+        # Copy the preset PDF to the destination
+        shutil.copy2(preset_pdf_path, dest_pdf)
+        
+        # Create empty .freenotes
+        fn_path = dest_pdf.with_suffix(".freenotes")
+        self._create_empty_freenotes(fn_path, dest_pdf)
+        
+        # Return the new document dict
+        for doc in self.get_documents(dest_folder):
+            if doc["pdf"] == dest_pdf:
+                return doc
+                
+        # Fallback
+        return {
+            "pdf": dest_pdf,
+            "freenotes": fn_path,
+            "name": dest_pdf.stem,
+            "modified": dest_pdf.stat().st_mtime,
+            "folder": dest_folder,
+        }
+
     def rename_document(self, doc: dict, new_name: str) -> dict:
         """Rename both .pdf and .freenotes files."""
         safe_name = self._sanitize(new_name)

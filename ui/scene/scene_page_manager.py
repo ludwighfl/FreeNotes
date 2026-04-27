@@ -137,8 +137,11 @@ class ScenePageManagerMixin:
 
                 item = QGraphicsPixmapItem(placeholder)
                 item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-                if log_w > 0:
-                    item.setScale(log_w / 2.0)
+                if log_w > 0 and log_h > 0:
+                    from PySide6.QtGui import QTransform
+                    transform = QTransform()
+                    transform.scale(log_w / 2.0, log_h / 2.0)
+                    item.setTransform(transform)
                 item.setPos(0, y_offset)
                 
                 self._page_items.append(item)

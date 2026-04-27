@@ -120,16 +120,9 @@ class ThumbnailCard(QFrame):
             self._update_style()
 
     def _update_style(self) -> None:
-        if self._is_active:
-            self.setStyleSheet(
-                f"#thumbnailCard {{ border: 2px solid {self.ACTIVE_BORDER_COLOR}; "
-                f"border-radius: 4px; background: #2d2d2d; }}"
-            )
-        else:
-            self.setStyleSheet(
-                "#thumbnailCard { border: 2px solid transparent; "
-                "border-radius: 4px; background: #242424; }"
-            )
+        self.setProperty("active", self._is_active)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     # --- Drag support ---
 

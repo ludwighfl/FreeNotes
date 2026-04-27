@@ -73,9 +73,6 @@ class DocumentManager:
                 return QImage()
             if page_index < 0 or page_index >= self._document.page_count:
                 return QImage()
-            if dpi <= 72:
-                page = self._document.load_page(page_index)
-                return self._renderer.render_page(page, dpi, use_hidpi=use_hidpi)
 
             cache_key = (page_index, dpi, use_hidpi)
 

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components.icon_factory import IconFactory
+from core.i18n import tr
 
 if TYPE_CHECKING:
     pass
@@ -33,7 +34,7 @@ class ManagerSidebarMixin:
         # "Alle Dokumente"
         all_item = self._make_sidebar_item(
             icon_name="layout_grid",
-            text="Alle Dokumente",
+            text=tr("manager.all_documents"),
             indent=0,
             active=(self._active_folder is None
                     and self._active_mode != "recent"),
@@ -47,7 +48,7 @@ class ManagerSidebarMixin:
         if AppSettings.get_last_opened():
             recent_item = self._make_sidebar_item(
                 icon_name="clock",
-                text="Zuletzt geöffnet",
+                text=tr("manager.recent"),
                 indent=0,
                 active=(self._active_mode == "recent"),
                 on_click=self._select_recent)
@@ -92,9 +93,9 @@ class ManagerSidebarMixin:
         """Show context menu for a folder in the sidebar."""
         menu = QMenu()
         menu.setObjectName("pageContextMenu")
-        menu.addAction("Umbenennen", lambda: self._on_rename_folder_action(folder))
+        menu.addAction(tr("menu.rename", "Umbenennen"), lambda: self._on_rename_folder_action(folder))
         menu.addSeparator()
-        menu.addAction("Löschen", lambda: self._on_delete_folder_action(folder))
+        menu.addAction(tr("menu.delete", "Löschen"), lambda: self._on_delete_folder_action(folder))
         
         global_pos = widget.mapToGlobal(pos)
         menu.exec(global_pos)
@@ -176,13 +177,20 @@ class ManagerSidebarMixin:
         layout.setContentsMargins(8 + indent * 16, 4, 8, 4)
         layout.setSpacing(6)
 
-        color = "#ffffff" if active else "#cccccc"
+        # Define Icon Color (Dark/Light aware - mostly handled by IconFactory if we pass neutral, but we need it here)
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
         
+        if active:
+            color = "#ffffff"
+        else:
+            color = "#666666" if is_light else "#cccccc"
+            
         if chevron_name:
             chev_lbl = QLabel()
             chev_lbl.setPixmap(IconFactory.create(chevron_name, color=color, size=14).pixmap(14, 14))
             chev_lbl.setFixedSize(14, 14)
-            chev_lbl.setStyleSheet("background: transparent;")
+            chev_lbl.setObjectName("sidebarIcon")
             layout.addWidget(chev_lbl)
         elif indent >= 0:
             # Align items without chevrons
@@ -192,29 +200,15 @@ class ManagerSidebarMixin:
         icon_lbl.setPixmap(
             IconFactory.create(icon_name, color=color, size=16).pixmap(16, 16))
         icon_lbl.setFixedSize(16, 16)
-        icon_lbl.setStyleSheet("background: transparent;")
+        icon_lbl.setObjectName("sidebarIcon")
 
         text_lbl = QLabel(text)
-        text_lbl.setStyleSheet(
-            f"color: {'#ffffff' if active else '#cccccc'};"
-            " font-size: 13px;"
-            " background: transparent;")
+        text_lbl.setObjectName("sidebarItemText")
 
         layout.addWidget(icon_lbl)
         layout.addWidget(text_lbl, 1)
 
-        if active:
-            item.setStyleSheet(
-                "QWidget#sidebarItem {"
-                " background: #3B7BF5;"
-                " border-radius: 6px; }")
-        else:
-            item.setStyleSheet(
-                "QWidget#sidebarItem {"
-                " background: transparent;"
-                " border-radius: 6px; }"
-                "QWidget#sidebarItem:hover {"
-                " background: #2d2d2d; }")
+        item.setProperty("active", active)
 
         def _handle_mouse_press(e):
             if e.button() == Qt.MouseButton.LeftButton:

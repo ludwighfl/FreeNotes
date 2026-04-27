@@ -81,6 +81,11 @@ class IconFactory:
         Returns:
             QIcon rendered at HiDPI resolution.
         """
+        from core.app_settings import AppSettings
+        if AppSettings.get_theme() == "light":
+            if color in ("#cccccc", "#ffffff", "#888888", "#555555"):
+                color = "#1a1a1a"
+                
         elements = cls._REGISTRY.get(name, "")
         if not elements:
             return QIcon()
@@ -137,6 +142,11 @@ class IconFactory:
         Returns:
             QPixmap rendered at HiDPI resolution.
         """
+        from core.app_settings import AppSettings
+        if AppSettings.get_theme() == "light":
+            if color in ("#cccccc", "#ffffff", "#888888", "#555555"):
+                color = "#1a1a1a"
+
         elements = cls._REGISTRY.get(name, "")
         if not elements:
             return QPixmap()

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components.icon_factory import IconFactory
+from core.i18n import tr
 
 
 class DisplayPage(QWidget):
@@ -29,11 +30,11 @@ class DisplayPage(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # ── Title ──
-        layout.addWidget(self._make_title("Anzeige"))
+        layout.addWidget(self._make_title(tr("settings.tabs.display")))
         layout.addSpacing(24)
 
         # ── Dark / Light Mode ──
-        layout.addWidget(self._make_label("Design"))
+        layout.addWidget(self._make_label(tr("settings.display.theme")))
         layout.addSpacing(8)
 
         mode_row = QHBoxLayout()
@@ -42,8 +43,8 @@ class DisplayPage(QWidget):
         from core.app_settings import AppSettings
         current = AppSettings.get_theme()
 
-        self._dark_btn = self._make_mode_btn("moon", "Dark Mode")
-        self._light_btn = self._make_mode_btn("sun", "Light Mode")
+        self._dark_btn = self._make_mode_btn("moon", tr("settings.display.dark_mode"))
+        self._light_btn = self._make_mode_btn("sun", tr("settings.display.light_mode"))
         self._dark_btn.setChecked(current == "dark")
         self._light_btn.setChecked(current == "light")
 
@@ -65,12 +66,10 @@ class DisplayPage(QWidget):
             IconFactory.create_pixmap(
                 "info", color="#5577cc", size=14))
         hint_icon.setFixedSize(14, 14)
-        hint_icon.setStyleSheet("background: transparent;")
+        hint_icon.setObjectName("settingsHintIcon")
         hint_row.addWidget(hint_icon)
-        hint_text = QLabel(
-            "Ein Neustart ist für die vollständige "
-            "Anwendung des Designs erforderlich.")
-        hint_text.setStyleSheet("color: #555555; font-size: 11px;")
+        hint_text = QLabel(tr("settings.display.restart_hint"))
+        hint_text.setObjectName("settingsHintText")
         hint_text.setWordWrap(True)
         hint_row.addWidget(hint_text, 1)
         layout.addLayout(hint_row)
@@ -82,7 +81,7 @@ class DisplayPage(QWidget):
 
         # ── Default font size ──
         layout.addWidget(
-            self._make_label("Standard-Schriftgröße (Textbox)"))
+            self._make_label(tr("settings.display.font_size")))
         layout.addSpacing(8)
 
         size_row = QHBoxLayout()
@@ -95,7 +94,7 @@ class DisplayPage(QWidget):
         size_row.addWidget(self._font_size)
 
         size_hint = QLabel("pt")
-        size_hint.setStyleSheet("color: #888888; font-size: 13px;")
+        size_hint.setObjectName("settingsLabel")
         size_row.addWidget(size_hint)
         size_row.addStretch()
         layout.addLayout(size_row)
@@ -117,6 +116,9 @@ class DisplayPage(QWidget):
         app = QApplication.instance()
         if app:
             app.setStyleSheet(load_stylesheet())
+        
+        from app.app_state import AppState
+        AppState().theme_updated.emit()
 
     def _on_font_size_changed(self, size: int) -> None:
         from core.app_settings import AppSettings
@@ -128,17 +130,15 @@ class DisplayPage(QWidget):
     # Widget helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _make_title(text: str) -> QLabel:
+    def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        lbl.setStyleSheet("color: #ffffff;")
+        lbl.setObjectName("settingsPageTitle")
         return lbl
 
-    @staticmethod
-    def _make_label(text: str) -> QLabel:
+    def _make_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #aaaaaa; font-size: 13px;")
+        lbl.setObjectName("settingsLabel")
         return lbl
 
     @staticmethod

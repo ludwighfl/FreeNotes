@@ -43,6 +43,62 @@ QStackedWidget {
     background-color: #f5f5f5;
 }
 
+#managerTitleLabel {
+    color: #1a1a1a;
+}
+
+#managerEmptyTitle {
+    color: #888888;
+    font-size: 18px;
+    font-weight: bold;
+    background: transparent;
+}
+
+#managerEmptyDesc {
+    color: #333333;
+    font-size: 13px;
+    background: transparent;
+}
+
+QLabel#colorPickerTitle {
+    color: #1a1a1a;
+    background: transparent;
+}
+QLabel#colorPickerLabel {
+    color: #1a1a1a;
+    background: transparent;
+}
+
+#sidebarScroll,
+#sidebarContainer {
+    background: transparent;
+    border: none;
+}
+
+#sidebarIcon {
+    background: transparent;
+}
+
+#sidebarItemText {
+    color: #1a1a1a;
+    font-size: 13px;
+    background: transparent;
+}
+
+QWidget#sidebarItem {
+    background: transparent;
+    border-radius: 6px;
+}
+QWidget#sidebarItem:hover {
+    background: #d8d8d8;
+}
+QWidget#sidebarItem[active="true"] {
+    background: #3B7BF5;
+}
+QWidget#sidebarItem[active="true"] #sidebarItemText {
+    color: #ffffff;
+}
+
 #managerScroll {
     background-color: #f5f5f5;
     border: none;
@@ -57,7 +113,7 @@ QStackedWidget {
 #folderList::item {
     padding: 6px 10px;
     border-radius: 4px;
-    color: #333333;
+    color: #1a1a1a;
 }
 
 #folderList::item:hover {
@@ -100,7 +156,7 @@ QStackedWidget {
 }
 
 #pdfCardThumb {
-    background-color: #e0e0e0;
+    background-color: #f5f5f5;
     border-radius: 4px;
 }
 
@@ -131,7 +187,7 @@ QMenu#settingsMenu {
     border: 1px solid #d0d0d0;
     border-radius: 8px;
     padding: 4px;
-    color: #333333;
+    color: #1a1a1a;
     font-size: 13px;
 }
 QMenu#settingsMenu::item {
@@ -145,6 +201,79 @@ QMenu#settingsMenu::item:selected {
 QMenu#settingsMenu::separator {
     height: 1px;
     background: #d0d0d0;
+    margin: 4px 8px;
+}
+
+/* ============================================================
+   NEW NOTE DIALOG
+   ============================================================ */
+
+QDialog#newNoteDialog { background: #f5f5f5; }
+QLabel#presetTitleLabel { color: #1a1a1a; }
+QLabel#newNoteNameLabel { color: #1a1a1a; font-size: 14px; }
+QLineEdit#newNoteNameInput { 
+    background: #ffffff; 
+    border: 1px solid #d0d0d0; 
+    border-radius: 4px; 
+    padding: 8px; 
+    color: #1a1a1a; 
+    font-size: 14px; 
+}
+QLineEdit#newNoteNameInput:focus { border: 1px solid #3B7BF5; }
+
+QFrame#presetButton { background: #ffffff; border: 2px solid transparent; border-radius: 8px; }
+QFrame#presetButton:hover { background: #f0f0f0; border: 2px solid transparent; }
+QFrame#presetButton[selected="true"] { background: #f0f0f0; border: 2px solid #3B7BF5; }
+
+QPushButton#newNoteCancelBtn { background: #e0e0e0; color: #333333; border: none; border-radius: 4px; font-weight: bold; }
+QPushButton#newNoteCancelBtn:hover { background: #d0d0d0; }
+
+QPushButton#newNoteOkBtn { background: #3B7BF5; color: #ffffff; border: none; border-radius: 4px; font-weight: bold; }
+QPushButton#newNoteOkBtn:hover { background: #5090FF; }
+QPushButton#newNoteOkBtn:disabled { background: #e0e0e0; color: #a0a0a0; }
+
+/* ============================================================
+   TEXTBOX OPTIONS POPUP
+   ============================================================ */
+
+QToolButton#popupBtn, QToolButton#popupDeleteBtn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+}
+QToolButton#popupBtn:hover {
+    background: #e0e0e0;
+}
+QToolButton#popupDeleteBtn:hover {
+    background: #ffe5e5;
+}
+QFrame#PopupSeparator {
+    color: #d0d0d0;
+}
+
+/* ============================================================
+   TOOLBAR MENUS
+   ============================================================ */
+
+QMenu#eraserModeMenu, QMenu#selectionModeMenu, QMenu#shapeMenu {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 4px 0;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+QMenu#eraserModeMenu::item, QMenu#selectionModeMenu::item, QMenu#shapeMenu::item {
+    padding: 8px 32px 8px 12px;
+    color: #1a1a1a;
+}
+QMenu#eraserModeMenu::item:selected, QMenu#selectionModeMenu::item:selected, QMenu#shapeMenu::item:selected {
+    background-color: #3B7BF5;
+    color: #ffffff;
+}
+QMenu#eraserModeMenu::separator, QMenu#selectionModeMenu::separator, QMenu#shapeMenu::separator {
+    height: 1px;
+    background: #e0e0e0;
     margin: 4px 8px;
 }
 
@@ -168,7 +297,7 @@ QMenu#settingsMenu::separator {
 #backBtn {
     background-color: transparent;
     border: none;
-    color: #555555;
+    color: #1a1a1a;
     border-radius: 6px;
 }
 
@@ -226,6 +355,10 @@ QMenu#settingsMenu::separator {
 
 #thumbnailCard:hover {
     background-color: #d8d8d8;
+}
+#thumbnailCard[active="true"] {
+    border: 2px solid #3B7BF5;
+    background: #e0e0e0;
 }
 
 /* ============================================================
@@ -433,13 +566,15 @@ QStackedWidget#settingsStack {
 QWidget#settingsPage {
     background: #f5f5f5;
 }
+QLabel#settingsTitleLabel { color: #1a1a1a; }
+QLabel#settingsPlaceholder { color: #888888; }
 
 /* Sidebar Buttons */
 QToolButton#settingsSidebarBtn {
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: #555555;
+    color: #1a1a1a;
     font-size: 13px;
     padding: 4px 8px;
     text-align: left;
@@ -458,7 +593,7 @@ QToolButton#langBtn {
     background: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
-    color: #555555;
+    color: #1a1a1a;
     font-size: 13px;
     padding: 6px 12px;
 }
@@ -478,7 +613,7 @@ QPushButton#settingsActionBtn {
     background: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
-    color: #555555;
+    color: #1a1a1a;
     padding: 8px 16px;
     font-size: 13px;
 }
@@ -492,7 +627,7 @@ QLabel#settingsPathLabel {
     background: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 4px;
-    color: #555555;
+    color: #1a1a1a;
     font-size: 12px;
     padding: 8px;
 }
@@ -502,7 +637,7 @@ QLineEdit#managerSearch {
     background: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
-    color: #333333;
+    color: #1a1a1a;
     font-size: 13px;
     padding: 4px 10px;
 }

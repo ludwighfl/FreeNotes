@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
 from ui.components.icon_factory import IconFactory
 from ui.components.pdf_card import PdfCard
 
+from core.i18n import tr
+
 from ui.windows.manager_action_bar_mixin import ManagerActionBarMixin
 from ui.windows.manager_sidebar_mixin import ManagerSidebarMixin
 from ui.windows.manager_grid_mixin import ManagerGridMixin
@@ -62,9 +64,9 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         sidebar_outer.setContentsMargins(12, 16, 12, 12)
         sidebar_outer.setSpacing(4)
 
-        title_label = QLabel("Notizen")
+        title_label = QLabel(tr("manager.notes"))
         title_label.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        title_label.setStyleSheet("color: #ffffff;")
+        title_label.setObjectName("managerTitleLabel")
         sidebar_outer.addWidget(title_label)
         sidebar_outer.addSpacing(12)
 
@@ -74,12 +76,9 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         self._sidebar_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._sidebar_scroll.setObjectName("sidebarScroll")
-        self._sidebar_scroll.setStyleSheet(
-            "QScrollArea#sidebarScroll { border: none; background: #242424; }")
 
         self._sidebar_container = QWidget()
         self._sidebar_container.setObjectName("sidebarContainer")
-        self._sidebar_container.setStyleSheet("background: #242424;")
         self._sidebar_layout = QVBoxLayout(self._sidebar_container)
         self._sidebar_layout.setContentsMargins(0, 0, 0, 0)
         self._sidebar_layout.setSpacing(2)
@@ -109,7 +108,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         # Search input with Lucide icon
         self._search_input = QLineEdit()
         self._search_input.setObjectName("managerSearch")
-        self._search_input.setPlaceholderText("Dokument suchen …")
+        self._search_input.setPlaceholderText(tr("manager.search_placeholder"))
         self._search_input.setFixedWidth(220)
         self._search_input.setFixedHeight(32)
         self._search_input.addAction(
@@ -123,25 +122,27 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         create_btn.setIcon(
             IconFactory.create("file_plus", color="#ffffff", size=16))
         create_btn.setIconSize(QSize(16, 16))
-        create_btn.setText(" Erstellen")
+        create_btn.setText(tr("menu.create"))
         create_btn.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         create_btn.setObjectName("createBtn")
         create_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         create_btn.setPopupMode(
             QToolButton.ToolButtonPopupMode.InstantPopup)
-        create_btn.setStyleSheet(
-            create_btn.styleSheet()
-            + " QToolButton::menu-indicator { image: none; }")
 
         create_menu = QMenu(create_btn)
         create_menu.setObjectName("pageContextMenu")
-        act_import = QAction("PDF importieren", self)
-        act_folder = QAction("Neuer Ordner", self)
+        
+        act_note = QAction(IconFactory.create("file_text", color="#cccccc", size=16), tr("menu.file.new_note"), self)
+        act_import = QAction(IconFactory.create("upload", color="#cccccc", size=16), tr("menu.file.import_pdf"), self)
+        act_folder = QAction(IconFactory.create("folder_plus", color="#cccccc", size=16), tr("menu.file.new_folder"), self)
+        
+        create_menu.addAction(act_note)
         create_menu.addAction(act_import)
         create_menu.addAction(act_folder)
         create_btn.setMenu(create_menu)
 
+        act_note.triggered.connect(self._on_create_note)
         act_import.triggered.connect(self._on_import_pdf)
         act_folder.triggered.connect(self._on_create_folder)
         self._default_header_right_layout.addWidget(create_btn)
@@ -252,6 +253,24 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         for f in files:
             lm.import_pdf(Path(f), folder)
         self._select_folder(folder)
+
+    def _on_create_note(self) -> None:
+        from ui.popups.new_note_dialog import NewNoteDialog
+        from app.app_state import AppState
+        
+        dialog = NewNoteDialog(self)
+        if dialog.exec():
+            preset = dialog.selected_preset
+            name = dialog.note_name
+            if preset and name:
+                lm = AppState().library_manager
+                folder = AppState().current_folder
+                new_doc = lm.create_note_from_preset(name, preset, folder)
+                self.load_sidebar()
+                self._select_folder(folder)
+                
+                if new_doc and new_doc.get("pdf"):
+                    self.open_pdf_requested.emit(new_doc["pdf"])
 
     def _on_create_folder(self) -> None:
         from app.app_state import AppState

@@ -48,11 +48,7 @@ class PdfRenderer:
         """
         dpr = PdfRenderer.get_device_pixel_ratio() if use_hidpi else 1.0
         
-        # Increase rendering resolution by 2x for sharper text, but increase
-        # devicePixelRatio by 2x as well so the item's logical scene coordinate
-        # size stays exactly the same (preserving tool sizes).
-        render_scale = min(2.0, dpr)
-        
+        render_scale = 1.0
         physical_dpi = dpi * dpr * render_scale
 
         zoom = physical_dpi / 72.0

@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
 )
 
 from ui.popups.color_wheel_widget import ColorWheelWidget
+from core.i18n import tr
+from core.app_settings import AppSettings
 
 
 class ColorPickerPopup(QWidget):
@@ -33,6 +35,10 @@ class ColorPickerPopup(QWidget):
             Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
         )
         self.setFixedWidth(self.POPUP_WIDTH)
+        
+        is_light = AppSettings.get_theme() == "light"
+        self.BG_COLOR = "#f5f5f5" if is_light else "#1e1e1e"
+        self._is_light = is_light
 
         # Flag to prevent signal loops
         self._updating: bool = False
@@ -43,15 +49,15 @@ class ColorPickerPopup(QWidget):
         layout.setSpacing(10)
 
         # 1. Header: "Farbe"
-        title = QLabel("Farbe")
+        title = QLabel(tr("color_picker.title"))
         title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        title.setStyleSheet("color: #ffffff; background: transparent;")
+        title.setObjectName("colorPickerTitle")
         layout.addWidget(title)
 
         # 2. "Farbton" label + wheel
-        hue_label = QLabel("Farbton")
+        hue_label = QLabel(tr("color_picker.hue"))
         hue_label.setFont(QFont("Segoe UI", 11))
-        hue_label.setStyleSheet("color: #888888; background: transparent;")
+        hue_label.setObjectName("colorPickerLabel")
         layout.addWidget(hue_label)
 
         self._wheel = ColorWheelWidget()
@@ -60,9 +66,9 @@ class ColorPickerPopup(QWidget):
         layout.addWidget(self._wheel)
 
         # 3. "Sättigung" label + slider
-        sat_label = QLabel("Sättigung")
+        sat_label = QLabel(tr("color_picker.saturation"))
         sat_label.setFont(QFont("Segoe UI", 11))
-        sat_label.setStyleSheet("color: #888888; background: transparent;")
+        sat_label.setObjectName("colorPickerLabel")
         layout.addWidget(sat_label)
 
         self._saturation_slider = QSlider(Qt.Orientation.Horizontal)
@@ -73,9 +79,9 @@ class ColorPickerPopup(QWidget):
         layout.addWidget(self._saturation_slider)
 
         # 4. "Helligkeit" label + slider
-        val_label = QLabel("Helligkeit")
+        val_label = QLabel(tr("color_picker.value"))
         val_label.setFont(QFont("Segoe UI", 11))
-        val_label.setStyleSheet("color: #888888; background: transparent;")
+        val_label.setObjectName("colorPickerLabel")
         layout.addWidget(val_label)
 
         self._value_slider = QSlider(Qt.Orientation.Horizontal)
@@ -160,16 +166,19 @@ class ColorPickerPopup(QWidget):
         v = self._wheel.value
 
         sat_end = QColor.fromHsvF(h / 360.0, 1.0, max(v, 0.3))
+        sat_start_col = "#c0c0c0" if self._is_light else "#666666"
+        sat_border = "rgba(0,0,0,0.15)" if self._is_light else "rgba(255,255,255,0.2)"
+        
         self._saturation_slider.setStyleSheet(
             f"QSlider#satSlider::groove:horizontal {{"
             f"  height: 6px; border-radius: 3px;"
             f"  background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            f"  stop:0 #666666, stop:1 {sat_end.name()});"
+            f"  stop:0 {sat_start_col}, stop:1 {sat_end.name()});"
             f"}}"
             f"QSlider#satSlider::handle:horizontal {{"
             f"  width: 16px; height: 16px; margin: -5px 0;"
             f"  border-radius: 8px; background: white;"
-            f"  border: 1px solid rgba(255,255,255,0.2);"
+            f"  border: 1px solid {sat_border};"
             f"}}"
             f"QSlider#satSlider::sub-page:horizontal {{ background: transparent; }}"
         )
@@ -184,7 +193,7 @@ class ColorPickerPopup(QWidget):
             f"QSlider#valSlider::handle:horizontal {{"
             f"  width: 16px; height: 16px; margin: -5px 0;"
             f"  border-radius: 8px; background: white;"
-            f"  border: 1px solid rgba(255,255,255,0.2);"
+            f"  border: 1px solid {sat_border};"
             f"}}"
             f"QSlider#valSlider::sub-page:horizontal {{ background: transparent; }}"
         )

@@ -162,8 +162,11 @@ class PageScene(
             item = QGraphicsPixmapItem(placeholder)
             item.setTransformationMode(
                 Qt.TransformationMode.SmoothTransformation)
-            # Scale the 2px placeholder to fill the logical page size
-            item.setScale(log_w / 2.0)
+            # Scale the 2px placeholder to fill the logical page size exactly
+            from PySide6.QtGui import QTransform
+            transform = QTransform()
+            transform.scale(log_w / 2.0, log_h / 2.0)
+            item.setTransform(transform)
             item.setPos(0, y_offset)
             item.setZValue(0)
             self.addItem(item)
@@ -193,8 +196,8 @@ class PageScene(
                 self._request_tiles_for_page(
                     i, MipLevel.MEDIUM, page_rect, doc_path, priority=5)
 
-        # Force viewport repaint (MinimalViewportUpdate won't auto-repaint)
-        self.update(self.sceneRect())
+        # Views will repaint on their own via MinimalViewportUpdate +
+        # tile_ready callbacks — no full-scene invalidation needed.
 
     # ------------------------------------------------------------------
     # Virtual rendering bounds logic
@@ -260,23 +263,17 @@ class PageScene(
         from tools.text_tool import TextTool
 
         if not isinstance(self._active_tool, TextTool):
-            # Check if click is NOT on a TextBoxItem (or its handles)
-            items_at = self.items(
-                QRectF(
-                    event.scenePos().x() - 2,
-                    event.scenePos().y() - 2,
-                    4,
-                    4,
-                )
-            )
+            # Check if click is NOT on a TextBoxItem (or its handles) via registry
+            pos = event.scenePos()
+            page_idx = self.get_page_index_at(pos)
             has_textbox = False
-            for i in items_at:
-                if isinstance(i, TextBoxItem):
-                    has_textbox = True
-                    break
-                if hasattr(i, "parentItem") and isinstance(i.parentItem(), TextBoxItem):
-                    has_textbox = True
-                    break
+            
+            if page_idx >= 0:
+                rect = QRectF(pos.x() - 2, pos.y() - 2, 4, 4)
+                for box in self.get_textboxes_for_page(page_idx):
+                    if box.sceneBoundingRect().intersects(rect):
+                        has_textbox = True
+                        break
 
             if not has_textbox:
                 self.deselect_all_textboxes()

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QToolButton,
 )
 
+from core.i18n import tr
+
 
 class PenPage(QWidget):
     """Settings page for pen defaults (color, width)."""
@@ -27,11 +29,11 @@ class PenPage(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # ── Title ──
-        layout.addWidget(self._make_title("Stift"))
+        layout.addWidget(self._make_title(tr("settings.tabs.pen")))
         layout.addSpacing(24)
 
         # ── Default color ──
-        layout.addWidget(self._make_label("Standard-Farbe"))
+        layout.addWidget(self._make_label(tr("settings.pen.default_color")))
         layout.addSpacing(8)
 
         from core.app_settings import AppSettings
@@ -69,7 +71,7 @@ class PenPage(QWidget):
         layout.addSpacing(24)
 
         # ── Default width ──
-        layout.addWidget(self._make_label("Standard-Breite"))
+        layout.addWidget(self._make_label(tr("settings.pen.default_width")))
         layout.addSpacing(8)
 
         from ui.bars.toolbar_icons import make_width_icon
@@ -133,17 +135,15 @@ class PenPage(QWidget):
     # Widget helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _make_title(text: str) -> QLabel:
+    def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        lbl.setStyleSheet("color: #ffffff;")
+        lbl.setObjectName("settingsPageTitle")
         return lbl
 
-    @staticmethod
-    def _make_label(text: str) -> QLabel:
+    def _make_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #aaaaaa; font-size: 13px;")
+        lbl.setObjectName("settingsLabel")
         return lbl
 
     @staticmethod

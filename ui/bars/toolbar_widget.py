@@ -17,6 +17,7 @@ from ui.components.icon_factory import IconFactory
 from ui.popups.color_picker_popup import ColorPickerPopup
 from ui.bars.toolbar_icons import make_color_icon, make_width_icon
 from ui.bars.toolbar_mode_popups import ToolbarModePopupsMixin
+from core.i18n import tr
 
 
 class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
@@ -40,8 +41,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
     TOOL_IDS: list[str] = ["text", "hand", "pen", "highlighter", "eraser", "selection"]
     TOOL_TOOLTIPS: list[str] = [
-        "Text", "Hand", "Pen", "Highlighter", "Eraser",
-        "Auswahl (Rechteck / Alt+Drag = Lasso)",
+        "toolbar.text", "toolbar.hand", "toolbar.pen", "toolbar.highlighter", "toolbar.eraser",
+        "toolbar.selection",
     ]
     ENABLED_TOOLS: set[str] = {"hand", "pen", "highlighter", "eraser", "text", "selection"}
 
@@ -131,7 +132,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         # --- Undo / Redo buttons ---
         self._undo_btn = QToolButton()
         self._undo_btn.setIcon(IconFactory.create("undo", color="#cccccc"))
-        self._undo_btn.setToolTip("Rückgängig (Ctrl+Z)")
+        self._undo_btn.setToolTip(tr("toolbar.undo"))
         self._undo_btn.setObjectName("undoBtn")
         self._undo_btn.setFixedSize(36, 36)
         self._undo_btn.setIconSize(QSize(20, 20))
@@ -142,7 +143,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
         self._redo_btn = QToolButton()
         self._redo_btn.setIcon(IconFactory.create("redo", color="#cccccc"))
-        self._redo_btn.setToolTip("Wiederholen (Ctrl+Y)")
+        self._redo_btn.setToolTip(tr("toolbar.redo"))
         self._redo_btn.setObjectName("redoBtn")
         self._redo_btn.setFixedSize(36, 36)
         self._redo_btn.setIconSize(QSize(20, 20))
@@ -172,7 +173,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             btn = QToolButton()
             btn.setIcon(IconFactory.create(tool_id))
             btn.setIconSize(QSize(22, 22))
-            btn.setToolTip(tooltip)
+            btn.setToolTip(tr(tooltip))
             btn.setCheckable(True)
             btn.setObjectName(f"toolBtn_{tool_id}")
             btn.setFixedSize(36, 36)
@@ -201,7 +202,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._shape_btn.setFixedSize(36, 36)
         self._shape_btn.setIcon(IconFactory.create("shape_rect"))
         self._shape_btn.setIconSize(QSize(22, 22))
-        self._shape_btn.setToolTip("Formen\nDoppelklick: Form wählen")
+        self._shape_btn.setToolTip(tr("toolbar.shapes_hint"))
 
         self._shape_menu = QMenu(self)
         self._shape_menu.setObjectName("shapeMenu")
@@ -217,12 +218,12 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._shape_icon_map = _SHAPE_ICON_MAP
 
         shape_entries = [
-            ("Rechteck",          ShapeType.RECT),
-            ("Abgerundetes Rechteck", ShapeType.ROUNDED_RECT),
-            ("Ellipse / Kreis",   ShapeType.ELLIPSE),
-            ("Linie",             ShapeType.LINE),
-            ("Pfeil",             ShapeType.ARROW),
-            ("Dreieck",           ShapeType.TRIANGLE),
+            (tr("toolbar.shape_rect"),          ShapeType.RECT),
+            (tr("toolbar.shape_rounded_rect"), ShapeType.ROUNDED_RECT),
+            (tr("toolbar.shape_ellipse"),   ShapeType.ELLIPSE),
+            (tr("toolbar.shape_line"),             ShapeType.LINE),
+            (tr("toolbar.shape_arrow"),             ShapeType.ARROW),
+            (tr("toolbar.shape_triangle"),           ShapeType.TRIANGLE),
         ]
 
         for label, shape_type in shape_entries:
@@ -262,7 +263,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             btn.setFixedSize(28, 28)
             btn.setCheckable(True)
             btn.setObjectName("colorChip")
-            btn.setToolTip(f"{color}\nDoppelklick zum Anpassen")
+            btn.setToolTip(tr("toolbar.color_hint").format(color))
             self._color_group.addButton(btn, i)
             self._color_buttons.append(btn)
             main_layout.addWidget(btn)
@@ -328,11 +329,11 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
     def _update_undo_tooltip(self, text: str) -> None:
         """Update undo tooltip safely (avoids lambda teardown crash)."""
-        self._undo_btn.setToolTip(f"Rückgängig: {text} (Ctrl+Z)" if text else "Rückgängig (Ctrl+Z)")
+        self._undo_btn.setToolTip(tr("toolbar.undo_action").format(text) if text else tr("toolbar.undo"))
 
     def _update_redo_tooltip(self, text: str) -> None:
         """Update redo tooltip safely (avoids lambda teardown crash)."""
-        self._redo_btn.setToolTip(f"Wiederholen: {text} (Ctrl+Y)" if text else "Wiederholen (Ctrl+Y)")
+        self._redo_btn.setToolTip(tr("toolbar.redo_action").format(text) if text else tr("toolbar.redo"))
 
     # ------------------------------------------------------------------
     # Double-click detection for color chips
@@ -402,7 +403,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 checked=(i == self._active_color_index),
             ))
             btn.setToolTip(
-                f"{self._chip_colors[i]}\nDoppelklick zum Anpassen"
+                tr("toolbar.color_hint").format(self._chip_colors[i])
             )
 
     def select_matching_color(self, color: QColor) -> None:

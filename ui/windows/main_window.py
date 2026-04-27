@@ -103,8 +103,26 @@ class MainWindow(QMainWindow):
         redo_z.activated.connect(self._handle_redo)
 
         self.setAcceptDrops(True)
+        
+        AppState().theme_updated.connect(self._update_title_bar_theme)
+        self._update_title_bar_theme()
 
         self._perform_startup_loading()
+
+    def _update_title_bar_theme(self) -> None:
+        import ctypes
+        try:
+            from core.app_settings import AppSettings
+            is_dark = AppSettings.get_theme() == "dark"
+            val = ctypes.c_int(1 if is_dark else 0)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val)
+            )
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()), 19, ctypes.byref(val), ctypes.sizeof(val)
+            )
+        except Exception:
+            pass
 
     def set_splash_process(self, proc) -> None:
         """Store the external splash screen subprocess to terminate it later."""

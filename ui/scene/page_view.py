@@ -28,6 +28,7 @@ class PageView(QGraphicsView):
     ZOOM_MAX: float = 5.0
 
     visible_page_changed = Signal(int)
+    scroll_progress_changed = Signal(float)
 
     def __init__(self, scene: PageScene, parent: object = None) -> None:
         super().__init__(scene, parent)
@@ -255,25 +256,39 @@ class PageView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def _on_scroll(self) -> None:
-        """Detect which page is most visible after scrolling."""
+        """Detect which page is most visible after scrolling (binary search)."""
         try:
             viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
+            
+            # Emit proportional scroll progress
+            vbar = self.verticalScrollBar()
+            if vbar.maximum() > 0:
+                progress = vbar.value() / vbar.maximum()
+                self.scroll_progress_changed.emit(progress)
+                
         except RuntimeError:
             return
         viewport_center_y = viewport_rect.center().y()
 
+        offsets = self._page_scene._page_y_offsets
+        rects = self._page_scene._page_rects
+        if not offsets:
+            return
+
+        # Binary search: find insertion point for viewport center
+        import bisect
+        idx = bisect.bisect_right(offsets, viewport_center_y)
+        # idx is one past the last offset <= viewport_center_y
+        # Check idx-1 and idx to find closest page center
         best_index = 0
         best_distance = float("inf")
-
-        for i in range(self._page_scene.page_count):
-            page_rect = self._page_scene.get_page_rect(i)
-            if page_rect.isEmpty():
-                continue
-            page_center_y = page_rect.center().y()
-            distance = abs(viewport_center_y - page_center_y)
-            if distance < best_distance:
-                best_distance = distance
-                best_index = i
+        for candidate in (max(0, idx - 1), min(len(rects) - 1, idx)):
+            if candidate < len(rects):
+                page_center_y = rects[candidate].center().y()
+                distance = abs(viewport_center_y - page_center_y)
+                if distance < best_distance:
+                    best_distance = distance
+                    best_index = candidate
 
         try:
             if best_index != self._app_state.current_page:

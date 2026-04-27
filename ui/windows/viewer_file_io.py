@@ -11,7 +11,9 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog, QApplic
 
 from core import undo_stack
 from core.freenotes_store import FreenotesStore
+from core.freenotes_store import FreenotesStore
 from core.pdf_exporter import PdfExporter
+from core.i18n import tr
 
 if TYPE_CHECKING:
     from app.app_state import AppState
@@ -20,6 +22,22 @@ if TYPE_CHECKING:
     from ui.bars.sidebar_widget import SidebarWidget
     from ui.popups.three_dot_menu import ThreeDotMenu
     from PySide6.QtWidgets import QLabel, QLineEdit
+
+
+from PySide6.QtCore import QThread, Signal
+
+class DocumentLoadWorker(QThread):
+    """Background worker to load a PDF document without blocking the UI thread."""
+    finished_loading = Signal(bool)
+
+    def __init__(self, doc_manager: DocumentManager, path: Path):
+        super().__init__()
+        self.doc_manager = doc_manager
+        self.path = path
+
+    def run(self):
+        success = self.doc_manager.open_document(self.path)
+        self.finished_loading.emit(success)
 
 
 class ViewerFileIOMixin:
@@ -41,16 +59,26 @@ class ViewerFileIOMixin:
         _on_tool_changed(): method
     """
 
-    def open_pdf(self, path: Path, auto_load_freenotes: bool = True) -> None:
-        """Open a PDF file in the viewer.
-        
-        Args:
-            path: Path to the PDF file.
-            auto_load_freenotes: If True, search for and load matching .freenotes file.
-        """
+    def open_pdf(self, path: Path, auto_load_freenotes: bool = True, _freenotes_to_load: str | None = None) -> None:
+        """Open a PDF file in the viewer asynchronously."""
+        self.clear_ui()
+        self._title_label.setText(tr("viewer.loading_doc"))
+        self._ext_label.setText("")
+        self._breadcrumb_label.setText("")
+
+        # Keep a reference to the worker to prevent garbage collection
+        self._load_worker = DocumentLoadWorker(self._doc_manager, path)
+        self._load_worker.finished_loading.connect(
+            lambda success: self._on_pdf_loaded(success, path, auto_load_freenotes, _freenotes_to_load)
+        )
+        self._load_worker.start()
+
+    def _on_pdf_loaded(self, success: bool, path: Path, auto_load_freenotes: bool, _freenotes_to_load: str | None) -> None:
         from PySide6.QtGui import QIntValidator
 
-        if not self._doc_manager.open_document(path):
+        if not success:
+            QMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_open_pdf"))  # type: ignore
+            self._title_label.setText(tr("viewer.load_error"))
             return
 
         page_count = self._doc_manager.get_page_count()
@@ -72,46 +100,49 @@ class ViewerFileIOMixin:
         
         self._page_scene.load_document(self._doc_manager)
 
-        # Check if corresponding .freenotes exists and load it automatically
-        freenotes_path = path.with_suffix(".freenotes")
-        if auto_load_freenotes:
-            if not freenotes_path.exists():
-                try:
-                    # Create empty .freenotes file immediately
-                    FreenotesStore.save(
-                        path=str(freenotes_path),
-                        scene=self._page_scene,
-                        pdf_path=str(path),
-                        doc_manager=self._doc_manager,
-                    )
-                except Exception as e:
-                    print(f"Failed to create empty freenotes file: {e}")
+        if _freenotes_to_load:
+            self._load_specific_freenotes(_freenotes_to_load)
+        else:
+            # Check if corresponding .freenotes exists and load it automatically
+            freenotes_path = path.with_suffix(".freenotes")
+            if auto_load_freenotes:
+                if not freenotes_path.exists():
+                    try:
+                        # Create empty .freenotes file immediately
+                        FreenotesStore.save(
+                            path=str(freenotes_path),
+                            scene=self._page_scene,
+                            pdf_path=str(path),
+                            doc_manager=self._doc_manager,
+                        )
+                    except Exception as e:
+                        print(f"Failed to create empty freenotes file: {e}")
 
-            if freenotes_path.exists():
-                try:
-                    _, structural_modified = FreenotesStore.load(
-                        path=str(freenotes_path), scene=self._page_scene, doc_manager=self._doc_manager)
-                    if structural_modified:
-                        page_count = self._doc_manager.get_page_count()
-                        self._app_state.total_pages = page_count
-                        self._total_pages_label.setText(str(page_count))
-                        self._page_input.setValidator(QIntValidator(1, page_count, self))
-                    self._app_state.freenotes_path = str(freenotes_path)
-                    self._sidebar.load_document(self._doc_manager, self._page_scene)
-                    self._sidebar.set_viewer(self)  # type: ignore
-                    
-                    # Clear undo stack for new document
-                    undo_stack.clear()
-                except Exception as e:
-                    print(f"Auto-load freenotes failed: {e}")
+                if freenotes_path.exists():
+                    try:
+                        _, structural_modified = FreenotesStore.load(
+                            path=str(freenotes_path), scene=self._page_scene, doc_manager=self._doc_manager)
+                        if structural_modified:
+                            page_count = self._doc_manager.get_page_count()
+                            self._app_state.total_pages = page_count
+                            self._total_pages_label.setText(str(page_count))
+                            self._page_input.setValidator(QIntValidator(1, page_count, self))
+                        self._app_state.freenotes_path = str(freenotes_path)
+                        self._sidebar.load_document(self._doc_manager, self._page_scene)
+                        self._sidebar.set_viewer(self)  # type: ignore
+                        
+                        # Clear undo stack for new document
+                        undo_stack.clear()
+                    except Exception as e:
+                        print(f"Auto-load freenotes failed: {e}")
+                        self._app_state.freenotes_path = None
+                        self._fallback_open_pdf_setup()
+                else:
                     self._app_state.freenotes_path = None
                     self._fallback_open_pdf_setup()
             else:
                 self._app_state.freenotes_path = None
                 self._fallback_open_pdf_setup()
-        else:
-            self._app_state.freenotes_path = None
-            self._fallback_open_pdf_setup()
 
         # Set default tool: Hand
         self._on_tool_changed("hand")
@@ -149,18 +180,30 @@ class ViewerFileIOMixin:
             pdf_path = data.get("pdf_path", "")
             pdf_path = FreenotesStore.resolve_pdf_path(pdf_path, path)
 
-            # 2. Load the PDF first (this clears the scene)
+            # 2. Load the PDF first (this clears the scene) asynchronously
             if pdf_path and os.path.exists(pdf_path):
-                self.open_pdf(Path(pdf_path), auto_load_freenotes=False)
+                self.open_pdf(Path(pdf_path), auto_load_freenotes=False, _freenotes_to_load=path)
+            else:
+                QMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_missing_pdf"))  # type: ignore
 
-            # 3. Now load annotations on top of the rendered pages
+        except Exception as e:
+            QMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
+
+    def _load_specific_freenotes(self, path: str) -> None:
+        """Called internally after the PDF is loaded to load the corresponding .freenotes data."""
+        try:
+            from PySide6.QtGui import QIntValidator
+            
             _, structural_modified = FreenotesStore.load(
                 path=path, scene=self._page_scene, doc_manager=self._doc_manager)
 
             if structural_modified:
                 self._app_state.total_pages = self._doc_manager.get_page_count()
-                self._sidebar.load_document(self._doc_manager, self._page_scene)
-                self._sidebar.set_viewer(self)  # type: ignore
+                self._total_pages_label.setText(str(self._app_state.total_pages))
+                self._page_input.setValidator(QIntValidator(1, self._app_state.total_pages, self))
+
+            self._sidebar.load_document(self._doc_manager, self._page_scene)
+            self._sidebar.set_viewer(self)  # type: ignore
 
             self._app_state.freenotes_path = path
             undo_stack.clear()
@@ -170,12 +213,12 @@ class ViewerFileIOMixin:
             from core.app_settings import AppSettings
             AppSettings.set_last_opened_doc(path)
         except Exception as e:
-            QMessageBox.critical(self, "Fehler beim Laden", str(e))  # type: ignore
+            QMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
 
     def _on_load(self) -> None:
         """Slot for Load action from ThreeDotMenu."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "FreeNotes öffnen", "",  # type: ignore
+            self, tr("viewer.open_freenotes"), "",  # type: ignore
             "FreeNotes (*.freenotes)",
         )
         if not path:
@@ -221,8 +264,8 @@ class ViewerFileIOMixin:
         from PySide6.QtWidgets import QMessageBox
         reply = QMessageBox.warning(
             self,  # type: ignore
-            "Annotationen löschen",
-            "Möchtest du wirklich ALLE Annotationen auf ALLEN Seiten löschen?\nDies kann über 'Rückgängig' widerrufen werden.",
+            tr("viewer.clear_annotations"),
+            tr("viewer.clear_annotations_msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -239,7 +282,7 @@ class ViewerFileIOMixin:
         """Slot for Export action from ThreeDotMenu."""
         pdf_path = self._app_state.current_pdf_path
         if not pdf_path:
-            QMessageBox.warning(self, "Kein PDF", "Kein PDF geöffnet.")  # type: ignore
+            QMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
             return
         base, ext = os.path.splitext(str(pdf_path))
         default_target = f"{base}_annotiert{ext}"
@@ -249,11 +292,11 @@ class ViewerFileIOMixin:
         """Slot for Export As action from ThreeDotMenu."""
         pdf_path = self._app_state.current_pdf_path
         if not pdf_path:
-            QMessageBox.warning(self, "Kein PDF", "Kein PDF geöffnet.")  # type: ignore
+            QMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
             return
         default_name = os.path.splitext(str(pdf_path))[0] + ".pdf"
         target, _ = QFileDialog.getSaveFileName(
-            self, "PDF exportieren als", default_name, "PDF (*.pdf)",  # type: ignore
+            self, tr("viewer.export_pdf_as"), default_name, "PDF (*.pdf)",  # type: ignore
         )
         if not target:
             return
@@ -262,7 +305,7 @@ class ViewerFileIOMixin:
     def _run_export(self, source: str, target: str) -> None:
         """Execute the export operation with a progress dialog."""
         progress = QProgressDialog(
-            "PDF wird exportiert …", "Abbrechen", 0, 100, self,  # type: ignore
+            tr("viewer.export_progress"), tr("settings.library.cancel"), 0, 100, self,  # type: ignore
         )
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(300)
@@ -281,13 +324,13 @@ class ViewerFileIOMixin:
             )
             progress.close()
             QMessageBox.information(
-                self, "Export erfolgreich",  # type: ignore
-                f"PDF gespeichert:\n{target}",
+                self, tr("settings.library.export_success"),  # type: ignore
+                tr("settings.library.pdf_saved").format(target),
             )
         except Exception as e:
             progress.close()
             QMessageBox.critical(
-                self, "Export fehlgeschlagen", str(e),  # type: ignore
+                self, tr("settings.library.export_failed"), str(e),  # type: ignore
             )
 
     def _update_title(self) -> None:

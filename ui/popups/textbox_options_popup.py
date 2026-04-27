@@ -24,6 +24,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import tr
+from core.app_settings import AppSettings
+
 if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem
     from PySide6.QtWidgets import QGraphicsView
@@ -101,11 +104,16 @@ class TextBoxOptionsPopup(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(2)
 
+        is_light = AppSettings.get_theme() == "light"
+        icon_color = "#555555" if is_light else "#cccccc"
+        copy_svg = COPY_SVG.replace("#cccccc", icon_color)
+        scissors_svg = SCISSORS_SVG.replace("#cccccc", icon_color)
+
         self._copy_btn = self._make_btn(
-            _svg_to_icon(COPY_SVG), "Kopieren (Strg+C)",
+            _svg_to_icon(copy_svg), tr("textbox.copy"),
         )
         self._cut_btn = self._make_btn(
-            _svg_to_icon(SCISSORS_SVG), "Ausschneiden (Strg+X)",
+            _svg_to_icon(scissors_svg), tr("textbox.cut"),
         )
 
         sep = QFrame()
@@ -115,7 +123,7 @@ class TextBoxOptionsPopup(QWidget):
         sep.setFixedWidth(1)
 
         self._delete_btn = self._make_btn(
-            _svg_to_icon(TRASH_SVG), "Löschen (Entf)",
+            _svg_to_icon(TRASH_SVG), tr("textbox.delete"),
         )
         self._delete_btn.setObjectName("popupDeleteBtn")
 
@@ -247,8 +255,13 @@ class TextBoxOptionsPopup(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor("#1e1e1e")))
-        painter.setPen(QPen(QColor("#3a3a3a"), 1))
+        
+        is_light = AppSettings.get_theme() == "light"
+        bg_color = "#f5f5f5" if is_light else "#1e1e1e"
+        border_color = "#d0d0d0" if is_light else "#3a3a3a"
+        
+        painter.setBrush(QBrush(QColor(bg_color)))
+        painter.setPen(QPen(QColor(border_color), 1))
         painter.drawRoundedRect(
             self.rect().adjusted(0, 0, -1, -1), 8, 8,
         )
