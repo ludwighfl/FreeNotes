@@ -184,14 +184,38 @@ class EraserTool(BaseTool):
         stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         eraser_path = stroker.createStroke(line_path)
 
-        # 3. Find candidates colliding with this thick sausage-shape
-        candidates = scene.items(eraser_path)
-        from items import TextBoxItem
-        items = [
-            i for i in candidates
-            if isinstance(i, self.AFFECTED_ITEM_TYPES)
-            and not isinstance(i, TextBoxItem)
-        ]
+        # 3. Find candidates via page-scoped registry search instead of
+        #    scene.items() which is O(all_scene_items) with NoIndex.
+        #    Determine affected page(s) from the eraser bounding rect.
+        eraser_br = eraser_path.boundingRect()
+        page_indices: set[int] = set()
+        page_idx = scene.get_page_index_at(pos)
+        if page_idx >= 0:
+            page_indices.add(page_idx)
+        if self._last_erase_pos is not None:
+            alt_idx = scene.get_page_index_at(self._last_erase_pos)
+            if alt_idx >= 0:
+                page_indices.add(alt_idx)
+
+        if not page_indices:
+            self._last_erase_pos = pos
+            return
+
+        items: list[QGraphicsItem] = []
+        for pidx in page_indices:
+            for registry in (
+                scene._stroke_items,
+                scene._highlight_items,
+                scene._shape_items,
+                scene._image_items,
+            ):
+                # Snapshot with list() — _erase_pixel_mode may mutate the registry
+                for item in list(registry.get(pidx, [])):
+                    try:
+                        if item.sceneBoundingRect().intersects(eraser_br):
+                            items.append(item)
+                    except RuntimeError:
+                        pass
 
         if items:
             if self._mode == EraserMode.OBJECT:

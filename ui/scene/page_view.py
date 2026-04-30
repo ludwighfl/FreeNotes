@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QGraphicsView
 from app.app_state import AppState
 from core.tile_cache import MipLevel
 from ui.scene.page_scene import PageScene
+from ui.animations.kinetic import KineticScroller
 
 
 class PageView(QGraphicsView):
@@ -39,6 +40,7 @@ class PageView(QGraphicsView):
         self._panning: bool = False
         self._pan_start_x: int = 0
         self._pan_start_y: int = 0
+        self._kinetic_scroller = KineticScroller(self)
 
         # Render hints
         self.setRenderHints(
@@ -62,7 +64,7 @@ class PageView(QGraphicsView):
         # Debounced render timer for virtual page rendering
         self._render_timer = QTimer()
         self._render_timer.setSingleShot(True)
-        self._render_timer.setInterval(80)
+        self._render_timer.setInterval(30)
         self._render_timer.timeout.connect(self._on_render_timer)
         self.verticalScrollBar().valueChanged.connect(
             self._on_scroll_changed)
@@ -189,6 +191,7 @@ class PageView(QGraphicsView):
             self._panning = True
             self._pan_start_x = event.x()
             self._pan_start_y = event.y()
+            self._kinetic_scroller.on_mouse_press(event.x(), event.y())
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
         else:
@@ -206,6 +209,7 @@ class PageView(QGraphicsView):
             v_bar = self.verticalScrollBar()
             h_bar.setValue(h_bar.value() - dx)
             v_bar.setValue(v_bar.value() - dy)
+            self._kinetic_scroller.on_mouse_move(event.x(), event.y())
             event.accept()
         else:
             super().mouseMoveEvent(event)
@@ -214,6 +218,7 @@ class PageView(QGraphicsView):
         """Stop panning or forward to scene."""
         if self._panning:
             self._panning = False
+            self._kinetic_scroller.on_mouse_release()
             if self._space_pressed:
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
             else:
@@ -302,8 +307,9 @@ class PageView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def _on_scroll_changed(self) -> None:
-        """Restart debounce timer on scroll."""
-        self._render_timer.start()
+        """Start debounce timer on scroll if not already running."""
+        if not self._render_timer.isActive():
+            self._render_timer.start()
 
     def _on_render_timer(self) -> None:
         """Inform scene which pages are visible for rendering."""

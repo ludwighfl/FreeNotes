@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QRectF, QPointF, Signal, Qt
-from PySide6.QtGui import QKeyEvent, QColor, QPixmap
+from PySide6.QtGui import QKeyEvent, QColor, QPixmap, QPainter
 from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
@@ -80,8 +80,8 @@ class PageScene(
         self._shape_items: dict[int, list] = {}
         self._image_items: dict[int, list] = {}
 
-        # Disable BSP tree for dynamic item compatibility (fixes zoom ghosts)
-        self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
+        # Enable BSP tree for high performance with mass annotations (O(log N))
+        self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.BspTreeIndex)
 
         # Central selection state (used by SceneSelectionMixin)
         self._selected_items: set = set()
@@ -109,6 +109,10 @@ class PageScene(
 
         # Current mip level based on zoom (updated by PageView)
         self._current_mip: MipLevel = MipLevel.MEDIUM
+
+        # Flags used by sidebar and thumbnail rendering to suppress signals
+        self._suppress_scene_changed: bool = False
+        self._is_rendering_thumbnail: bool = False
 
     def _get_placeholder_pixmap(self) -> QPixmap:
         """Return a shared tiny gray placeholder pixmap."""
@@ -236,6 +240,16 @@ class PageScene(
         pass
 
     # ------------------------------------------------------------------
+    # Overlay rendering for active drawing tools (Bypass BSP Tree Lag)
+    # ------------------------------------------------------------------
+
+    def drawForeground(self, painter: QPainter, rect: QRectF) -> None:
+        """Render active strokes directly to the viewport to bypass BSP tree lag."""
+        super().drawForeground(painter, rect)
+        if self._active_tool and hasattr(self._active_tool, "draw_active_stroke"):
+            self._active_tool.draw_active_stroke(painter, rect)
+
+    # ------------------------------------------------------------------
     # Tool management
     # ------------------------------------------------------------------
 
@@ -357,10 +371,34 @@ class PageScene(
         return QRectF()
 
     def get_page_index_at(self, scene_pos: QPointF) -> int:
-        """Determine which page contains the given scene position."""
-        for i, rect in enumerate(self._page_rects):
+        """Determine which page contains the given scene position.
+
+        Uses binary search over page Y-offsets for O(log n) performance
+        instead of linear scan, critical for documents with many pages.
+        """
+        if not self._page_rects:
+            return -1
+
+        y = scene_pos.y()
+        x = scene_pos.x()
+
+        # Binary search: find the page whose top <= y
+        lo, hi = 0, len(self._page_rects) - 1
+        result = -1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            rect = self._page_rects[mid]
+            if rect.top() <= y:
+                result = mid
+                lo = mid + 1
+            else:
+                hi = mid - 1
+
+        # Check if the found page actually contains the point
+        if result >= 0:
+            rect = self._page_rects[result]
             if rect.contains(scene_pos):
-                return i
+                return result
         return -1
 
     @property

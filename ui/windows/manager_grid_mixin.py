@@ -35,6 +35,43 @@ class ManagerGridMixin:
         self._all_docs = docs
         self._display_docs(docs)
 
+    def refresh_grid(self) -> None:
+        """Refresh existing grid if possible without rebuilding to prevent flicker."""
+        from app.app_state import AppState
+        lm = AppState().library_manager
+        if lm is None:
+            return
+            
+        folder = AppState().current_folder
+        new_docs = lm.get_documents_recursive(folder)
+        
+        # If searching, just reload normally to avoid complex diffing
+        if self._search_input.text().strip():
+            self.load_grid(folder)
+            return
+            
+        needs_rebuild = False
+        if len(new_docs) != len(self._cards):
+            needs_rebuild = True
+        else:
+            for new_doc, card in zip(new_docs, self._cards):
+                if new_doc["pdf"] != card._pdf_path or new_doc["freenotes"] != card._freenotes_path:
+                    needs_rebuild = True
+                    break
+                    
+        if needs_rebuild:
+            self.load_grid(folder)
+            return
+            
+        # Update existing cards in place to prevent flicker
+        self._all_docs = new_docs
+        for new_doc, card in zip(new_docs, self._cards):
+            if card._modified != new_doc["modified"]:
+                card._modified = new_doc["modified"]
+                card._rendered = False
+                card.update_metadata(new_doc["name"], new_doc["modified"])
+                card.render_if_needed()
+
     def _display_docs(self, docs: list[dict]) -> None:
         self._clear_grid()
 
@@ -61,6 +98,13 @@ class ManagerGridMixin:
             col = i % 4
             self._grid_layout.addWidget(card, row, col)
             self._cards.append(card)
+
+        # Apply current size
+        available_w = self._scroll.viewport().width() - 48 - 20
+        if available_w > 0:
+            card_w = max(120, available_w // 4)
+            for card in self._cards:
+                card.update_size(card_w)
 
         # Stagger animate the new cards
         from ui.animations import StaggerFadeAnimation

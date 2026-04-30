@@ -143,6 +143,11 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
     background-color: #2e6be0;
 }
 
+#createBtn::menu-indicator {
+    width: 0;
+    height: 0;
+}
+
 /* PDF Cards */
 #pdfCard {
     background-color: #ffffff;
@@ -153,6 +158,11 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 #pdfCard:hover {
     background-color: #f0f0f0;
     border-color: #b0b0b0;
+}
+
+#pdfCard[selected="true"] {
+    border: 2px solid #3B7BF5;
+    background-color: #f0f0f0;
 }
 
 #pdfCardThumb {

@@ -148,7 +148,7 @@ class StrokeItem(QGraphicsItem):
         to capture the pre-subtraction outline for undo.
 
         Args:
-            eraser_ellipse: QPainterPath (typically an ellipse) to subtract.
+            eraser_ellipse: QPainterPath in **scene** coordinates to subtract.
 
         Returns:
             True if the stroke still has visible content after subtraction.
@@ -158,7 +158,10 @@ class StrokeItem(QGraphicsItem):
         if not self._outline_mode:
             self.ensure_outline_mode()
 
-        new_path = self._path.subtracted(eraser_ellipse).simplified()
+        # Map eraser from scene coords to item-local coords
+        local_eraser = self.mapFromScene(eraser_ellipse) if self.scene() else eraser_ellipse
+
+        new_path = self._path.subtracted(local_eraser).simplified()
         if new_path.isEmpty() or new_path.boundingRect().width() < 1:
             return False
         self.prepareGeometryChange()

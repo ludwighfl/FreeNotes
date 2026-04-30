@@ -202,8 +202,17 @@ class ManagerSidebarMixin:
         icon_lbl.setFixedSize(16, 16)
         icon_lbl.setObjectName("sidebarIcon")
 
-        text_lbl = QLabel(text)
+        text_lbl = QLabel()
         text_lbl.setObjectName("sidebarItemText")
+        
+        # Calculate available width to elide text
+        # Sidebar is 280px. Margins and icons take up roughly 90px + indent * 16px.
+        from PySide6.QtGui import QFont, QFontMetrics
+        available_w = max(40, 190 - (indent * 16))
+        metrics = QFontMetrics(QFont("Segoe UI", 10))
+        elided_text = metrics.elidedText(text, Qt.TextElideMode.ElideRight, available_w)
+        text_lbl.setText(elided_text)
+        text_lbl.setToolTip(text)
 
         layout.addWidget(icon_lbl)
         layout.addWidget(text_lbl, 1)

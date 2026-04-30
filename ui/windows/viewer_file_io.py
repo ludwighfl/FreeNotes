@@ -11,7 +11,6 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog, QApplic
 
 from core import undo_stack
 from core.freenotes_store import FreenotesStore
-from core.freenotes_store import FreenotesStore
 from core.pdf_exporter import PdfExporter
 from core.i18n import tr
 

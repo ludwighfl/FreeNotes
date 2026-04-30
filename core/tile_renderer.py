@@ -116,6 +116,7 @@ class TileRenderTask(QRunnable):
         cache: TileCache,
         callback: Callable[[TileKey], None],
         orig_page_idx: int,
+        cached_dpr: float = 1.0,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__()
@@ -127,6 +128,7 @@ class TileRenderTask(QRunnable):
         self._cache = cache
         self._callback = callback
         self._orig_page_idx = orig_page_idx
+        self._cached_dpr = cached_dpr
         self._is_cancelled = is_cancelled
 
     # ---- worker entry point -----------------------------------------------
@@ -163,7 +165,7 @@ class TileRenderTask(QRunnable):
                     return
                 # Create white image
                 dpi = MIP_DPI[self._key.mip_level]
-                dpr = _device_pixel_ratio()
+                dpr = self._cached_dpr
                 effective_dpr = dpi * dpr / SCENE_DPI
                 # Calculate pixel dimensions exactly like PyMuPDF would
                 px_w = int(tile_scene.width() * effective_dpr)
@@ -232,7 +234,7 @@ class TileRenderTask(QRunnable):
 
             # DPI / zoom
             dpi = MIP_DPI[self._key.mip_level]
-            dpr = _device_pixel_ratio()
+            dpr = self._cached_dpr
             zoom = (dpi * dpr) / 72.0
             matrix = fitz.Matrix(zoom, zoom)
 
@@ -331,6 +333,9 @@ class TileRenderer(QObject):
         max_threads = min(6, os.cpu_count() or 2)
         self._pool.setMaxThreadCount(max_threads)
 
+        # Cache DPR once — avoids per-task QApplication.instance() calls
+        self._dpr: float = _device_pixel_ratio()
+
         # Shared connection pools for PyMuPDF
         self._doc_pools: dict[str, PdfConnectionPool] = {}
         self._pool_lock = threading.Lock()
@@ -373,6 +378,7 @@ class TileRenderer(QObject):
             cache=self._cache,
             callback=self._on_tile_rendered,
             orig_page_idx=orig_page_idx,
+            cached_dpr=self._dpr,
             is_cancelled=is_cancelled,
         )
         self._pool.start(task, priority)
@@ -402,6 +408,7 @@ class TileRenderer(QObject):
                 cache=self._cache,
                 callback=self._on_tile_rendered,
                 orig_page_idx=orig_page_idx,
+                cached_dpr=self._dpr,
                 is_cancelled=is_cancelled,
             )
             self._pool.start(task, priority)

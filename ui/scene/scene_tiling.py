@@ -87,6 +87,10 @@ class SceneTilingMixin:
 
         tiles_to_request: list[tuple[float, TileKey]] = []
 
+        # --- Batch cache lookup: acquire lock once instead of per-tile ---
+        all_keys_to_check: list[TileKey] = []
+        tile_positions: list[tuple[float, int, int, QRectF]] = []
+
         for r in range(rows):
             for c in range(cols):
                 # Tile rect in scene coordinates
@@ -103,42 +107,49 @@ class SceneTilingMixin:
                 tile_cx = tile_scene_rect.center().x()
                 tile_cy = tile_scene_rect.center().y()
                 dist = math.hypot(tile_cx - vp_center_x, tile_cy - vp_center_y)
+                tile_positions.append((dist, c, r, tile_scene_rect))
 
-                has_thumb = (
-                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.THUMB)) or
-                    TileKey(page_index, c, r, MipLevel.THUMB) in self._pending_tiles
-                )
-                has_medium = (
-                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.MEDIUM)) or
-                    TileKey(page_index, c, r, MipLevel.MEDIUM) in self._pending_tiles
-                )
-                has_full = (
-                    self._tile_cache.contains(TileKey(page_index, c, r, MipLevel.FULL)) or
-                    TileKey(page_index, c, r, MipLevel.FULL) in self._pending_tiles
-                )
-                has_any = has_thumb or has_medium or has_full
+                for m in MipLevel:
+                    all_keys_to_check.append(TileKey(page_index, c, r, m))
 
-                mips_to_request = []
-                # If no tile exists for this position, always request THUMB first
-                if not has_any:
-                    mips_to_request.append(MipLevel.THUMB)
+        cached_keys = self._tile_cache.contains_batch(all_keys_to_check)
 
-                # Then enqueue progressively higher mips up to the target mip_level
-                if mip_level >= MipLevel.MEDIUM and not has_medium:
-                    mips_to_request.append(MipLevel.MEDIUM)
-                if mip_level >= MipLevel.FULL and not has_full:
-                    mips_to_request.append(MipLevel.FULL)
-                if mip_level == MipLevel.THUMB and not has_thumb and has_any:
-                    mips_to_request.append(MipLevel.THUMB)
+        for dist, c, r, tile_scene_rect in tile_positions:
+            has_thumb = (
+                TileKey(page_index, c, r, MipLevel.THUMB) in cached_keys or
+                TileKey(page_index, c, r, MipLevel.THUMB) in self._pending_tiles
+            )
+            has_medium = (
+                TileKey(page_index, c, r, MipLevel.MEDIUM) in cached_keys or
+                TileKey(page_index, c, r, MipLevel.MEDIUM) in self._pending_tiles
+            )
+            has_full = (
+                TileKey(page_index, c, r, MipLevel.FULL) in cached_keys or
+                TileKey(page_index, c, r, MipLevel.FULL) in self._pending_tiles
+            )
+            has_any = has_thumb or has_medium or has_full
 
-                for m in mips_to_request:
-                    key = TileKey(page_index, c, r, m)
-                    if self._tile_cache.contains(key):
-                        # Tile is cached — ensure it has a scene item
-                        if key not in self._tile_items:
-                            self._on_tile_ready(key)
-                    elif key not in self._pending_tiles:
-                        tiles_to_request.append((dist, key))
+            mips_to_request = []
+            # If no tile exists for this position, always request THUMB first
+            if not has_any:
+                mips_to_request.append(MipLevel.THUMB)
+
+            # Then enqueue progressively higher mips up to the target mip_level
+            if mip_level >= MipLevel.MEDIUM and not has_medium:
+                mips_to_request.append(MipLevel.MEDIUM)
+            if mip_level >= MipLevel.FULL and not has_full:
+                mips_to_request.append(MipLevel.FULL)
+            if mip_level == MipLevel.THUMB and not has_thumb and has_any:
+                mips_to_request.append(MipLevel.THUMB)
+
+            for m in mips_to_request:
+                key = TileKey(page_index, c, r, m)
+                if key in cached_keys:
+                    # Tile is cached — ensure it has a scene item
+                    if key not in self._tile_items:
+                        self._on_tile_ready(key)
+                elif key not in self._pending_tiles:
+                    tiles_to_request.append((dist, key))
 
         # Sort by mip level first (ensuring all THUMBs are requested before FULLs),
         # then by distance to viewport center
@@ -209,18 +220,11 @@ class SceneTilingMixin:
                 thumb_item = self._tile_items.get(thumb_key)
                 if thumb_item is not None:
                     thumb_item.setVisible(False)
+
+            # scene.changed → sidebar thumbnail invalidation for tile updates.
+            # Note: QGraphicsPixmapItem.setPixmap automatically schedules a repaint.
         finally:
             self._suppress_scene_changed = False
-
-        # Repaint only the affected tile region, not the whole scene
-        page_rect = self._page_rects[key.page_index]
-        tile_scene_rect = QRectF(
-            page_rect.x() + key.tile_col * TILE_SIZE_PX,
-            page_rect.y() + key.tile_row * TILE_SIZE_PX,
-            TILE_SIZE_PX,
-            TILE_SIZE_PX,
-        ).intersected(page_rect)
-        self.update(tile_scene_rect)
 
     def update_visible_pages(
         self: 'PageScene', viewport_rect: QRectF, buffer: int = 2
@@ -274,25 +278,28 @@ class SceneTilingMixin:
 
         # --- 4. Evict FULL tiles for far-away pages ---
         evict_threshold = buffer + 5
-        for key, item in list(self._tile_items.items()):
-            if key.mip_level == MipLevel.FULL:
-                distance = abs(key.page_index - vis_first)
-                if distance > evict_threshold:
-                    self.removeItem(item)
-                    del self._tile_items[key]
-                    
-                    # Unhide lower mips so they act as placeholders if we scroll back
-                    medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
-                    thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
-                    
-                    if medium_key in self._tile_items:
-                        self._tile_items[medium_key].setVisible(True)
-                    elif thumb_key in self._tile_items:
-                        self._tile_items[thumb_key].setVisible(True)
-                    # Do not remove from cache — L1 cache handles its own eviction
+        keys_to_evict: list[TileKey] = [
+            key for key in self._tile_items
+            if key.mip_level == MipLevel.FULL
+            and abs(key.page_index - vis_first) > evict_threshold
+        ]
+        for key in keys_to_evict:
+            item = self._tile_items.pop(key)
+            self.removeItem(item)
 
-        # Cancel pending tasks for evicted pages
+            # Unhide lower mips so they act as placeholders if we scroll back
+            medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)
+            thumb_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.THUMB)
+
+            if medium_key in self._tile_items:
+                self._tile_items[medium_key].setVisible(True)
+            elif thumb_key in self._tile_items:
+                self._tile_items[thumb_key].setVisible(True)
+            # Do not remove from cache — L1 cache handles its own eviction
+
+        # Cancel pending tasks for evicted pages (preserve THUMB lookahead tasks)
         self._pending_tiles = {
             k for k in self._pending_tiles
             if abs(k.page_index - vis_first) <= evict_threshold
+            or (k.mip_level == MipLevel.THUMB and abs(k.page_index - vis_first) <= buffer + THUMB_LOOKAHEAD)
         }

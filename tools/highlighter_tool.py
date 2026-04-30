@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QObject
+from PySide6.QtCore import Qt, QObject, QRectF
+from PySide6.QtGui import QPainterPath, QPainter
 from PySide6.QtWidgets import QGraphicsSceneMouseEvent
 
 from app.app_state import AppState
@@ -25,8 +26,12 @@ class HighlighterTool(BaseTool):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._current_item: HighlightItem | None = None
+        self._fixed_y: float | None = None
+        self._current_path: QPainterPath | None = None
+        self._last_drawn_x: float | None = None
+        self._current_page_index: int = -1
         self._last_completed_item: HighlightItem | None = None
+        self._active_style: ToolStyle | None = None
 
     @property
     def last_completed_item(self) -> HighlightItem | None:
@@ -42,9 +47,8 @@ class HighlighterTool(BaseTool):
             view.setCursor(Qt.CursorShape.CrossCursor)
 
     def deactivate(self, scene: PageScene) -> None:
-        if self._current_item is not None:
-            self._current_item.finish()
-            self._current_item = None
+        self._fixed_y = None
+        self._current_path = None
         for view in scene.views():
             view.setCursor(Qt.CursorShape.ArrowCursor)
 
@@ -66,29 +70,86 @@ class HighlighterTool(BaseTool):
                 return
 
         app_style = AppState().tool_style
-        style = ToolStyle(
+        self._active_style = ToolStyle(
             color=app_style.color,
             width=app_style.width,
             opacity=0.35,
             tool_type="highlighter",
         )
-
-        self._current_item = HighlightItem(style, page_index)
-        scene.addItem(self._current_item)
-        scene.add_highlight_item(self._current_item, page_index)
-        self._current_item.start(pos)
+        
+        self._fixed_y = pos.y()
+        self._current_path = QPainterPath()
+        self._current_path.moveTo(pos.x(), self._fixed_y)
+        self._last_drawn_x = pos.x()
+        self._current_page_index = page_index
 
     def on_move(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
-        if self._current_item is None:
+        if self._fixed_y is None or self._current_path is None:
             return
-        self._current_item.extend(event.scenePos())
+            
+        pos = event.scenePos()
+        
+        # Throttle visual updates
+        if self._last_drawn_x is not None:
+            if abs(pos.x() - self._last_drawn_x) < 2.0:
+                return
+        self._last_drawn_x = pos.x()
+        
+        old_rect = self._current_path.boundingRect()
+        self._current_path.lineTo(pos.x(), self._fixed_y)
+        new_rect = self._current_path.boundingRect()
+        
+        # Force a targeted scene redraw to paint the overlay path
+        w = self._active_style.width if self._active_style else 16.0
+        update_rect = old_rect.united(new_rect).adjusted(-w, -w, w, w)
+        scene.update(update_rect)
+
+    def draw_active_stroke(self, painter: QPainter, rect: QRectF) -> None:
+        """Called by PageScene.drawForeground to render the active highlight."""
+        if self._current_path is not None and not self._current_path.isEmpty() and self._active_style:
+            from PySide6.QtGui import QPen, QColor
+            
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Darken)
+            
+            c = QColor(self._active_style.color)
+            opacity = self._active_style.opacity
+            r = 1.0 - opacity * (1.0 - c.redF())
+            g = 1.0 - opacity * (1.0 - c.greenF())
+            b = 1.0 - opacity * (1.0 - c.blueF())
+            solid_color = QColor.fromRgbF(r, g, b, 1.0)
+            
+            pen = QPen(solid_color)
+            pen.setWidthF(self._active_style.width)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(self._current_path)
+            painter.restore()
 
     def on_release(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if self._current_item is None:
+        if self._fixed_y is None or self._current_path is None:
             return
-        self._current_item.finish()
-        self._last_completed_item = self._current_item
-        self._current_item = None
+            
+        # Create and add the actual item once on release
+        if self._active_style:
+            item = HighlightItem(self._active_style, self._current_page_index)
+            item.set_path(self._current_path)
+            scene.addItem(item)
+            scene.add_highlight_item(item, self._current_page_index)
+            
+            self._last_completed_item = item
+            
+            # Clear the overlay path by requesting a final update of its bounds
+            w = self._active_style.width
+            scene.update(self._current_path.boundingRect().adjusted(-w, -w, w, w))
+            
+        self._fixed_y = None
+        self._current_path = None
+        self._last_drawn_x = None
         self.tool_action_completed.emit()

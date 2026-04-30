@@ -108,51 +108,62 @@ class FreenotesStore:
         # Clear existing annotations
         cls._clear_scene_annotations(scene)
 
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QGraphicsScene
 
-        for page_str, page_data in data.get("pages", {}).items():
-            QApplication.processEvents()
-            page_idx = int(page_str)
+        # Disable BSP tree during mass insertion for O(1) adds instead of O(log N)
+        scene.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
 
-            for d in page_data.get("strokes", []):
-                try:
-                    item = cls._deserialize_stroke(d, page_idx)
-                    scene.addItem(item)
-                    scene.add_item_to_registry(item)
-                except Exception as e:
-                    logger.warning("Stroke laden fehlgeschlagen: %s", e)
+        # Suppress scene.changed signals during bulk insertion to prevent
+        # O(n²) thumbnail invalidation in the sidebar.
+        scene._suppress_scene_changed = True
+        try:
+            for page_str, page_data in data.get("pages", {}).items():
+                page_idx = int(page_str)
 
-            for d in page_data.get("highlights", []):
-                try:
-                    item = cls._deserialize_highlight(d, page_idx)
-                    scene.addItem(item)
-                    scene.add_item_to_registry(item)
-                except Exception as e:
-                    logger.warning("Highlight laden fehlgeschlagen: %s", e)
+                for d in page_data.get("strokes", []):
+                    try:
+                        item = cls._deserialize_stroke(d, page_idx)
+                        scene.addItem(item)
+                        scene.add_item_to_registry(item)
+                    except Exception as e:
+                        logger.warning("Stroke laden fehlgeschlagen: %s", e)
 
-            for d in page_data.get("textboxes", []):
-                try:
-                    item = cls._deserialize_textbox(d, page_idx)
-                    scene.addItem(item)
-                    scene.add_item_to_registry(item)
-                except Exception as e:
-                    logger.warning("Textbox laden fehlgeschlagen: %s", e)
+                for d in page_data.get("highlights", []):
+                    try:
+                        item = cls._deserialize_highlight(d, page_idx)
+                        scene.addItem(item)
+                        scene.add_item_to_registry(item)
+                    except Exception as e:
+                        logger.warning("Highlight laden fehlgeschlagen: %s", e)
 
-            for d in page_data.get("shapes", []):
-                try:
-                    item = ShapeItem.from_dict(d)
-                    scene.addItem(item)
-                    scene.add_item_to_registry(item)
-                except Exception as e:
-                    logger.warning("Shape laden fehlgeschlagen: %s", e)
+                for d in page_data.get("textboxes", []):
+                    try:
+                        item = cls._deserialize_textbox(d, page_idx)
+                        scene.addItem(item)
+                        scene.add_item_to_registry(item)
+                    except Exception as e:
+                        logger.warning("Textbox laden fehlgeschlagen: %s", e)
 
-            for d in page_data.get("images", []):
-                try:
-                    item = ImageItem.from_dict(d)
-                    scene.addItem(item)
-                    scene.add_item_to_registry(item)
-                except Exception as e:
-                    logger.warning("Image laden fehlgeschlagen: %s", e)
+                for d in page_data.get("shapes", []):
+                    try:
+                        item = ShapeItem.from_dict(d)
+                        scene.addItem(item)
+                        scene.add_item_to_registry(item)
+                    except Exception as e:
+                        logger.warning("Shape laden fehlgeschlagen: %s", e)
+
+                for d in page_data.get("images", []):
+                    try:
+                        item = ImageItem.from_dict(d)
+                        scene.addItem(item)
+                        scene.add_item_to_registry(item)
+                    except Exception as e:
+                        logger.warning("Image laden fehlgeschlagen: %s", e)
+
+        finally:
+            scene._suppress_scene_changed = False
+            # Rebuild BSP tree once in bulk at the end for O(log N) runtime performance
+            scene.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.BspTreeIndex)
 
         return pdf_path, structural_modified
 
@@ -162,17 +173,24 @@ class FreenotesStore:
 
     @classmethod
     def _clear_scene_annotations(cls, scene: PageScene) -> None:
-        """Remove all annotation items from the scene."""
-        for item in list(scene.items()):
-            if isinstance(item, (StrokeItem, HighlightItem,
-                                 TextBoxItem, ShapeItem, ImageItem)):
-                scene.removeItem(item)
+        """Remove all annotation items from the scene.
 
-        scene._stroke_items.clear()
-        scene._highlight_items.clear()
-        scene._text_box_items.clear()
-        scene._shape_items.clear()
-        scene._image_items.clear()
+        Iterates over the registry dicts directly instead of
+        scene.items() (which is O(n) over ALL scene items including
+        tile pixmaps when BSP index is disabled).
+        """
+        registries = [
+            scene._stroke_items,
+            scene._highlight_items,
+            scene._text_box_items,
+            scene._shape_items,
+            scene._image_items,
+        ]
+        for registry in registries:
+            for page_items in registry.values():
+                for item in page_items:
+                    scene.removeItem(item)
+            registry.clear()
 
     # ------------------------------------------------------------------
     # Path resolution

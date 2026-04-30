@@ -67,11 +67,11 @@ class PdfCard(QFrame):
         display_name = name
         if len(display_name) > 22:
             display_name = display_name[:20] + "…"
-        name_label = QLabel(display_name)
-        name_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        name_label.setObjectName("pdfCardName")
-        name_label.setWordWrap(False)
-        layout.addWidget(name_label)
+        self._name_label = QLabel(display_name)
+        self._name_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self._name_label.setObjectName("pdfCardName")
+        self._name_label.setWordWrap(False)
+        layout.addWidget(self._name_label)
 
         # Date
         try:
@@ -79,11 +79,46 @@ class PdfCard(QFrame):
             date_str = dt.strftime("%d.%m.%Y, %H:%M")
         except Exception:
             date_str = ""
-        if date_str:
-            date_label = QLabel(date_str)
-            date_label.setFont(QFont("Segoe UI", 10))
-            date_label.setObjectName("pdfCardDate")
-            layout.addWidget(date_label)
+        self._date_label = QLabel(date_str)
+        self._date_label.setFont(QFont("Segoe UI", 10))
+        self._date_label.setObjectName("pdfCardDate")
+        layout.addWidget(self._date_label)
+        
+    def update_size(self, width: int) -> None:
+        height = int(width * 1.4) # 280/200
+        self.setFixedSize(width, height)
+        
+        # update thumbnail size
+        thumb_w = width - 16
+        thumb_h = int(thumb_w * (200.0 / 184.0))
+        self.THUMB_W = thumb_w
+        self.THUMB_H = thumb_h
+        self._thumb_label.setFixedSize(thumb_w, thumb_h)
+        
+        if not self._thumb_label.property("placeholder") and self._rendered:
+            if self._thumbnail_cache is not None and self._pdf_path:
+                cached = self._thumbnail_cache.get(self._pdf_path, self.THUMB_W, self.THUMB_H)
+                if cached:
+                    self._thumb_label.setPixmap(cached.scaled(
+                        thumb_w, thumb_h,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation))
+
+    def update_metadata(self, name: str, modified: float) -> None:
+        """Update name and modified date labels without fully rebuilding the card."""
+        self._name = name
+        display_name = name
+        if len(display_name) > 22:
+            display_name = display_name[:20] + "…"
+        self._name_label.setText(display_name)
+        
+        self._modified = modified
+        try:
+            dt = datetime.fromtimestamp(modified)
+            date_str = dt.strftime("%d.%m.%Y, %H:%M")
+        except Exception:
+            date_str = ""
+        self._date_label.setText(date_str)
 
     # ------------------------------------------------------------------
     # Lazy rendering
@@ -99,7 +134,10 @@ class PdfCard(QFrame):
                 if self._thumbnail_cache is not None:
                     cached = self._thumbnail_cache.get(self._pdf_path, self.THUMB_W, self.THUMB_H)
                     if cached:
-                        self._thumb_label.setPixmap(cached)
+                        self._thumb_label.setPixmap(cached.scaled(
+                            self.THUMB_W, self.THUMB_H,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation))
                         return
 
                 pixmap = self._render_thumbnail_with_annotations(
@@ -108,7 +146,10 @@ class PdfCard(QFrame):
                 if self._thumbnail_cache is not None and not pixmap.isNull():
                     self._thumbnail_cache.put(self._pdf_path, pixmap)
 
-                self._thumb_label.setPixmap(pixmap)
+                self._thumb_label.setPixmap(pixmap.scaled(
+                    self.THUMB_W, self.THUMB_H,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation))
             except Exception:
                 self._show_placeholder()
         else:
@@ -175,6 +216,11 @@ class PdfCard(QFrame):
                     QImage.Format.Format_RGB888).copy()
                 pixmap = QPixmap.fromImage(img)
             else:
+                if data:
+                    page_data = data.get("pages", {}).get(str(real_page_0), {})
+                    size = page_data.get("size", [595.0, 842.0])
+                    page0_w = size[0] * zoom
+                    h = size[1] * zoom
                 max_w = page0_w
                 pixmap = QPixmap(int(page0_w), int(h))
                 pixmap.fill(Qt.GlobalColor.white)
@@ -235,7 +281,7 @@ class PdfCard(QFrame):
             scene.clear()
 
             return final_pixmap.scaled(
-                self.THUMB_W, self.THUMB_H,
+                400, 400,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
 

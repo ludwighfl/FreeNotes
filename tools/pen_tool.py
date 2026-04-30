@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPointF, QObject, QRectF
-from PySide6.QtGui import QPainterPath
+from PySide6.QtGui import QPainterPath, QPainter
 from PySide6.QtWidgets import QGraphicsSceneMouseEvent
 
 from tools.base_tool import BaseTool
@@ -30,6 +30,8 @@ class PenTool(BaseTool):
         self._current_item: StrokeItem | None = None
         self._points: list[QPointF] = []
         self._last_completed_item: StrokeItem | None = None
+        self._last_drawn_pos: QPointF | None = None
+        self._current_page_index: int = -1
 
     @property
     def last_completed_item(self) -> StrokeItem | None:
@@ -74,48 +76,86 @@ class PenTool(BaseTool):
         self._points = [pos]
         self._current_path = QPainterPath()
         self._current_path.moveTo(pos)
+        self._last_drawn_pos = pos
+        self._current_page_index = page_index
 
-        # Create stroke item with current style
-        style = ToolStyle(
-            color=self.style.color,
-            width=self.style.width,
-            opacity=self.style.opacity,
-            tool_type="pen",
-        )
-        self._current_item = StrokeItem(self._current_path, style, page_index)
-        scene.addItem(self._current_item)
-
-        # Track in scene
-        scene.add_stroke_item(self._current_item, page_index)
+        # Do not create StrokeItem yet to avoid BSP tree lags.
+        # It will be rendered via draw_active_stroke in PageScene.drawForeground.
 
     def on_move(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
         """Extend the current stroke to the mouse position."""
-        if self._current_path is None or self._current_item is None:
+        if self._current_path is None:
             return
 
         pos = event.scenePos()
         self._points.append(pos)
+        
+        # Track old bounds to calculate update rect
+        old_rect = self._current_path.boundingRect()
         self._current_path.lineTo(pos)
-        self._current_item.update_path(self._current_path)
+        new_rect = self._current_path.boundingRect()
+
+        # Throttle visual updates
+        if self._last_drawn_pos is not None:
+            dx = abs(pos.x() - self._last_drawn_pos.x())
+            dy = abs(pos.y() - self._last_drawn_pos.y())
+            if dx + dy < 2.0:
+                return
+        self._last_drawn_pos = pos
+        
+        # Force a targeted scene redraw to paint the overlay path
+        w = self.style.width
+        update_rect = old_rect.united(new_rect).adjusted(-w, -w, w, w)
+        scene.update(update_rect)
+
+    def draw_active_stroke(self, painter: QPainter, rect: QRectF) -> None:
+        """Called by PageScene.drawForeground to render the active path."""
+        if self._current_path is not None and not self._current_path.isEmpty():
+            from PySide6.QtGui import QPen
+            
+            pen = QPen(self.style.color)
+            pen.setWidthF(self.style.width)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            
+            painter.save()
+            painter.setOpacity(self.style.opacity)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.drawPath(self._current_path)
+            painter.restore()
 
     def on_release(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
         """Finalize the stroke with path smoothing."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if self._current_item is None:
+        if self._current_path is None:
             return
 
         self._finalize_stroke(scene)
 
     def _finalize_stroke(self, scene: PageScene) -> None:
-        """Apply smoothing and clean up internal state."""
-        if self._current_item is not None and len(self._points) >= 2:
+        """Apply smoothing and create the final StrokeItem."""
+        if self._current_path is not None and len(self._points) >= 2:
             smoothed = self._smooth_path(self._points)
-            self._current_item.update_path(smoothed)
+            
+            style = ToolStyle(
+                color=self.style.color,
+                width=self.style.width,
+                opacity=self.style.opacity,
+                tool_type="pen",
+            )
+            item = StrokeItem(smoothed, style, self._current_page_index)
+            scene.addItem(item)
+            scene.add_stroke_item(item, self._current_page_index)
+            self._last_completed_item = item
+            
+            # Clear the overlay path by requesting a final update of its bounds
+            w = self.style.width
+            scene.update(self._current_path.boundingRect().adjusted(-w, -w, w, w))
 
-        self._last_completed_item = self._current_item
         self._current_path = None
-        self._current_item = None
         self._points.clear()
         self.tool_action_completed.emit()
 

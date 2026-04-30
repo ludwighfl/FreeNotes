@@ -322,7 +322,7 @@ class MainWindow(QMainWindow):
             
         self._stack_transition.switch_to(0)
         # Yield to event loop to allow cross-fade animation to render smoothly
-        QTimer.singleShot(150, lambda: self._manager_view.load_grid(AppState().current_folder))
+        QTimer.singleShot(150, lambda: self._manager_view.refresh_grid())
 
     def show_viewer(self, path: Path) -> None:
         """Switch to the viewer and open the given PDF.

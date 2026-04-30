@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from core.i18n import tr
 from core.app_settings import AppSettings
+from ui.animations.pop_in import PopInAnimation
 
 if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem
@@ -203,6 +204,7 @@ class TextBoxOptionsPopup(QWidget):
         self._skip_next_press = True  # skip the triggering click in eventFilter
         self.raise_()
         self.show()
+        PopInAnimation(self).start()
 
     def hide_popup(self) -> None:
         self._target_box = None

@@ -21,6 +21,7 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   ├── thumbnail_worker.py  # QThread for background page rendering
 │   ├── tile_renderer.py     # Asynchronous tile-based rendering for zoom performance
 │   ├── tile_cache.py        # Memory management/caching for rendered PDF tiles
+│   ├── i18n.py              # Internationalization and translation support
 │   ├── app_settings.py      # Application preferences and config
 │   ├── undo_stack.py        # Central history manager (Undo/Redo)
 │   ├── shape_style.py       # Dataclass for shape formatting
@@ -94,6 +95,7 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   │   ├── color_picker_popup.py
 │   │   ├── textbox_options_popup.py
 │   │   ├── three_dot_menu.py
+│   │   ├── new_note_dialog.py
 │   │   └── zip_export_dialog.py
 │   └── animations/          # QPropertyAnimation ecosystem for smooth UI transitions
 │       ├── drag_reorder.py, fade.py, shadow.py, slide.py, stagger.py, thumbnail.py

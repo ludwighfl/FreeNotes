@@ -119,6 +119,15 @@ class TileCache:
         with self._lock:
             return key in self._cache
 
+    def contains_batch(self, keys: list[TileKey]) -> set[TileKey]:
+        """Return the subset of *keys* present in the cache.
+
+        Acquires the lock only once for all keys instead of once per key.
+        Does **not** promote entries in LRU order.
+        """
+        with self._lock:
+            return {k for k in keys if k in self._cache}
+
     def remap_after_insert(self, at_index: int) -> None:
         """Shift tile indices up by 1 for pages >= *at_index*.
 

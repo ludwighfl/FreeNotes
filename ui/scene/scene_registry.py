@@ -100,44 +100,43 @@ class SceneRegistryMixin:
     def remove_item_from_registry(self, item: object) -> None:
         """Remove an annotation item from the internal tracking registry.
 
+        Uses item.page_index for O(1) dict lookup instead of scanning
+        all pages.  Falls back to full scan if the direct lookup fails
+        (e.g. after page reordering where page_index may be stale).
+
         Idempotent – no error if item is not in registry.
         Does NOT call removeItem on the scene – the caller handles that.
         """
+        page_idx = getattr(item, '_page_index', -1)
+
         if isinstance(item, StrokeItem):
-            for page_items in self._stroke_items.values():
-                try:
-                    page_items.remove(item)
-                    return
-                except ValueError:
-                    continue
+            registry = self._stroke_items
         elif isinstance(item, HighlightItem):
-            for page_items in self._highlight_items.values():
-                try:
-                    page_items.remove(item)
-                    return
-                except ValueError:
-                    continue
+            registry = self._highlight_items
         elif isinstance(item, TextBoxItem):
-            for page_items in self._text_box_items.values():
-                try:
-                    page_items.remove(item)
-                    return
-                except ValueError:
-                    continue
+            registry = self._text_box_items
         elif isinstance(item, ShapeItem):
-            for page_items in self._shape_items.values():
-                try:
-                    page_items.remove(item)
-                    return
-                except ValueError:
-                    continue
+            registry = self._shape_items
         elif isinstance(item, ImageItem):
-            for page_items in self._image_items.values():
-                try:
-                    page_items.remove(item)
-                    return
-                except ValueError:
-                    continue
+            registry = self._image_items
+        else:
+            return
+
+        # Fast path: direct lookup via page_index
+        if page_idx >= 0 and page_idx in registry:
+            try:
+                registry[page_idx].remove(item)
+                return
+            except ValueError:
+                pass
+
+        # Slow fallback: scan all pages (handles stale page_index)
+        for page_items in registry.values():
+            try:
+                page_items.remove(item)
+                return
+            except ValueError:
+                continue
 
     def add_item_to_registry(self, item: object) -> None:
         """Add an annotation item to the correct tracking registry.

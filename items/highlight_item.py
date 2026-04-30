@@ -55,11 +55,11 @@ class HighlightItem(QGraphicsItem):
         Args:
             pos: Initial click position in scene coordinates.
         """
+        self.prepareGeometryChange()
         self._fixed_y = pos.y()
         fixed_pos = QPointF(pos.x(), self._fixed_y)
         self._path = QPainterPath()
         self._path.moveTo(fixed_pos)
-        self.prepareGeometryChange()
         self._cached_br = None
         self.update()
 
@@ -71,9 +71,9 @@ class HighlightItem(QGraphicsItem):
         """
         if self._fixed_y is None:
             return
+        self.prepareGeometryChange()
         fixed_pos = QPointF(pos.x(), self._fixed_y)
         self._path.lineTo(fixed_pos)
-        self.prepareGeometryChange()
         self._cached_br = None
         self.update()
 
@@ -199,7 +199,7 @@ class HighlightItem(QGraphicsItem):
         and rounded caps are always preserved.
 
         Args:
-            eraser_ellipse: QPainterPath (eraser shape) to subtract.
+            eraser_ellipse: QPainterPath in **scene** coordinates to subtract.
 
         Returns:
             True if the stroke still has visible content.
@@ -208,13 +208,16 @@ class HighlightItem(QGraphicsItem):
         if self._path.isEmpty():
             return False
 
-        # Get the highlight's horizontal extent
+        # Map eraser from scene coords to item-local coords
+        local_eraser = self.mapFromScene(eraser_ellipse) if self.scene() else eraser_ellipse
+
+        # Get the highlight's horizontal extent (local coords)
         h_rect = self._path.boundingRect()
         h_left = h_rect.left()
         h_right = h_rect.right()
 
-        # Get the eraser's horizontal extent
-        e_rect = eraser_ellipse.boundingRect()
+        # Get the eraser's horizontal extent (now in local coords)
+        e_rect = local_eraser.boundingRect()
         e_left = e_rect.left()
         e_right = e_rect.right()
 

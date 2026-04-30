@@ -59,7 +59,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         # --- Folder sidebar ---
         sidebar = QWidget()
         sidebar.setObjectName("managerSidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(280)
         sidebar_outer = QVBoxLayout(sidebar)
         sidebar_outer.setContentsMargins(12, 16, 12, 12)
         sidebar_outer.setSpacing(4)
@@ -98,11 +98,12 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         content_widget = QWidget()
         content_widget.setObjectName("managerContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(20, 16, 20, 12)
+        content_layout.setContentsMargins(20, 16, 0, 0)
         content_layout.setSpacing(12)
 
         # Header row using Mixin (it defines _folder_title)
         header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 20, 0)
         self.init_action_bar(header)
 
         # Search input with Lucide icon
@@ -177,14 +178,15 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._scroll.setObjectName("managerScroll")
 
         self._grid_container = QWidget()
         self._grid_layout = QGridLayout(self._grid_container)
-        self._grid_layout.setContentsMargins(0, 0, 0, 0)
+        self._grid_layout.setContentsMargins(0, 0, 20, 20)
         self._grid_layout.setSpacing(16)
-        self._grid_layout.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._scroll.setWidget(self._grid_container)
 
         content_layout.addWidget(self._scroll)
@@ -229,6 +231,16 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         if hasattr(self, "_empty_container") and self._empty_container.isVisible():
             vp = self._scroll.viewport()
             self._empty_container.setGeometry(vp.rect())
+            
+        # Dynamically scale cards to fit exactly 4 columns
+        # Spacing is 16px, 3 gaps = 48px
+        # We also added 20px right margin to the grid layout.
+        available_w = self._scroll.viewport().width() - 48 - 20
+        if available_w > 0:
+            card_w = max(120, available_w // 4)
+            for card in self._cards:
+                if hasattr(card, "update_size"):
+                    card.update_size(card_w)
 
     def _on_card_double_clicked(self, doc: dict) -> None:
         if hasattr(self, "clear_selection"):
