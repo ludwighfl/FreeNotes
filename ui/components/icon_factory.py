@@ -561,6 +561,22 @@ def _register_builtins() -> None:
         '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     )
     
+    # Clipboard (paste) – Lucide "ClipboardPaste"
+    IconFactory.register(
+        "clipboard",
+        '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>'
+        '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+    )
+
+    # CopyPlus (duplicate) – Lucide "CopyPlus"
+    IconFactory.register(
+        "copy_plus",
+        '<line x1="15" x2="15" y1="12" y2="18"/>'
+        '<line x1="12" x2="18" y1="15" y2="15"/>'
+        '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>'
+        '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    )
+
     # FolderInput (move) – Lucide "FolderInput"
     IconFactory.register(
         "folder_input",

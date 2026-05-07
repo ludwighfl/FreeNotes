@@ -133,19 +133,14 @@ class DocumentManager:
         at_index: int,
         source_idx: int | None = None,
         source_bytes: bytes | None = None,
+        reference_idx: int | None = None,
     ) -> None:
-        """Insert a page at the given index.
-
-        Args:
-            at_index: Position to insert the new page.
-            source_idx: If given, duplicate this page from the current document.
-            source_bytes: If given, insert a page from raw PDF bytes (page clipboard).
-                          Takes precedence over *source_idx*.
-        """
+        """Insert a page (blank, duplicate, or from bytes)."""
         with self._lock:
             if self._document is None:
                 return
             self._structurally_modified = True
+            
             if source_bytes is not None:
                 import fitz
                 temp = fitz.open("pdf", source_bytes)
@@ -153,7 +148,11 @@ class DocumentManager:
                 temp.close()
                 self.page_map.insert(at_index, -1)
             elif source_idx is None:
-                self._document.insert_page(at_index, width=595, height=842)
+                width, height = 595.0, 842.0
+                if reference_idx is not None and 0 <= reference_idx < self._document.page_count:
+                    page = self._document[reference_idx]
+                    width, height = page.rect.width, page.rect.height
+                self._document.insert_page(at_index, width=width, height=height)
                 self.page_map.insert(at_index, -1)
             else:
                 # Use temp doc to safely copy page and insert at correct index
@@ -278,10 +277,26 @@ class DocumentManager:
             temp_path = self._path.with_suffix(".tmp.pdf")
             self._document.save(str(temp_path), garbage=3, deflate=True)
             self._document.close()
-            os.replace(str(temp_path), str(self._path))
             
-            import fitz
-            self._document = fitz.open(str(self._path))
+            import time
+            replace_success = False
+            last_err = None
+            try:
+                for _ in range(5):
+                    try:
+                        os.replace(str(temp_path), str(self._path))
+                        replace_success = True
+                        break
+                    except OSError as e:
+                        last_err = e
+                        time.sleep(0.1)
+                
+                if not replace_success and last_err:
+                    raise last_err
+            finally:
+                import fitz
+                # Always reopen so we don't leave the app with a closed document pointer
+                self._document = fitz.open(str(self._path))
             
             # The physical file now exactly matches the UI layout!
             # We must reset page_map to identity map

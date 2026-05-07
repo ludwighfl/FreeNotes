@@ -204,7 +204,6 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         # --- Connections ---
         self._sidebar.page_clicked.connect(self._on_sidebar_page_clicked)
         self._page_view.visible_page_changed.connect(self._on_visible_page_changed)
-        self._page_view.scroll_progress_changed.connect(self._sidebar.set_scroll_progress)
         self._app_state.page_changed.connect(self._on_page_changed)
         self._app_state.total_pages_changed.connect(self._on_total_pages_changed)
         self._page_input.returnPressed.connect(self._on_page_input_entered)
@@ -332,6 +331,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             doc_manager=self._doc_manager,
             sidebar=self._sidebar,
             label=tr("viewer.add_page_label"),
+            reference_page_idx=near_idx,
         )
         undo_stack.push(cmd)
 

@@ -35,6 +35,7 @@ class ThumbnailCard(QFrame):
 
         self.setObjectName("thumbnailCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumSize(self.THUMB_WIDTH, int(self.THUMB_WIDTH * 1.414))
         self._update_style()
 
     def set_thumbnail(self, pixmap: QPixmap) -> None:

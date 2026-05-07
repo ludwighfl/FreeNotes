@@ -367,6 +367,11 @@ QMenu#eraserModeMenu::separator, QMenu#selectionModeMenu::separator, QMenu#shape
     background-color: #2d2d2d;
 }
 
+#thumbnailCard[active="true"] {
+    border: 2px solid #3B7BF5;
+    background-color: #2d2d2d;
+}
+
 /* ============================================================
    PAGE VIEW (QGraphicsView)
    ============================================================ */

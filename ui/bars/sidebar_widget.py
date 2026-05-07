@@ -262,6 +262,78 @@ class SidebarWidget(QScrollArea):
         QTimer.singleShot(50, self._load_visible_thumbnails)
 
     # ------------------------------------------------------------------
+    # Incremental card insert / remove
+    # ------------------------------------------------------------------
+
+    def insert_card(self, at_index: int) -> None:
+        """Insert a single thumbnail card at *at_index* and renumber subsequent cards.
+
+        Much cheaper than rebuild_all: existing cards and their loaded
+        thumbnails are preserved — only page numbers are updated.
+        """
+        card = ThumbnailCard(at_index)
+        card.clicked.connect(self._on_card_clicked)
+        self._cards.insert(at_index, card)
+        self._layout.insertWidget(at_index, card)
+
+        # Renumber cards after the insertion point
+        for i in range(at_index + 1, len(self._cards)):
+            self._cards[i].update_page_number(i)
+
+        # Shift loaded/queued page tracking
+        new_loaded: set[int] = set()
+        for idx in self._loaded_pages:
+            new_loaded.add(idx + 1 if idx >= at_index else idx)
+        self._loaded_pages = new_loaded
+
+        new_queued: set[int] = set()
+        for idx in self._queued_pages:
+            new_queued.add(idx + 1 if idx >= at_index else idx)
+        self._queued_pages = new_queued
+
+        QTimer.singleShot(50, self._load_visible_thumbnails)
+
+    def remove_card(self, page_idx: int) -> None:
+        """Remove the card at *page_idx* and renumber subsequent cards.
+
+        Much cheaper than rebuild_all: existing cards and their loaded
+        thumbnails are preserved — only page numbers are updated.
+        """
+        if page_idx < 0 or page_idx >= len(self._cards):
+            return
+
+        card = self._cards.pop(page_idx)
+        self._layout.removeWidget(card)
+        card.deleteLater()
+
+        # Renumber cards after the removal point
+        for i in range(page_idx, len(self._cards)):
+            self._cards[i].update_page_number(i)
+
+        # Shift loaded/queued page tracking
+        new_loaded: set[int] = set()
+        for idx in self._loaded_pages:
+            if idx == page_idx:
+                continue
+            new_loaded.add(idx - 1 if idx > page_idx else idx)
+        self._loaded_pages = new_loaded
+
+        new_queued: set[int] = set()
+        for idx in self._queued_pages:
+            if idx == page_idx:
+                continue
+            new_queued.add(idx - 1 if idx > page_idx else idx)
+        self._queued_pages = new_queued
+
+        # Fix active index
+        if self._active_index == page_idx:
+            self._active_index = -1
+        elif self._active_index > page_idx:
+            self._active_index -= 1
+
+        QTimer.singleShot(50, self._load_visible_thumbnails)
+
+    # ------------------------------------------------------------------
     # Context menu
     # ------------------------------------------------------------------
 
@@ -283,21 +355,37 @@ class SidebarWidget(QScrollArea):
         if clicked_idx < 0:
             return
 
+        from ui.components.icon_factory import IconFactory
+
         menu = QMenu(self)
         menu.setObjectName("pageContextMenu")
 
-        act_add_above = QAction("Leere Seite davor einfügen", self)
-        act_add_below = QAction("Leere Seite danach einfügen", self)
-        act_duplicate = QAction("Seite duplizieren", self)
-        act_copy = QAction("Seite kopieren", self)
-        act_paste = QAction("Seite einfügen", self)
+        icon_color = "#cccccc"
+
+        act_add = QAction(
+            IconFactory.create("file_plus", color=icon_color, size=16),
+            "Leere Seite einfügen", self,
+        )
+        act_duplicate = QAction(
+            IconFactory.create("copy_plus", color=icon_color, size=16),
+            "Seite duplizieren", self,
+        )
+        act_copy = QAction(
+            IconFactory.create("copy", color=icon_color, size=16),
+            "Seite kopieren", self,
+        )
+        act_paste = QAction(
+            IconFactory.create("clipboard", color=icon_color, size=16),
+            "Seite einfügen", self,
+        )
         act_paste.setEnabled(self._app_state.page_clipboard is not None)
-        act_delete = QAction("Seite löschen", self)
+        act_delete = QAction(
+            IconFactory.create("trash", color="#cc4444", size=16),
+            "Seite löschen", self,
+        )
         act_delete.setEnabled(len(self._cards) > 1)
 
-        menu.addAction(act_add_above)
-        menu.addAction(act_add_below)
-        menu.addSeparator()
+        menu.addAction(act_add)
         menu.addAction(act_duplicate)
         menu.addSeparator()
         menu.addAction(act_copy)
@@ -307,9 +395,7 @@ class SidebarWidget(QScrollArea):
 
         viewer = self._viewer
         idx = clicked_idx
-        act_add_above.triggered.connect(
-            lambda: viewer.add_page(idx, "before"))
-        act_add_below.triggered.connect(
+        act_add.triggered.connect(
             lambda: viewer.add_page(idx, "after"))
         act_duplicate.triggered.connect(
             lambda: viewer.duplicate_page(idx))
@@ -320,10 +406,37 @@ class SidebarWidget(QScrollArea):
         act_delete.triggered.connect(
             lambda: viewer.delete_page(idx))
 
+        # Show dimming overlay on the viewer window
+        overlay = self._show_dim_overlay()
         menu.exec(event.globalPos())
+        if overlay is not None:
+            overlay.close()
+            overlay.deleteLater()
+
+    # ------------------------------------------------------------------
+    # Dimming overlay
+    # ------------------------------------------------------------------
+
+    def _show_dim_overlay(self) -> 'QWidget | None':
+        """Create a semi-transparent overlay over the ViewerWindow to dim it
+        while the sidebar context menu is visible."""
+        from PySide6.QtWidgets import QWidget as _QW
+
+        if self._viewer is None:
+            return None
+
+        overlay = _QW(self._viewer)
+        overlay.setObjectName("sidebarDimOverlay")
+        overlay.setGeometry(self._viewer.rect())
+        overlay.setStyleSheet(
+            "QWidget#sidebarDimOverlay { background: rgba(0, 0, 0, 100); }"
+        )
+        overlay.show()
+        overlay.raise_()
+        return overlay
 
     def set_active_page(self, page_index: int) -> None:
-        """Highlight the given page in the sidebar.
+        """Highlight the given page in the sidebar and ensure it is fully visible.
 
         Args:
             page_index: Zero-based page index.
@@ -333,18 +446,20 @@ class SidebarWidget(QScrollArea):
             self._cards[self._active_index].set_active(False)
         # Set new active
         if 0 <= page_index < len(self._cards):
-            self._cards[page_index].set_active(True)
+            card = self._cards[page_index]
+            card.set_active(True)
+            # Ensure the active thumbnail is fully visible in the sidebar.
+            # Defer execution to allow the layout engine to calculate geometry of newly added cards.
+            def _scroll():
+                try:
+                    self.ensureWidgetVisible(card, 0, 10)
+                except RuntimeError:
+                    pass  # Card was deleted by a rapid rebuild
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, _scroll)
         self._active_index = page_index
 
-    def set_scroll_progress(self, progress: float) -> None:
-        """Synchronize the sidebar's scrollbar with the PDF view proportionally."""
-        if getattr(self, '_ignore_scroll_sync', False):
-            return
-        vbar = self.verticalScrollBar()
-        if vbar.maximum() > 0:
-            self._ignore_scroll_sync = True
-            vbar.setValue(int(progress * vbar.maximum()))
-            self._ignore_scroll_sync = False
+
 
     def _on_card_clicked(self, page_index: int) -> None:
         self.page_clicked.emit(page_index)

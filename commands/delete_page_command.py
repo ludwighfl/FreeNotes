@@ -54,9 +54,10 @@ class DeletePageCommand(QUndoCommand):
         if self._saved_annotations:
             scene.restore_page_annotations(
                 self._page_idx, self._saved_annotations)
-        scene.rebuild_after_reorder(doc_mgr)
-        sidebar.rebuild_all(doc_mgr)
+        scene.relayout_after_insert(self._page_idx, doc_mgr)
+        sidebar.insert_card(self._page_idx)
         AppState().total_pages = doc_mgr.get_page_count()
+        self._navigate_to(self._page_idx)
 
     def redo(self) -> None:
         scene = self._scene_ref()
@@ -77,6 +78,28 @@ class DeletePageCommand(QUndoCommand):
         # Remove page
         scene.remove_page(self._page_idx, doc_mgr)
         doc_mgr.remove_page(self._page_idx)
-        scene.rebuild_after_reorder(doc_mgr)
-        sidebar.rebuild_all(doc_mgr)
+        scene.relayout_after_delete(self._page_idx, doc_mgr)
+        sidebar.remove_card(self._page_idx)
         AppState().total_pages = doc_mgr.get_page_count()
+        self._navigate_to(max(0, self._page_idx - 1))
+
+    def _navigate_to(self, target_idx: int) -> None:
+        """Scroll the viewer and sidebar to the target page."""
+        from PySide6.QtCore import QTimer
+
+        sidebar = self._sidebar_ref()
+        if sidebar is None:
+            return
+        viewer = getattr(sidebar, '_viewer', None)
+        if viewer is None:
+            return
+        page_view = getattr(viewer, '_page_view', None)
+        if page_view is None:
+            return
+
+        def _do_navigate():
+            AppState().current_page = target_idx
+            page_view.scroll_to_page(target_idx)
+
+        # Deferred so rebuild has fully completed
+        QTimer.singleShot(60, _do_navigate)

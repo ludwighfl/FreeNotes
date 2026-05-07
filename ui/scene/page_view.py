@@ -29,7 +29,6 @@ class PageView(QGraphicsView):
     ZOOM_MAX: float = 5.0
 
     visible_page_changed = Signal(int)
-    scroll_progress_changed = Signal(float)
 
     def __init__(self, scene: PageScene, parent: object = None) -> None:
         super().__init__(scene, parent)
@@ -243,7 +242,7 @@ class PageView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def scroll_to_page(self, page_index: int) -> None:
-        """Smoothly scroll the view to center the given page.
+        """Scroll the view so the top of the given page is at the top of the viewport.
 
         Args:
             page_index: Zero-based page index.
@@ -252,51 +251,58 @@ class PageView(QGraphicsView):
         if rect.isEmpty():
             return
 
-        # Use ensureVisible with margins for a smooth-ish scroll
-        self.ensureVisible(rect, 50, 50)
         self._app_state.current_page = page_index
+
+        # Calculate where the top of the rect is in the scene.
+        # We want scene_y = rect.top() - margin to be at the top of the viewport.
+        margin = 20
+        target_scene_y = rect.top() - margin
+        
+        # We need the viewport height in scene coordinates.
+        vp_height = self.viewport().height()
+        scale_y = self.transform().m22()
+        scene_vp_half = (vp_height / 2) / scale_y
+        
+        self.centerOn(rect.center().x(), target_scene_y + scene_vp_half)
 
     # ------------------------------------------------------------------
     # Visible page detection
     # ------------------------------------------------------------------
 
     def _on_scroll(self) -> None:
-        """Detect which page is most visible after scrolling (binary search)."""
+        """Detect which page occupies the most space in the viewport."""
         try:
             viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
-            
-            # Emit proportional scroll progress
-            vbar = self.verticalScrollBar()
-            if vbar.maximum() > 0:
-                progress = vbar.value() / vbar.maximum()
-                self.scroll_progress_changed.emit(progress)
-                
         except RuntimeError:
             return
-        viewport_center_y = viewport_rect.center().y()
 
-        offsets = self._page_scene._page_y_offsets
         rects = self._page_scene._page_rects
-        if not offsets:
+        if not rects:
             return
 
-        # Binary search: find insertion point for viewport center
-        import bisect
-        idx = bisect.bisect_right(offsets, viewport_center_y)
-        # idx is one past the last offset <= viewport_center_y
-        # Check idx-1 and idx to find closest page center
         best_index = 0
-        best_distance = float("inf")
-        for candidate in (max(0, idx - 1), min(len(rects) - 1, idx)):
-            if candidate < len(rects):
-                page_center_y = rects[candidate].center().y()
-                distance = abs(viewport_center_y - page_center_y)
-                if distance < best_distance:
-                    best_distance = distance
-                    best_index = candidate
+        max_area = -1.0
+
+        # Optimize by binary searching the first visible page
+        offsets = self._page_scene._page_y_offsets
+        import bisect
+        idx = bisect.bisect_right(offsets, viewport_rect.top())
+        start_idx = max(0, idx - 1)
+        
+        for i in range(start_idx, len(rects)):
+            r = rects[i]
+            if r.top() > viewport_rect.bottom():
+                break  # past the viewport
+                
+            intersect = r.intersected(viewport_rect)
+            if not intersect.isEmpty():
+                area = intersect.width() * intersect.height()
+                if area > max_area:
+                    max_area = area
+                    best_index = i
 
         try:
-            if best_index != self._app_state.current_page:
+            if max_area >= 0 and best_index != self._app_state.current_page:
                 self._app_state.current_page = best_index
                 self.visible_page_changed.emit(best_index)
         except RuntimeError:

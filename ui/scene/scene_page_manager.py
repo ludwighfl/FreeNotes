@@ -262,6 +262,132 @@ class ScenePageManagerMixin:
         if hasattr(self, '_pending_tiles'):
             self._pending_tiles.clear()
 
+    def relayout_after_insert(self, at_index: int, doc_manager: DocumentManager) -> None:
+        """Incremental relayout after a single page was inserted at *at_index*.
+
+        Instead of destroying and recreating all page items, this:
+        1. Creates one new placeholder item at *at_index*
+        2. Shifts Y-offsets for all pages >= at_index
+        3. Repositions annotations on shifted pages
+        4. Removes stale tile scene-items (cache stays valid via remap_after_insert)
+        """
+        if hasattr(self, '_tile_renderer'):
+            self._tile_renderer.cancel_all()
+
+        # Remove stale tile scene-items (cache keys already remapped by insert_page)
+        if hasattr(self, '_tile_items'):
+            for tile_item in self._tile_items.values():
+                self.removeItem(tile_item)
+            self._tile_items.clear()
+        if hasattr(self, '_pending_tiles'):
+            self._pending_tiles.clear()
+
+        scale = getattr(self, 'RENDER_DPI', 144) / 72.0
+        w_pt, h_pt = doc_manager.get_page_size(at_index)
+        log_w = w_pt * scale
+        log_h = h_pt * scale
+
+        placeholder = getattr(self, '_get_placeholder_pixmap', lambda: None)()
+        if placeholder is None:
+            from PySide6.QtGui import QPixmap
+            placeholder = QPixmap()
+
+        item = QGraphicsPixmapItem(placeholder)
+        item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        if log_w > 0 and log_h > 0:
+            from PySide6.QtGui import QTransform
+            transform = QTransform()
+            transform.scale(log_w / 2.0, log_h / 2.0)
+            item.setTransform(transform)
+        self.addItem(item)
+
+        # Insert into lists at the correct position
+        self._page_items.insert(at_index, item)
+        self._page_rects.insert(at_index, QRectF(0, 0, log_w, log_h))
+        self._page_states.insert(at_index, "placeholder")
+
+        # Recalculate Y-offsets for all pages and reposition
+        self._relayout_y_offsets(doc_manager)
+
+    def relayout_after_delete(self, page_idx: int, doc_manager: DocumentManager) -> None:
+        """Incremental relayout after a single page was deleted at *page_idx*.
+
+        Instead of destroying and recreating all page items, this:
+        1. Removes the page item at *page_idx*
+        2. Shifts Y-offsets for all pages > page_idx
+        3. Repositions annotations on shifted pages
+        4. Removes stale tile scene-items (cache stays valid via remap_after_delete)
+        """
+        if hasattr(self, '_tile_renderer'):
+            self._tile_renderer.cancel_all()
+
+        # Remove stale tile scene-items (cache keys already remapped by remove_page)
+        if hasattr(self, '_tile_items'):
+            for tile_item in self._tile_items.values():
+                self.removeItem(tile_item)
+            self._tile_items.clear()
+        if hasattr(self, '_pending_tiles'):
+            self._pending_tiles.clear()
+
+        # Remove the page item from scene
+        if 0 <= page_idx < len(self._page_items):
+            self.removeItem(self._page_items[page_idx])
+            del self._page_items[page_idx]
+            del self._page_rects[page_idx]
+            del self._page_states[page_idx]
+
+        # Recalculate Y-offsets for all pages and reposition
+        self._relayout_y_offsets(doc_manager)
+
+    def _relayout_y_offsets(self, doc_manager: DocumentManager) -> None:
+        """Recalculate Y-offsets for all pages and reposition items + annotations.
+
+        Shared helper for relayout_after_insert / relayout_after_delete.
+        """
+        # Store old rects for annotation repositioning
+        old_page_rects = list(self._page_rects)
+
+        self._page_y_offsets.clear()
+        self._rendered_set.clear()
+
+        y_offset = float(self.PAGE_GAP)
+        for i in range(len(self._page_items)):
+            w = self._page_rects[i].width()
+            h = self._page_rects[i].height()
+            self._page_items[i].setPos(0, y_offset)
+            self._page_rects[i] = QRectF(0, y_offset, w, h)
+            self._page_y_offsets.append(y_offset)
+            if self._page_states[i] == "rendered":
+                self._rendered_set.add(i)
+            y_offset += h + self.PAGE_GAP
+
+        # Center horizontally
+        if hasattr(self, '_center_pages'):
+            self._center_pages()
+
+        # Reposition annotation items to new page Y-offsets
+        page_count = len(self._page_items)
+        for idx in range(page_count):
+            new_rect = self._page_rects[idx]
+            for d in (self._stroke_items, self._highlight_items,
+                      self._text_box_items, self._shape_items, self._image_items):
+                for item in d.get(idx, []):
+                    old_page_idx = getattr(item, '_old_page_index', idx)
+                    if old_page_idx < len(old_page_rects):
+                        old_rect = old_page_rects[old_page_idx]
+                        old_pos = item.pos()
+                        rel_x = old_pos.x() - old_rect.x()
+                        rel_y = old_pos.y() - old_rect.y()
+                        item.setPos(QPointF(new_rect.x() + rel_x, new_rect.y() + rel_y))
+                    if hasattr(item, '_old_page_index'):
+                        delattr(item, '_old_page_index')
+
+        # Trigger tile rendering for visible pages
+        from PySide6.QtCore import QTimer
+        for view in self.views():
+            if hasattr(view, '_on_render_timer'):
+                QTimer.singleShot(50, view._on_render_timer)
+
     def clone_page_annotations(
         self, source_idx: int, target_idx: int
     ) -> None:

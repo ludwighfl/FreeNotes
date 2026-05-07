@@ -293,8 +293,11 @@ QMenu#pageContextMenu {
     font-size: 13px;
 }
 QMenu#pageContextMenu::item {
-    padding: 8px 16px;
+    padding: 8px 20px 8px 36px;
     border-radius: 4px;
+}
+QMenu#pageContextMenu::icon {
+    padding-left: 12px;
 }
 QMenu#pageContextMenu::item:selected {
     background: #3B7BF5;

@@ -35,11 +35,13 @@ class AddPageCommand(QUndoCommand):
         sidebar: SidebarWidget,
         label: str = "Seite hinzufügen",
         source_page_data: dict | None = None,
+        reference_page_idx: int | None = None,
     ) -> None:
         super().__init__(label)
         self._insert_at = insert_at
         self._source_page_idx = source_page_idx
         self._source_page_data = source_page_data
+        self._reference_page_idx = reference_page_idx
         self._scene_ref = weakref.ref(scene)
         self._doc_manager_ref = weakref.ref(doc_manager)
         self._sidebar_ref = weakref.ref(sidebar)
@@ -59,8 +61,8 @@ class AddPageCommand(QUndoCommand):
 
         scene.remove_page(self._insert_at, doc_mgr)
         doc_mgr.remove_page(self._insert_at)
-        scene.rebuild_after_reorder(doc_mgr)
-        sidebar.rebuild_all(doc_mgr)
+        scene.relayout_after_delete(self._insert_at, doc_mgr)
+        sidebar.remove_card(self._insert_at)
         AppState().total_pages = doc_mgr.get_page_count()
 
     def redo(self) -> None:
@@ -79,9 +81,9 @@ class AddPageCommand(QUndoCommand):
                 doc_mgr.insert_page(self._insert_at, source_bytes=pdf_bytes)
                 scene.insert_page(self._insert_at, doc_mgr)
 
-                # Rebuild FIRST so the target page rect exists
-                scene.rebuild_after_reorder(doc_mgr)
-                sidebar.rebuild_all(doc_mgr)
+                # Relayout so the target page rect exists
+                scene.relayout_after_insert(self._insert_at, doc_mgr)
+                sidebar.insert_card(self._insert_at)
                 AppState().total_pages = doc_mgr.get_page_count()
 
                 # Now restore annotations (target page rect is available)
@@ -104,7 +106,7 @@ class AddPageCommand(QUndoCommand):
             else:
                 # Blank or duplicate insert
                 doc_mgr.insert_page(
-                    self._insert_at, self._source_page_idx)
+                    self._insert_at, self._source_page_idx, reference_idx=self._reference_page_idx)
                 scene.insert_page(self._insert_at, doc_mgr)
 
                 # Clone annotations if duplicating
@@ -112,8 +114,8 @@ class AddPageCommand(QUndoCommand):
                     scene.clone_page_annotations(
                         self._source_page_idx, self._insert_at)
 
-                scene.rebuild_after_reorder(doc_mgr)
-                sidebar.rebuild_all(doc_mgr)
+                scene.relayout_after_insert(self._insert_at, doc_mgr)
+                sidebar.insert_card(self._insert_at)
                 AppState().total_pages = doc_mgr.get_page_count()
             self._navigate_to_page()
             return
@@ -124,13 +126,13 @@ class AddPageCommand(QUndoCommand):
             doc_mgr.insert_page(self._insert_at, source_bytes=pdf_bytes)
         else:
             doc_mgr.insert_page(
-                self._insert_at, self._source_page_idx)
+                self._insert_at, self._source_page_idx, reference_idx=self._reference_page_idx)
         scene.insert_page(self._insert_at, doc_mgr)
         if self._saved_annotations:
             scene.restore_page_annotations(
                 self._insert_at, self._saved_annotations)
-        scene.rebuild_after_reorder(doc_mgr)
-        sidebar.rebuild_all(doc_mgr)
+        scene.relayout_after_insert(self._insert_at, doc_mgr)
+        sidebar.insert_card(self._insert_at)
         AppState().total_pages = doc_mgr.get_page_count()
         self._navigate_to_page()
 
