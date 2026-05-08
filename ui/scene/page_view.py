@@ -5,6 +5,8 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
     QPointF,
+    QVariantAnimation,
+    QEasingCurve,
 )
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsView
@@ -13,6 +15,7 @@ from app.app_state import AppState
 from core.tile_cache import MipLevel
 from ui.scene.page_scene import PageScene
 from ui.animations.kinetic import KineticScroller
+from ui.animations.scroll import ScrollAnimation
 
 
 class PageView(QGraphicsView):
@@ -40,6 +43,16 @@ class PageView(QGraphicsView):
         self._pan_start_x: int = 0
         self._pan_start_y: int = 0
         self._kinetic_scroller = KineticScroller(self)
+        self._scroll_anim = ScrollAnimation(self)
+        self._scroll_anim.finished.connect(self._on_scroll)
+        self._scroll_anim.finished.connect(self._on_render_timer)
+        self._target_zoom: float = 1.0
+
+        # Smooth zoom animation
+        self._zoom_anim = QVariantAnimation(self)
+        self._zoom_anim.setDuration(250)
+        self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._zoom_anim.valueChanged.connect(self._on_zoom_anim_value_changed)
 
         # Render hints
         self.setRenderHints(
@@ -63,7 +76,7 @@ class PageView(QGraphicsView):
         # Debounced render timer for virtual page rendering
         self._render_timer = QTimer()
         self._render_timer.setSingleShot(True)
-        self._render_timer.setInterval(30)
+        self._render_timer.setInterval(50)
         self._render_timer.timeout.connect(self._on_render_timer)
         self.verticalScrollBar().valueChanged.connect(
             self._on_scroll_changed)
@@ -93,7 +106,7 @@ class PageView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def wheelEvent(self, event: object) -> None:
-        """Zoom in/out with Ctrl+Scroll."""
+        """Zoom in/out with Ctrl+Scroll (smooth)."""
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             angle = event.angleDelta().y()
             if angle > 0:
@@ -103,22 +116,35 @@ class PageView(QGraphicsView):
             else:
                 return
 
-            new_zoom = self._current_zoom * factor
-            if new_zoom < self.ZOOM_MIN:
-                factor = self.ZOOM_MIN / self._current_zoom
-                new_zoom = self.ZOOM_MIN
-            elif new_zoom > self.ZOOM_MAX:
-                factor = self.ZOOM_MAX / self._current_zoom
-                new_zoom = self.ZOOM_MAX
+            # Update target zoom based on the relative factor
+            self._target_zoom = max(
+                self.ZOOM_MIN, min(self.ZOOM_MAX, self._target_zoom * factor)
+            )
 
-            self._current_zoom = new_zoom
-            self.scale(factor, factor)
-            self._app_state.zoom_factor = new_zoom
-            self._update_mip_for_zoom()
-            # Trigger re-render after zoom
-            QTimer.singleShot(200, self._on_render_timer)
+            # Start or update animation
+            self._zoom_anim.stop()
+            self._zoom_anim.setStartValue(self._current_zoom)
+            self._zoom_anim.setEndValue(self._target_zoom)
+            self._zoom_anim.start()
+            event.accept()
         else:
             super().wheelEvent(event)
+
+    def _on_zoom_anim_value_changed(self, value: float) -> None:
+        """Apply the intermediate zoom factor during animation."""
+        if self._current_zoom == 0:
+            return
+
+        factor = value / self._current_zoom
+        self.scale(factor, factor)
+        self._current_zoom = value
+
+        self._app_state.zoom_factor = value
+        self._update_mip_for_zoom()
+
+        # Trigger re-render after a short delay if it's the last frame
+        if value == self._target_zoom:
+            QTimer.singleShot(200, self._on_render_timer)
 
     def zoom_to_fit(self) -> None:
         """Fit the current page into the viewport."""
@@ -134,6 +160,7 @@ class PageView(QGraphicsView):
         # Recalculate actual zoom factor from transform
         transform = self.transform()
         self._current_zoom = transform.m11()
+        self._target_zoom = self._current_zoom
         self._app_state.zoom_factor = self._current_zoom
         self._update_mip_for_zoom()
 
@@ -143,6 +170,7 @@ class PageView(QGraphicsView):
         self.resetTransform()
         self.scale(zoom, zoom)
         self._current_zoom = zoom
+        self._target_zoom = zoom
         self._app_state.zoom_factor = zoom
         self._update_mip_for_zoom()
         # Trigger re-render after zoom
@@ -263,7 +291,9 @@ class PageView(QGraphicsView):
         scale_y = self.transform().m22()
         scene_vp_half = (vp_height / 2) / scale_y
         
-        self.centerOn(rect.center().x(), target_scene_y + scene_vp_half)
+        self._scroll_anim.scroll_to(
+            QPointF(rect.center().x(), target_scene_y + scene_vp_half)
+        )
 
     # ------------------------------------------------------------------
     # Visible page detection
@@ -303,6 +333,10 @@ class PageView(QGraphicsView):
 
         try:
             if max_area >= 0 and best_index != self._app_state.current_page:
+                # Suppress intermediate page updates during programmatic scroll animations
+                # to prevent the sidebar from "scrolling along" with every page passed.
+                if self._scroll_anim.is_running():
+                    return
                 self._app_state.current_page = best_index
                 self.visible_page_changed.emit(best_index)
         except RuntimeError:
@@ -313,9 +347,19 @@ class PageView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def _on_scroll_changed(self) -> None:
-        """Start debounce timer on scroll if not already running."""
-        if not self._render_timer.isActive():
-            self._render_timer.start()
+        """Start or restart the debounce timer on scroll.
+        
+        Using a trailing-edge debounce (always restarting the timer) ensures 
+        that rendering updates are suppressed during rapid manual scrolling 
+        and only fire once the movement slows down or stops.
+        """
+        if (self._scroll_anim.is_running() or 
+            self._zoom_anim.state() == QVariantAnimation.State.Running):
+            return
+
+        # Restart the timer. If the user scrolls faster than the interval (30ms),
+        # the renderer will remain suppressed until they pause.
+        self._render_timer.start()
 
     def _on_render_timer(self) -> None:
         """Inform scene which pages are visible for rendering."""

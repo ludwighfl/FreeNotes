@@ -181,13 +181,10 @@ class ScenePageManagerMixin:
                 if hasattr(item, '_old_page_index'):
                     delattr(item, '_old_page_index')
                     
-        # Trigger tile rendering for newly visible pages.
-        # Use QGraphicsScene.views() to reach the PageView's render timer,
-        # since _viewport_rect / _on_scroll_changed live on PageView, not Scene.
-        from PySide6.QtCore import QTimer
+        # Trigger tile rendering for visible pages
         for view in self.views():
-            if hasattr(view, '_on_render_timer'):
-                QTimer.singleShot(50, view._on_render_timer)
+            if hasattr(view, '_render_timer'):
+                view._render_timer.start()
 
     def insert_page(self, at_index: int, doc_manager: DocumentManager) -> None:
         """Insert an empty annotation slot at at_index.
@@ -208,9 +205,9 @@ class ScenePageManagerMixin:
             d.clear()
             d.update(new_d)
 
-        # Remap tile cache indices instead of full invalidation
+        # Full tile cache invalidation (matches rebuild_after_reorder)
         if hasattr(self, '_tile_cache'):
-            self._tile_cache.remap_after_insert(at_index)
+            self._tile_cache.invalidate_all()
         # Tile scene items must be cleared (they reference old page rects)
         # — the render loop will recreate them cheaply from the remapped cache
         if hasattr(self, '_tile_items'):
@@ -251,9 +248,9 @@ class ScenePageManagerMixin:
             d.clear()
             d.update(new_d)
 
-        # Remap tile cache indices instead of full invalidation
+        # Full tile cache invalidation (matches rebuild_after_reorder)
         if hasattr(self, '_tile_cache'):
-            self._tile_cache.remap_after_delete(page_idx)
+            self._tile_cache.invalidate_all()
         # Tile scene items must be cleared — render loop will recreate from cache
         if hasattr(self, '_tile_items'):
             for tile_item in self._tile_items.values():
@@ -383,10 +380,9 @@ class ScenePageManagerMixin:
                         delattr(item, '_old_page_index')
 
         # Trigger tile rendering for visible pages
-        from PySide6.QtCore import QTimer
         for view in self.views():
-            if hasattr(view, '_on_render_timer'):
-                QTimer.singleShot(50, view._on_render_timer)
+            if hasattr(view, '_render_timer'):
+                view._render_timer.start()
 
     def clone_page_annotations(
         self, source_idx: int, target_idx: int

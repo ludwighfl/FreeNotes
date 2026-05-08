@@ -14,10 +14,10 @@ class ThumbnailWorker(QThread):
     """
     thumbnail_ready = Signal(int, int, QImage)  # generation_id, idx, image
 
-    def __init__(self, doc_manager, indices: list[int], dpi: int, use_hidpi: bool, generation_id: int):
+    def __init__(self, doc_manager, tasks: list[tuple[int, int]], dpi: int, use_hidpi: bool, generation_id: int):
         super().__init__()
         self._doc_path: str = str(doc_manager._path) if doc_manager._path else ""
-        self._indices = indices
+        self._tasks = tasks
         self._dpi = dpi
         self._use_hidpi = use_hidpi
         self._generation_id = generation_id
@@ -38,13 +38,26 @@ class ThumbnailWorker(QThread):
             return
 
         try:
-            for i in self._indices:
+            for current_idx, orig_idx in self._tasks:
                 if self._cancelled:
                     break
-                if i < 0 or i >= doc.page_count:
+                
+                if orig_idx == -1:
+                    # Blank page inserted - render blank white QImage
+                    zoom = self._dpi / 72.0
+                    w, h = int(595 * zoom), int(842 * zoom)
+                    img = QImage(w, h, QImage.Format.Format_RGB888)
+                    from PySide6.QtCore import Qt
+                    img.fill(Qt.GlobalColor.white)
+                    img.setDevicePixelRatio(zoom * 72.0 / self._dpi)
+                    if not self._cancelled:
+                        self.thumbnail_ready.emit(self._generation_id, current_idx, img)
+                    continue
+
+                if orig_idx < 0 or orig_idx >= doc.page_count:
                     continue
                 try:
-                    page = doc.load_page(i)
+                    page = doc.load_page(orig_idx)
                     zoom = self._dpi / 72.0
                     matrix = fitz.Matrix(zoom, zoom)
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
@@ -61,6 +74,6 @@ class ThumbnailWorker(QThread):
                     continue
 
                 if not self._cancelled:
-                    self.thumbnail_ready.emit(self._generation_id, i, img)
+                    self.thumbnail_ready.emit(self._generation_id, current_idx, img)
         finally:
             doc.close()

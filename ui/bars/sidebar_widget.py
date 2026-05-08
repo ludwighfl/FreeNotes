@@ -1,21 +1,24 @@
-import time
+"""Scrollable sidebar with lazy-loaded page thumbnails.
 
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint
-from PySide6.QtGui import (
-    QPixmap, QImage, QPainter, QContextMenuEvent, QAction,
-)
+Extensively refactored into mixins to maintain architecture size limits.
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QScrollArea,
     QWidget,
     QVBoxLayout,
-    QMenu,
 )
 
 from core.document_manager import DocumentManager
 from core.thumbnail_worker import ThumbnailWorker
 from ui.components.thumbnail_card import ThumbnailCard
 from app.app_state import AppState
-from PySide6.QtCore import QRectF
+
+from ui.bars.sidebar_context_menu import SidebarContextMenuMixin
+from ui.bars.sidebar_render import SidebarRenderMixin
 
 # TYPE_CHECKING import to avoid circular dependency problems on init
 from typing import TYPE_CHECKING
@@ -25,7 +28,7 @@ if TYPE_CHECKING:
     from ui.windows.viewer_window import ViewerWindow
 
 
-class SidebarWidget(QScrollArea):
+class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
     """Scrollable sidebar with lazy-loaded page thumbnails.
 
     Only visible thumbnails + 2 buffer pages above/below are rendered
@@ -141,7 +144,7 @@ class SidebarWidget(QScrollArea):
 
         page_count = doc_manager.get_page_count()
         for i in range(page_count):
-            card = ThumbnailCard(i)
+            card = ThumbnailCard(i, doc_manager)
             card.clicked.connect(self._on_card_clicked)
             self._layout.addWidget(card)
             self._cards.append(card)
@@ -149,7 +152,7 @@ class SidebarWidget(QScrollArea):
         if page_count > 0:
             self.set_active_page(0)
 
-        QTimer.singleShot(50, self._load_visible_thumbnails)
+        QTimer.singleShot(250, self._load_visible_thumbnails)
 
     def set_viewer(self, viewer: 'ViewerWindow') -> None:
         """Set viewer reference for reorder command."""
@@ -224,10 +227,11 @@ class SidebarWidget(QScrollArea):
 
         self._loaded_pages.clear()
         self._queued_pages.clear()
+        self._thumb_generation_id += 1
 
         # Restore scroll position (prevent jump to top)
         QTimer.singleShot(0, lambda: vbar.setValue(saved_scroll))
-        QTimer.singleShot(50, self._load_visible_thumbnails)
+        QTimer.singleShot(250, self._load_visible_thumbnails)
 
     def rebuild_all(self, doc_manager: DocumentManager | None = None) -> None:
         """Clear and recreate all thumbnail cards from scratch."""
@@ -249,7 +253,7 @@ class SidebarWidget(QScrollArea):
 
         page_count = dm.get_page_count()
         for i in range(page_count):
-            card = ThumbnailCard(i)
+            card = ThumbnailCard(i, dm)
             card.clicked.connect(self._on_card_clicked)
             self._layout.addWidget(card)
             self._cards.append(card)
@@ -259,7 +263,7 @@ class SidebarWidget(QScrollArea):
         if new_active >= 0:
             self.set_active_page(new_active)
 
-        QTimer.singleShot(50, self._load_visible_thumbnails)
+        QTimer.singleShot(250, self._load_visible_thumbnails)
 
     # ------------------------------------------------------------------
     # Incremental card insert / remove
@@ -271,7 +275,8 @@ class SidebarWidget(QScrollArea):
         Much cheaper than rebuild_all: existing cards and their loaded
         thumbnails are preserved — only page numbers are updated.
         """
-        card = ThumbnailCard(at_index)
+        self._thumb_generation_id += 1
+        card = ThumbnailCard(at_index, self._doc_manager)
         card.clicked.connect(self._on_card_clicked)
         self._cards.insert(at_index, card)
         self._layout.insertWidget(at_index, card)
@@ -281,17 +286,10 @@ class SidebarWidget(QScrollArea):
             self._cards[i].update_page_number(i)
 
         # Shift loaded/queued page tracking
-        new_loaded: set[int] = set()
-        for idx in self._loaded_pages:
-            new_loaded.add(idx + 1 if idx >= at_index else idx)
-        self._loaded_pages = new_loaded
+        self._loaded_pages.clear()
+        self._queued_pages.clear()
 
-        new_queued: set[int] = set()
-        for idx in self._queued_pages:
-            new_queued.add(idx + 1 if idx >= at_index else idx)
-        self._queued_pages = new_queued
-
-        QTimer.singleShot(50, self._load_visible_thumbnails)
+        QTimer.singleShot(250, self._load_visible_thumbnails)
 
     def remove_card(self, page_idx: int) -> None:
         """Remove the card at *page_idx* and renumber subsequent cards.
@@ -302,6 +300,7 @@ class SidebarWidget(QScrollArea):
         if page_idx < 0 or page_idx >= len(self._cards):
             return
 
+        self._thumb_generation_id += 1
         card = self._cards.pop(page_idx)
         self._layout.removeWidget(card)
         card.deleteLater()
@@ -311,19 +310,8 @@ class SidebarWidget(QScrollArea):
             self._cards[i].update_page_number(i)
 
         # Shift loaded/queued page tracking
-        new_loaded: set[int] = set()
-        for idx in self._loaded_pages:
-            if idx == page_idx:
-                continue
-            new_loaded.add(idx - 1 if idx > page_idx else idx)
-        self._loaded_pages = new_loaded
-
-        new_queued: set[int] = set()
-        for idx in self._queued_pages:
-            if idx == page_idx:
-                continue
-            new_queued.add(idx - 1 if idx > page_idx else idx)
-        self._queued_pages = new_queued
+        self._loaded_pages.clear()
+        self._queued_pages.clear()
 
         # Fix active index
         if self._active_index == page_idx:
@@ -331,109 +319,7 @@ class SidebarWidget(QScrollArea):
         elif self._active_index > page_idx:
             self._active_index -= 1
 
-        QTimer.singleShot(50, self._load_visible_thumbnails)
-
-    # ------------------------------------------------------------------
-    # Context menu
-    # ------------------------------------------------------------------
-
-    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """Show page context menu on right-click."""
-        if not self._cards or self._viewer is None:
-            return
-
-        # Find which card was clicked
-        pos_in_container = self._container.mapFrom(
-            self.viewport(),
-            self.viewport().mapFrom(self, event.pos()),
-        )
-        clicked_idx = -1
-        for i, card in enumerate(self._cards):
-            if card.geometry().contains(pos_in_container):
-                clicked_idx = i
-                break
-        if clicked_idx < 0:
-            return
-
-        from ui.components.icon_factory import IconFactory
-
-        menu = QMenu(self)
-        menu.setObjectName("pageContextMenu")
-
-        icon_color = "#cccccc"
-
-        act_add = QAction(
-            IconFactory.create("file_plus", color=icon_color, size=16),
-            "Leere Seite einfügen", self,
-        )
-        act_duplicate = QAction(
-            IconFactory.create("copy_plus", color=icon_color, size=16),
-            "Seite duplizieren", self,
-        )
-        act_copy = QAction(
-            IconFactory.create("copy", color=icon_color, size=16),
-            "Seite kopieren", self,
-        )
-        act_paste = QAction(
-            IconFactory.create("clipboard", color=icon_color, size=16),
-            "Seite einfügen", self,
-        )
-        act_paste.setEnabled(self._app_state.page_clipboard is not None)
-        act_delete = QAction(
-            IconFactory.create("trash", color="#cc4444", size=16),
-            "Seite löschen", self,
-        )
-        act_delete.setEnabled(len(self._cards) > 1)
-
-        menu.addAction(act_add)
-        menu.addAction(act_duplicate)
-        menu.addSeparator()
-        menu.addAction(act_copy)
-        menu.addAction(act_paste)
-        menu.addSeparator()
-        menu.addAction(act_delete)
-
-        viewer = self._viewer
-        idx = clicked_idx
-        act_add.triggered.connect(
-            lambda: viewer.add_page(idx, "after"))
-        act_duplicate.triggered.connect(
-            lambda: viewer.duplicate_page(idx))
-        act_copy.triggered.connect(
-            lambda: self._copy_page(idx))
-        act_paste.triggered.connect(
-            lambda: self._paste_page(idx))
-        act_delete.triggered.connect(
-            lambda: viewer.delete_page(idx))
-
-        # Show dimming overlay on the viewer window
-        overlay = self._show_dim_overlay()
-        menu.exec(event.globalPos())
-        if overlay is not None:
-            overlay.close()
-            overlay.deleteLater()
-
-    # ------------------------------------------------------------------
-    # Dimming overlay
-    # ------------------------------------------------------------------
-
-    def _show_dim_overlay(self) -> 'QWidget | None':
-        """Create a semi-transparent overlay over the ViewerWindow to dim it
-        while the sidebar context menu is visible."""
-        from PySide6.QtWidgets import QWidget as _QW
-
-        if self._viewer is None:
-            return None
-
-        overlay = _QW(self._viewer)
-        overlay.setObjectName("sidebarDimOverlay")
-        overlay.setGeometry(self._viewer.rect())
-        overlay.setStyleSheet(
-            "QWidget#sidebarDimOverlay { background: rgba(0, 0, 0, 100); }"
-        )
-        overlay.show()
-        overlay.raise_()
-        return overlay
+        QTimer.singleShot(250, self._load_visible_thumbnails)
 
     def set_active_page(self, page_index: int) -> None:
         """Highlight the given page in the sidebar and ensure it is fully visible.
@@ -455,7 +341,6 @@ class SidebarWidget(QScrollArea):
                     self.ensureWidgetVisible(card, 0, 10)
                 except RuntimeError:
                     pass  # Card was deleted by a rapid rebuild
-            from PySide6.QtCore import QTimer
             QTimer.singleShot(0, _scroll)
         self._active_index = page_index
 
@@ -463,281 +348,3 @@ class SidebarWidget(QScrollArea):
 
     def _on_card_clicked(self, page_index: int) -> None:
         self.page_clicked.emit(page_index)
-
-    # Minimum interval between processing scene.changed signals (seconds)
-    _SCENE_CHANGED_COOLDOWN: float = 0.2
-
-    def _on_scene_changed(self, rects: list) -> None:
-        """Invalidate thumbnails that overlap with the changed area.
-
-        Uses binary search on page Y-offsets to find affected pages in
-        O(rects × log pages) instead of O(rects × pages).  All actual
-        re-rendering is deferred to the existing debounced _lazy_timer.
-
-        A 200ms cooldown prevents re-processing during rapid-fire updates
-        (scroll, zoom, hover).  Small rects (< 100 px²) from cursor blinks
-        and handle hovers are skipped entirely.
-        """
-        if self._scene is None or not self._cards:
-            return
-        if self._scene._is_rendering_thumbnail:
-            return
-        if self._scene._suppress_scene_changed:
-            return
-
-        # Cooldown: skip if called too recently
-        now = time.monotonic()
-        if now - self._last_scene_changed_time < self._SCENE_CHANGED_COOLDOWN:
-            # Ensure a deferred check fires after the cooldown expires
-            if not self._lazy_timer.isActive():
-                self._lazy_timer.start()
-            return
-
-        page_rects = self._scene._page_rects
-        n = len(page_rects)
-        if n == 0:
-            return
-
-        dirty = False
-        for rect in rects:
-            # Skip tiny rects (cursor blinks, handle hovers, etc.)
-            if rect.width() * rect.height() < 100.0:
-                continue
-
-            # Binary search for first page whose bottom >= rect.top
-            lo, hi = 0, n - 1
-            start = n
-            while lo <= hi:
-                mid = (lo + hi) // 2
-                if page_rects[mid].bottom() >= rect.top():
-                    start = mid
-                    hi = mid - 1
-                else:
-                    lo = mid + 1
-
-            # Walk forward from start until page.top > rect.bottom
-            for i in range(start, n):
-                if page_rects[i].top() > rect.bottom():
-                    break
-                if rect.intersects(page_rects[i]):
-                    self._loaded_pages.discard(i)
-                    self._queued_pages.discard(i)
-                    dirty = True
-
-        if dirty:
-            self._last_scene_changed_time = now
-            self._lazy_timer.start()
-
-    def invalidate_thumb(self, page_idx: int) -> None:
-        """Mark a thumbnail as needing re-render. Re-renders if visible."""
-        self._loaded_pages.discard(page_idx)
-        self._queued_pages.discard(page_idx)
-        self._lazy_timer.start()
-
-    def _load_visible_thumbnails(self) -> None:
-        """Load thumbnails for visible cards + 2 buffer pages.
-
-        Uses doc_manager.get_page_pixmap(dpi=36, use_hidpi=False) directly instead of
-        scene.render() to avoid capturing gray placeholders from virtual
-        rendering.
-        """
-        if self._doc_manager is None or not self._cards:
-            return
-
-        if self._thumb_worker is not None:
-            worker_ref = self._thumb_worker
-            self._thumb_worker = None
-            try:
-                worker_ref.cancel()
-                for idx in worker_ref._indices:
-                    self._queued_pages.discard(idx)
-                # Keep python reference alive until C++ thread exits natively
-                self._zombie_workers.add(worker_ref)
-                worker_ref.finished.connect(lambda w=worker_ref: self._zombie_workers.discard(w))
-            except RuntimeError:
-                pass
-
-        viewport_rect = self.viewport().rect()
-        buffer = 2
-
-        first_visible = -1
-        last_visible = -1
-
-        vp_global = self.viewport().mapToGlobal(QPoint(0, 0))
-
-        for i, card in enumerate(self._cards):
-            card_global = card.mapToGlobal(QPoint(0, 0))
-            rel = card_global - vp_global
-            card_rect = card.rect().translated(rel.x(), rel.y())
-            if viewport_rect.intersects(card_rect):
-                if first_visible == -1:
-                    first_visible = i
-                last_visible = i
-
-        if first_visible == -1:
-            first_visible = 0
-            last_visible = min(4, len(self._cards) - 1)
-
-        start = max(0, first_visible - buffer)
-        end = min(len(self._cards) - 1, last_visible + buffer)
-
-        indices = [i for i in range(start, end + 1) 
-                   if i not in self._loaded_pages and i not in self._queued_pages]
-        if not indices:
-            return
-
-        for i in indices:
-            self._queued_pages.add(i)
-
-        self._thumb_generation_id += 1
-        self._thumb_worker = ThumbnailWorker(
-            self._doc_manager, indices, self.THUMBNAIL_DPI, False, self._thumb_generation_id
-        )
-        self._thumb_worker.finished.connect(self._thumb_worker.deleteLater)
-        self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
-        self._thumb_worker.start()
-
-    def _on_thumbnail_ready(self, gen_id: int, idx: int, img: QImage) -> None:
-        self._queued_pages.discard(idx)
-        
-        if gen_id != self._thumb_generation_id:
-            return
-            
-        if idx < len(self._cards) and not img.isNull():
-            self._loaded_pages.add(idx)
-            pixmap = QPixmap.fromImage(img)
-            
-            # --- Overlay Annotations (direct item painting) ---
-            if self._scene is not None and idx < len(self._scene._page_items):
-                source_rect = self._scene.get_page_rect(idx)
-                if not source_rect.isEmpty():
-                    self._paint_annotations_overlay(pixmap, idx, source_rect)
-            # ---------------------------
-            
-            self._cards[idx].set_thumbnail(pixmap)
-
-    def _paint_annotations_overlay(
-        self, pixmap: QPixmap, page_idx: int, source_rect: QRectF
-    ) -> None:
-        """Paint annotation items directly onto the thumbnail pixmap.
-
-        Instead of scene.render() (which traverses ALL scene items including
-        tiles, placeholders, and handles), this iterates only the per-page
-        annotation registries and calls each item's paint() with a
-        transformed painter.  O(annotations_on_page) vs O(all_scene_items).
-        """
-        from PySide6.QtWidgets import QStyleOptionGraphicsItem
-
-        # Collect all annotation items for this page
-        items = []
-        for registry in (
-            self._scene._stroke_items,
-            self._scene._highlight_items,
-            self._scene._text_box_items,
-            self._scene._shape_items,
-            self._scene._image_items,
-        ):
-            items.extend(registry.get(page_idx, []))
-
-        if not items:
-            return
-
-        overlay = QPixmap(pixmap.size())
-        overlay.setDevicePixelRatio(pixmap.devicePixelRatio())
-        overlay.fill(Qt.GlobalColor.transparent)
-
-        dpr = overlay.devicePixelRatio()
-        target_w = overlay.width() / dpr
-        target_h = overlay.height() / dpr
-
-        sx = target_w / source_rect.width()
-        sy = target_h / source_rect.height()
-
-        self._scene._is_rendering_thumbnail = True
-        try:
-            painter = QPainter(overlay)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            option = QStyleOptionGraphicsItem()
-
-            for item in items:
-                try:
-                    item_pos = item.pos()
-                    # Map item position from scene coords to overlay coords
-                    local_x = (item_pos.x() - source_rect.x()) * sx
-                    local_y = (item_pos.y() - source_rect.y()) * sy
-
-                    painter.save()
-                    painter.translate(local_x, local_y)
-                    painter.scale(sx, sy)
-
-                    # Apply item rotation if any
-                    rotation = item.rotation()
-                    if rotation != 0.0:
-                        tp = item.transformOriginPoint()
-                        painter.translate(tp.x(), tp.y())
-                        painter.rotate(rotation)
-                        painter.translate(-tp.x(), -tp.y())
-
-                    item.paint(painter, option, None)
-                    painter.restore()
-                except RuntimeError:
-                    # C++ object may have been deleted
-                    pass
-
-            painter.end()
-        finally:
-            self._scene._is_rendering_thumbnail = False
-
-        p2 = QPainter(pixmap)
-        p2.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p2.drawPixmap(0, 0, overlay)
-        p2.end()
-
-    # ------------------------------------------------------------------
-    # Page copy / paste
-    # ------------------------------------------------------------------
-
-    def _copy_page(self, page_idx: int) -> None:
-        """Copy page PDF bytes + serialized annotations to AppState clipboard."""
-        if self._doc_manager is None or self._scene is None:
-            return
-
-        from core.freenotes_store import FreenotesStore
-
-        pdf_bytes = self._doc_manager.save_page_bytes(page_idx)
-        annotations = FreenotesStore.serialize_page_annotations(
-            self._scene, page_idx)
-
-        # Store source page rect for position offset calculation on paste
-        source_rect = self._scene.get_page_rect(page_idx)
-        self._app_state.page_clipboard = {
-            "pdf_bytes": pdf_bytes,
-            "annotations": annotations,
-            "source_rect": (source_rect.x(), source_rect.y(),
-                            source_rect.width(), source_rect.height())
-                           if source_rect else None,
-        }
-
-    def _paste_page(self, after_idx: int) -> None:
-        """Insert a copied page after *after_idx*."""
-        clipboard = self._app_state.page_clipboard
-        if clipboard is None or self._viewer is None:
-            return
-        if self._doc_manager is None or self._scene is None:
-            return
-
-        from commands.add_page_command import AddPageCommand
-        from core import undo_stack
-
-        insert_at = after_idx + 1
-        cmd = AddPageCommand(
-            insert_at=insert_at,
-            source_page_idx=None,
-            scene=self._scene,
-            doc_manager=self._doc_manager,
-            sidebar=self,
-            label="Seite einfügen",
-            source_page_data=clipboard,
-        )
-        undo_stack.push(cmd)

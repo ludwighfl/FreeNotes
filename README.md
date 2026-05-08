@@ -141,6 +141,8 @@ freenotes/
 │   │   ├── formatting_bar.py
 │   │   ├── search_bar.py
 │   │   ├── sidebar_widget.py
+│   │   ├── sidebar_context_menu.py
+│   │   ├── sidebar_render.py
 │   │   └── toolbar_widget.py
 │   ├── components/          # Reusable widgets
 │   │   ├── icon_factory.py
@@ -156,6 +158,7 @@ freenotes/
 │   │   └── zip_export_dialog.py
 │   └── animations/          # QPropertyAnimation ecosystem for smooth UI transitions
 │       ├── drag_reorder.py, fade.py, shadow.py, slide.py, stagger.py, thumbnail.py
+│       └── bounce.py, kinetic.py, pop_in.py, scroll.py
 ├── styles/                  # qss stylesheets
 │   ├── loader.py
 │   ├── base.qss, toolbar.qss, formatting_bar.qss
@@ -185,6 +188,7 @@ Large classes are decomposed into focused pure-Python mixins to keep file sizes 
 |-------|--------|
 | `TextBoxItem` | `TextBoxInputMixin`, `TextBoxFormattingMixin`, `TextBoxPseudoListMixin` |
 | `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin`, `SceneSelectionMixin`, `ScenePageManagerMixin`, `SceneTilingMixin`, `SceneImageManagerMixin` |
+| `SidebarWidget` | `SidebarContextMenuMixin`, `SidebarRenderMixin` |
 | `ViewerWindow` | `ViewerFileIOMixin`, `ViewerToolManagerMixin` |
 | `ManagerView` | `ManagerGridMixin`, `ManagerSidebarMixin`, `ManagerActionBarMixin` |
 

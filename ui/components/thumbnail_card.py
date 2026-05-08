@@ -21,7 +21,7 @@ class ThumbnailCard(QFrame):
     BADGE_COLOR: str = "#3B7BF5"
     ACTIVE_BORDER_COLOR: str = "#3B7BF5"
 
-    def __init__(self, page_index: int, parent: QWidget | None = None) -> None:
+    def __init__(self, page_index: int, doc_manager=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._page_index: int = page_index
         self._is_active: bool = False
@@ -35,7 +35,15 @@ class ThumbnailCard(QFrame):
 
         self.setObjectName("thumbnailCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumSize(self.THUMB_WIDTH, int(self.THUMB_WIDTH * 1.414))
+        
+        # Calculate proper placeholder aspect ratio
+        height = int(self.THUMB_WIDTH * 1.414)
+        if doc_manager is not None:
+            w, h = doc_manager.get_page_size(page_index)
+            if w > 0:
+                height = int(self.THUMB_WIDTH * (h / w))
+        self.setMinimumSize(self.THUMB_WIDTH, height)
+        
         self._update_style()
 
     def set_thumbnail(self, pixmap: QPixmap) -> None:

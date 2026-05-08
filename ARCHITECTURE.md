@@ -83,7 +83,9 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   ├── bars/                # Docked toolbars and sidebars
 │   │   ├── formatting_bar.py
 │   │   ├── search_bar.py
-│   │   ├── sidebar_widget.py
+│   │   ├── sidebar_widget.py # Uses Mixins (sidebar_context_menu.py, sidebar_render.py)
+│   │   ├── sidebar_context_menu.py
+│   │   ├── sidebar_render.py
 │   │   └── toolbar_widget.py
 │   ├── components/          # Reusable widgets
 │   │   ├── icon_factory.py
@@ -99,6 +101,7 @@ c:\Users\ludwi\.gemini\antigravity\scratch\pdf_annotator
 │   │   └── zip_export_dialog.py
 │   └── animations/          # QPropertyAnimation ecosystem for smooth UI transitions
 │       ├── drag_reorder.py, fade.py, shadow.py, slide.py, stagger.py, thumbnail.py
+│       └── bounce.py, kinetic.py, pop_in.py, scroll.py
 ├── styles/                  # qss stylesheets
 │   ├── loader.py
 │   ├── base.qss, toolbar.qss, formatting_bar.qss
@@ -116,6 +119,7 @@ Das bedeutet, wir lagern Logik-Blöcke in reine Python-Objekt-Klassen aus (`clas
 | `TextBoxItem` | `TextBoxInputMixin`, `TextBoxFormattingMixin`, `TextBoxPseudoListMixin` | `QGraphicsObject` |
 | `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin`, `SceneSelectionMixin`, `ScenePageManagerMixin` | `QGraphicsScene` |
 | `ToolbarWidget` | `ToolbarModePopupsMixin` | `QWidget` |
+| `SidebarWidget` | `SidebarContextMenuMixin`, `SidebarRenderMixin` | `QScrollArea` |
 | `ViewerWindow` | `ViewerFileIOMixin`, `ViewerToolManagerMixin` | `QWidget` |
 
 ## Code Guidelines

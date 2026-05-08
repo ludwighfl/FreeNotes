@@ -91,6 +91,10 @@ class DragReorderController(QObject):
         if self._busy or card is not self._drag_card or not self._can_drag:
             return
         if not self._dragging:
+            from PySide6.QtWidgets import QApplication
+            diff = event.pos() - self._press_pos
+            if diff.manhattanLength() < QApplication.startDragDistance():
+                return
             self._begin_drag(card, event)
         if self._dragging:
             self._continue_drag(event)
@@ -143,11 +147,18 @@ class DragReorderController(QObject):
         self._ghost.show()
         self._ghost.raise_()
 
+        # Prevent scrollbar jump by preserving its value during layout swap
+        vbar = self._sidebar.verticalScrollBar()
+        saved_scroll = vbar.value()
+
         # Hide card and insert gap at its position
         layout.removeWidget(card)
         card.setVisible(False)
         self._gap = _GapIndicator(card.height(), self._sidebar._container)
         layout.insertWidget(self._source_idx, self._gap)
+        
+        layout.activate()
+        vbar.setValue(saved_scroll)
 
         # Capture mouse on viewport
         vp.setMouseTracking(True)
@@ -227,9 +238,14 @@ class DragReorderController(QObject):
                 break
             overlap = max(0, min(ghost_bottom, w_top + w_h) - max(ghost_top, w_top))
             if overlap >= self.OVERLAP_RATIO * w_h:
+                vbar = self._sidebar.verticalScrollBar()
+                saved_scroll = vbar.value()
+
                 layout.removeWidget(self._gap)
                 layout.insertWidget(gap_idx + 1, self._gap)
                 layout.activate()
+                
+                vbar.setValue(saved_scroll)
                 gap_idx += 1
             else:
                 break
@@ -251,9 +267,14 @@ class DragReorderController(QObject):
                 break
             overlap = max(0, min(ghost_bottom, w_top + w_h) - max(ghost_top, w_top))
             if overlap >= self.OVERLAP_RATIO * w_h:
+                vbar = self._sidebar.verticalScrollBar()
+                saved_scroll = vbar.value()
+
                 layout.removeWidget(self._gap)
                 layout.insertWidget(gap_idx - 1, self._gap)
                 layout.activate()
+                
+                vbar.setValue(saved_scroll)
                 gap_idx -= 1
             else:
                 break
