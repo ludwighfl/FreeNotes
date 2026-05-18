@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
 
-from PySide6.QtCore import QRectF, QPointF, Signal, Qt
+from PySide6.QtCore import QRectF, QPointF, Signal, Qt, QTimer
 from PySide6.QtGui import QKeyEvent, QColor, QPixmap, QPainter
 from PySide6.QtWidgets import (
     QGraphicsScene,
@@ -95,6 +96,8 @@ class PageScene(
 
         # Shared placeholder pixmap (tiny, gets stretched by item size)
         self._placeholder_pm: QPixmap | None = None
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
 
         # --- Tile rendering system ---
         self._tile_cache: TileCache = TileCache()
@@ -103,6 +106,9 @@ class PageScene(
 
         # Maps TileKey → QGraphicsPixmapItem in the scene
         self._tile_items: dict[TileKey, QGraphicsPixmapItem] = {}
+
+        # Object pool for reusing QGraphicsPixmapItems to avoid BSP tree rebuilds
+        self._tile_item_pool: list[QGraphicsPixmapItem] = []
 
         # Tracks which tiles have been requested to avoid duplicate requests
         self._pending_tiles: set[TileKey] = set()
@@ -114,11 +120,39 @@ class PageScene(
         self._suppress_scene_changed: bool = False
         self._is_rendering_thumbnail: bool = False
 
+        # Cap for high-res large PDFs to avoid RAM explosion
+        self._max_auto_mip_level: MipLevel = MipLevel.FULL
+
+        # Time-sliced tile processing to prevent UI stutter
+        self._ready_tiles_queue: deque[TileKey] = deque()
+        self._tile_process_timer = QTimer(self)
+        self._tile_process_timer.setInterval(16)
+        self._tile_process_timer.timeout.connect(self._process_tile_queue)
+
+    def _on_theme_updated(self) -> None:
+        import shiboken6
+        if not shiboken6.isValid(self):
+            return
+        self._placeholder_pm = None
+        if self._doc_manager:
+            placeholder = self._get_placeholder_pixmap()
+            for i, state in enumerate(self._page_states):
+                if state == "placeholder" and i < len(self._page_items):
+                    item = self._page_items[i]
+                    if shiboken6.isValid(item):
+                        try:
+                            item.setPixmap(placeholder)
+                        except RuntimeError:
+                            pass
+
     def _get_placeholder_pixmap(self) -> QPixmap:
         """Return a shared tiny gray placeholder pixmap."""
         if self._placeholder_pm is None:
+            from core.app_settings import AppSettings
+            is_light = AppSettings.get_theme() == "light"
+            color_hex = "#dcdcdc" if is_light else "#2a2a2a"
             self._placeholder_pm = QPixmap(2, 2)
-            self._placeholder_pm.fill(QColor("#2a2a2a"))
+            self._placeholder_pm.fill(QColor(color_hex))
         return self._placeholder_pm
 
     def load_document(self, doc_manager: DocumentManager) -> None:
@@ -129,7 +163,9 @@ class PageScene(
 
         # Tile items will be destroyed by self.clear() below — just drop refs
         self._tile_items.clear()
+        self._tile_item_pool.clear()
         self._pending_tiles.clear()
+        self._ready_tiles_queue.clear()
 
         self.clear()
         self._page_items.clear()
@@ -186,8 +222,38 @@ class PageScene(
         # Center all pages horizontally
         self._center_pages()
 
-        # Request THUMB tiles for the first few pages immediately
+        # Performance check for extremely large/high-res PDFs
+        self._max_auto_mip_level = MipLevel.FULL
         doc_path = doc_manager.get_doc_path()
+        if doc_path:
+            import os
+            try:
+                size_mb = os.path.getsize(doc_path) / (1024 * 1024)
+                
+                max_w_pt, max_h_pt = 0, 0
+                check_pages = min(5, page_count)
+                for p in range(check_pages):
+                    w, h = doc_manager.get_page_size(p)
+                    max_w_pt = max(max_w_pt, w)
+                    max_h_pt = max(max_h_pt, h)
+                
+                max_area = max_w_pt * max_h_pt
+                mb_per_page = size_mb / max(1, page_count)
+                
+                # A4 = ~500k pt^2, A3 = ~1M pt^2, A2 = ~2M pt^2
+                is_abnormally_large = max_w_pt > 1500 or max_h_pt > 1500 or max_area > 2000000
+                is_huge = max_w_pt > 2500 or max_h_pt > 2500 or max_area > 5000000
+                is_dense = mb_per_page > 2.0
+                is_extremely_dense = mb_per_page > 5.0
+                
+                if is_huge or is_extremely_dense or (size_mb > 50.0 and is_abnormally_large) or size_mb > 150.0:
+                    self._max_auto_mip_level = MipLevel.THUMB
+                elif is_abnormally_large or is_dense or size_mb > 60.0:
+                    self._max_auto_mip_level = MipLevel.MEDIUM
+            except OSError:
+                pass
+
+        # Request THUMB tiles for the first few pages immediately
         if doc_path:
             initial_count = min(5, page_count)
             for i in range(initial_count):

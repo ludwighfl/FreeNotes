@@ -78,7 +78,7 @@ class SceneTilingMixin:
         if page_w <= 0 or page_h <= 0:
             return
 
-        cols = 1 # We span the entire width of the PDF page automatically
+        cols = math.ceil(page_w / TILE_SIZE_PX)
         rows = math.ceil(page_h / TILE_SIZE_PX)
 
         # Viewport center in scene coords — for distance-based priority
@@ -94,9 +94,9 @@ class SceneTilingMixin:
         for r in range(rows):
             for c in range(cols):
                 # Tile rect in scene coordinates
-                tile_x = page_rect.x()
+                tile_x = page_rect.x() + c * TILE_SIZE_PX
                 tile_y = page_rect.y() + r * TILE_SIZE_PX
-                tile_w = page_w
+                tile_w = min(TILE_SIZE_PX, page_w - c * TILE_SIZE_PX)
                 tile_h = min(TILE_SIZE_PX, page_h - r * TILE_SIZE_PX)
                 tile_scene_rect = QRectF(tile_x, tile_y, tile_w, tile_h)
 
@@ -173,6 +173,42 @@ class SceneTilingMixin:
     def _on_tile_ready(self: 'PageScene', key: TileKey) -> None:
         """Called on main thread when a tile has been rendered and cached."""
         self._pending_tiles.discard(key)
+        self._ready_tiles_queue.append(key)
+        if not self._tile_process_timer.isActive():
+            self._tile_process_timer.start()
+
+    def _process_tile_queue(self: 'PageScene') -> None:
+        """Time-sliced processing of ready tiles to prevent UI stutter."""
+        # Pause processing during active scroll or animations
+        views = self.views()
+        if views:
+            view = views[0]
+            is_scrolling = (
+                (hasattr(view, '_scroll_anim') and view._scroll_anim.is_running()) or
+                (hasattr(view, '_render_timer') and view._render_timer.isActive()) or
+                (hasattr(view, '_panning') and view._panning) or
+                (hasattr(view, '_kinetic_scroller') and view._kinetic_scroller._anim_timer.isActive())
+            )
+            if is_scrolling:
+                return
+
+        import time
+        start_time = time.perf_counter()
+        
+        # Process tiles until 5ms have passed to guarantee 60fps scrolling
+        while self._ready_tiles_queue:
+            key = self._ready_tiles_queue.popleft()
+            self._apply_tile(key)
+            
+            # Break if we exceeded the 5ms budget
+            if (time.perf_counter() - start_time) > 0.005:
+                break
+
+        if not self._ready_tiles_queue:
+            self._tile_process_timer.stop()
+
+    def _apply_tile(self: 'PageScene', key: TileKey) -> None:
+        """Convert QImage to QPixmap and add it to the scene."""
 
         image = self._tile_cache.get(key)
         if image is None or image.isNull():
@@ -188,17 +224,20 @@ class SceneTilingMixin:
         # Create or update the tile item for this key
         item = self._tile_items.get(key)
         if item is None:
-            item = QGraphicsPixmapItem()
-            item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-            item.setZValue(0)
+            if self._tile_item_pool:
+                item = self._tile_item_pool.pop()
+            else:
+                item = QGraphicsPixmapItem()
+                item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+                item.setZValue(0)
+                self.addItem(item)
 
             # Position tile correctly in scene coordinates
             page_rect = self._page_rects[key.page_index]
-            x = page_rect.x() # full width tile
+            x = page_rect.x() + key.tile_col * TILE_SIZE_PX
             y = page_rect.y() + key.tile_row * TILE_SIZE_PX
             item.setPos(x, y)
 
-            self.addItem(item)
             self._tile_items[key] = item
 
         self._suppress_scene_changed = True
@@ -230,6 +269,10 @@ class SceneTilingMixin:
         self: 'PageScene', viewport_rect: QRectF, buffer: int = 2
     ) -> None:
         """Request tiles for visible pages and manage tile lifecycle."""
+        # Scrolling stopped - resume tile processing if paused
+        if self._ready_tiles_queue and not self._tile_process_timer.isActive():
+            self._tile_process_timer.start()
+
         if not self._page_rects:
             return
 
@@ -244,12 +287,14 @@ class SceneTilingMixin:
         n = len(self._page_rects)
 
         # --- 1. Visible pages: request FULL + MEDIUM for visible tile area ---
+        max_auto_mip = getattr(self, '_max_auto_mip_level', MipLevel.FULL)
         for i in range(vis_first, vis_last + 1):
             page_rect = self._page_rects[i]
             visible_tile_area = viewport_rect.intersected(page_rect)
             if visible_tile_area.isEmpty():
                 continue
-            self._request_tiles_for_page(i, MipLevel.FULL,   visible_tile_area, doc_path)
+            if max_auto_mip >= MipLevel.FULL:
+                self._request_tiles_for_page(i, MipLevel.FULL, visible_tile_area, doc_path)
             self._request_tiles_for_page(i, MipLevel.MEDIUM, visible_tile_area, doc_path)
 
         # --- 2. Pre-render buffer pages: MEDIUM only, full page rect ---
@@ -285,7 +330,11 @@ class SceneTilingMixin:
         ]
         for key in keys_to_evict:
             item = self._tile_items.pop(key)
-            self.removeItem(item)
+            
+            # Recycle item to pool instead of removing from scene
+            item.setPixmap(QPixmap())
+            item.setVisible(False)
+            self._tile_item_pool.append(item)
 
             # Unhide lower mips so they act as placeholders if we scroll back
             medium_key = TileKey(key.page_index, key.tile_col, key.tile_row, MipLevel.MEDIUM)

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QRadioButton,
 )
 
+from core.app_settings import AppSettings
+
 
 class ZipExportDialog(QDialog):
     """Dialog for choosing ZIP export mode."""
@@ -23,28 +25,39 @@ class ZipExportDialog(QDialog):
         self.setFixedSize(440, 300)
         self.setObjectName("zipExportDialog")
 
+        is_light = AppSettings.get_theme() == "light"
+        bg_color = "#f5f5f5" if is_light else "#1e1e1e"
+        title_color = "#1a1a1a" if is_light else "#ffffff"
+        text_color = "#333333" if is_light else "#cccccc"
+        desc_color = "#666666" if is_light else "#888888"
+        
+        btn_bg = "#ffffff" if is_light else "#333333"
+        btn_text = "#1a1a1a" if is_light else "#cccccc"
+        btn_border = "#d0d0d0" if is_light else "#444444"
+        btn_hover_bg = "#e8e8e8" if is_light else "#444444"
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 20)
         layout.setSpacing(16)
 
         title = QLabel("Bibliothek exportieren")
         title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        title.setStyleSheet("color: #ffffff;")
+        title.setStyleSheet(f"color: {title_color};")
         layout.addWidget(title)
 
         self._radio_pdf = QRadioButton(
             "Annotierte PDFs exportieren")
         self._radio_pdf.setChecked(True)
-        self._radio_pdf.setStyleSheet("color: #cccccc;")
+        self._radio_pdf.setStyleSheet(f"color: {text_color};")
         self._radio_backup = QRadioButton(
             "Backup (.freenotes + .pdf)")
-        self._radio_backup.setStyleSheet("color: #cccccc;")
+        self._radio_backup.setStyleSheet(f"color: {text_color};")
 
         desc_pdf = QLabel(
             "Erstellt PDFs mit eingebetteten "
             "Annotationen \u2014 ideal zum Teilen.")
         desc_pdf.setStyleSheet(
-            "color: #888888; font-size: 11px; "
+            f"color: {desc_color}; font-size: 11px; "
             "margin-left: 20px;")
         desc_pdf.setWordWrap(True)
 
@@ -52,7 +65,7 @@ class ZipExportDialog(QDialog):
             "Erstellt ein vollständiges Backup "
             "mit allen Rohdaten \u2014 ideal zum Archivieren.")
         desc_backup.setStyleSheet(
-            "color: #888888; font-size: 11px; "
+            f"color: {desc_color}; font-size: 11px; "
             "margin-left: 20px;")
         desc_backup.setWordWrap(True)
 
@@ -73,19 +86,20 @@ class ZipExportDialog(QDialog):
         btn_row.addWidget(export_btn)
         layout.addLayout(btn_row)
 
-        self.setStyleSheet("""
-            #zipExportDialog { background: #1e1e1e; }
-            QPushButton {
-                background: #333333; color: #cccccc;
-                border: 1px solid #444; border-radius: 4px;
+        self.setStyleSheet(f"""
+            #zipExportDialog {{ background: {bg_color}; }}
+            QRadioButton {{ color: {text_color}; }}
+            QPushButton {{
+                background: {btn_bg}; color: {btn_text};
+                border: 1px solid {btn_border}; border-radius: 4px;
                 padding: 6px 16px;
-            }
-            QPushButton:hover { background: #444444; }
-            #primaryBtn {
+            }}
+            QPushButton:hover {{ background: {btn_hover_bg}; }}
+            #primaryBtn {{
                 background: #3B7BF5; color: #ffffff;
                 border: none; font-weight: bold;
-            }
-            #primaryBtn:hover { background: #5090FF; }
+            }}
+            #primaryBtn:hover {{ background: #5090FF; }}
         """)
 
     @property

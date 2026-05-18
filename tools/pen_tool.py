@@ -23,12 +23,16 @@ class PenTool(BaseTool):
     QPainterPath. On release, the path is smoothed using Chaikin's
     corner-cutting algorithm for natural-looking curves.
     """
+    
+    SMOOTH_WINDOW: int = 5
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._current_path: QPainterPath | None = None
+        self._live_path: QPainterPath | None = None
         self._current_item: StrokeItem | None = None
         self._points: list[QPointF] = []
+        self._smoothed_points: list[QPointF] = []
         self._last_completed_item: StrokeItem | None = None
         self._last_drawn_pos: QPointF | None = None
         self._current_page_index: int = -1
@@ -74,8 +78,11 @@ class PenTool(BaseTool):
 
         # Start new path
         self._points = [pos]
+        self._smoothed_points = [pos]
         self._current_path = QPainterPath()
         self._current_path.moveTo(pos)
+        self._live_path = QPainterPath()
+        self._live_path.moveTo(pos)
         self._last_drawn_pos = pos
         self._current_page_index = page_index
 
@@ -84,16 +91,21 @@ class PenTool(BaseTool):
 
     def on_move(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
         """Extend the current stroke to the mouse position."""
-        if self._current_path is None:
+        if self._current_path is None or self._live_path is None:
             return
 
         pos = event.scenePos()
         self._points.append(pos)
         
         # Track old bounds to calculate update rect
-        old_rect = self._current_path.boundingRect()
+        old_rect = self._live_path.boundingRect()
         self._current_path.lineTo(pos)
-        new_rect = self._current_path.boundingRect()
+        
+        smoothed_pos = self._gaussian_smooth(self._points)
+        self._smoothed_points.append(smoothed_pos)
+        self._live_path.lineTo(smoothed_pos)
+        
+        new_rect = self._live_path.boundingRect()
 
         # Throttle visual updates
         if self._last_drawn_pos is not None:
@@ -110,7 +122,7 @@ class PenTool(BaseTool):
 
     def draw_active_stroke(self, painter: QPainter, rect: QRectF) -> None:
         """Called by PageScene.drawForeground to render the active path."""
-        if self._current_path is not None and not self._current_path.isEmpty():
+        if self._live_path is not None and not self._live_path.isEmpty():
             from PySide6.QtGui import QPen
             
             pen = QPen(self.style.color)
@@ -123,7 +135,7 @@ class PenTool(BaseTool):
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.drawPath(self._current_path)
+            painter.drawPath(self._live_path)
             painter.restore()
 
     def on_release(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
@@ -138,7 +150,7 @@ class PenTool(BaseTool):
     def _finalize_stroke(self, scene: PageScene) -> None:
         """Apply smoothing and create the final StrokeItem."""
         if self._current_path is not None and len(self._points) >= 2:
-            smoothed = self._smooth_path(self._points)
+            smoothed = self._smooth_path(self._smoothed_points)
             
             style = ToolStyle(
                 color=self.style.color,
@@ -153,11 +165,36 @@ class PenTool(BaseTool):
             
             # Clear the overlay path by requesting a final update of its bounds
             w = self.style.width
-            scene.update(self._current_path.boundingRect().adjusted(-w, -w, w, w))
+            update_path = self._live_path if self._live_path is not None else self._current_path
+            scene.update(update_path.boundingRect().adjusted(-w, -w, w, w))
 
         self._current_path = None
+        self._live_path = None
         self._points.clear()
+        self._smoothed_points.clear()
         self.tool_action_completed.emit()
+
+    @staticmethod
+    def _gaussian_smooth(points: list[QPointF]) -> QPointF:
+        """Calculate a gaussian-weighted average for the last min(SMOOTH_WINDOW, len) points."""
+        n = len(points)
+        if n == 0:
+            return QPointF()
+        if n < PenTool.SMOOTH_WINDOW:
+            # Simple average
+            x_sum = sum(p.x() for p in points)
+            y_sum = sum(p.y() for p in points)
+            return QPointF(x_sum / n, y_sum / n)
+        
+        # Gaussian weights for size 5: [1, 2, 4, 2, 1]
+        weights = [1, 2, 4, 2, 1]
+        last_points = points[-PenTool.SMOOTH_WINDOW:]
+        
+        x_sum = sum(p.x() * w for p, w in zip(last_points, weights))
+        y_sum = sum(p.y() * w for p, w in zip(last_points, weights))
+        total_weight = sum(weights)
+        
+        return QPointF(x_sum / total_weight, y_sum / total_weight)
 
     @staticmethod
     def _smooth_path(points: list[QPointF]) -> QPainterPath:

@@ -121,7 +121,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         # Create button with Lucide file_plus icon
         create_btn = QToolButton()
         create_btn.setIcon(
-            IconFactory.create("file_plus", color="#ffffff", size=16))
+            IconFactory.create("file_plus", color="#fffffe", size=16))
         create_btn.setIconSize(QSize(16, 16))
         create_btn.setText(tr("menu.create"))
         create_btn.setToolButtonStyle(
@@ -232,15 +232,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
             vp = self._scroll.viewport()
             self._empty_container.setGeometry(vp.rect())
             
-        # Dynamically scale cards to fit exactly 4 columns
-        # Spacing is 16px, 3 gaps = 48px
-        # We also added 20px right margin to the grid layout.
-        available_w = self._scroll.viewport().width() - 48 - 20
-        if available_w > 0:
-            card_w = max(120, available_w // 4)
-            for card in self._cards:
-                if hasattr(card, "update_size"):
-                    card.update_size(card_w)
+        self.update_card_sizes()
 
     def _on_card_double_clicked(self, doc: dict) -> None:
         if hasattr(self, "clear_selection"):

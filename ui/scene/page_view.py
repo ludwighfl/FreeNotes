@@ -7,9 +7,12 @@ from PySide6.QtCore import (
     QPointF,
     QVariantAnimation,
     QEasingCurve,
+    QEvent,
 )
-from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtWidgets import QGraphicsView
+from PySide6.QtGui import QPainter, QPixmap, QTabletEvent
+from PySide6.QtWidgets import QGraphicsView, QGraphicsSceneMouseEvent
+
+import gc
 
 from app.app_state import AppState
 from core.tile_cache import MipLevel
@@ -35,6 +38,12 @@ class PageView(QGraphicsView):
 
     def __init__(self, scene: PageScene, parent: object = None) -> None:
         super().__init__(scene, parent)
+        self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.grabGesture(Qt.GestureType.PinchGesture)
+        self._touch_active: bool = False
+        self._gesture_active: bool = False
+        self._last_touch_distance: float = 0.0
+        self._last_touch_center: QPointF = QPointF()
         self._page_scene: PageScene = scene
         self._app_state: AppState = AppState()
         self._current_zoom: float = 1.0
@@ -210,8 +219,158 @@ class PageView(QGraphicsView):
         focus_item = self._page_scene.focusItem()
         return isinstance(focus_item, TextBoxItem) and focus_item._is_editing
 
+    def viewportEvent(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.TouchBegin:
+            if len(event.points()) >= 2:
+                self._gesture_active = True
+                if self._touch_active:
+                    self._touch_active = False
+                    touch_point = event.points()[0]
+                    scene_pos = self.mapToScene(touch_point.position().toPoint())
+                    mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
+                    mouse_event.setButton(Qt.MouseButton.LeftButton)
+                    mouse_event.setScenePos(scene_pos)
+                    self.scene().mouseReleaseEvent(mouse_event)
+                
+                p1 = event.points()[0].position()
+                p2 = event.points()[1].position()
+                import math
+                self._last_touch_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+                self._last_touch_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+                return True
+
+            self._touch_active = True
+            touch_point = event.points()[0]
+            scene_pos = self.mapToScene(touch_point.position().toPoint())
+            
+            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
+            mouse_event.setButton(Qt.MouseButton.LeftButton)
+            mouse_event.setButtons(Qt.MouseButton.LeftButton)
+            mouse_event.setScenePos(scene_pos)
+            self.scene().mousePressEvent(mouse_event)
+            return True
+            
+        elif event.type() == QEvent.Type.TouchUpdate:
+            if not self._gesture_active and len(event.points()) >= 2:
+                self._gesture_active = True
+                if self._touch_active:
+                    self._touch_active = False
+                    touch_point = event.points()[0]
+                    scene_pos = self.mapToScene(touch_point.position().toPoint())
+                    mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
+                    mouse_event.setButton(Qt.MouseButton.LeftButton)
+                    mouse_event.setScenePos(scene_pos)
+                    self.scene().mouseReleaseEvent(mouse_event)
+                
+                p1 = event.points()[0].position()
+                p2 = event.points()[1].position()
+                import math
+                self._last_touch_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+                self._last_touch_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+
+            if self._gesture_active:
+                if len(event.points()) < 2:
+                    self._gesture_active = False
+                    return True
+                
+                p1 = event.points()[0].position()
+                p2 = event.points()[1].position()
+                import math
+                new_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+                new_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+                
+                # Pinch-Zoom
+                if self._last_touch_distance > 0:
+                    scale_factor = new_distance / self._last_touch_distance
+                    new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self._current_zoom * scale_factor))
+                    
+                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+                    self.scale(new_zoom / self._current_zoom, new_zoom / self._current_zoom)
+                    self._current_zoom = new_zoom
+                    self._target_zoom = new_zoom
+                    self._app_state.zoom_factor = new_zoom
+                    self._update_mip_for_zoom()
+                
+                # Two-Finger-Pan
+                delta = new_center - self._last_touch_center
+                h_bar = self.horizontalScrollBar()
+                v_bar = self.verticalScrollBar()
+                h_bar.setValue(h_bar.value() - int(delta.x()))
+                v_bar.setValue(v_bar.value() - int(delta.y()))
+                
+                self._last_touch_distance = new_distance
+                self._last_touch_center = new_center
+                return True
+
+            if self._touch_active:
+                touch_point = event.points()[0]
+                scene_pos = self.mapToScene(touch_point.position().toPoint())
+                
+                mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseMove)
+                mouse_event.setButtons(Qt.MouseButton.LeftButton)
+                mouse_event.setScenePos(scene_pos)
+                self.scene().mouseMoveEvent(mouse_event)
+                return True
+                
+        elif event.type() in (QEvent.Type.TouchEnd, QEvent.Type.TouchCancel):
+            was_gesture = self._gesture_active
+            self._gesture_active = False
+            
+            if self._touch_active:
+                self._touch_active = False
+                touch_point = event.points()[0]
+                scene_pos = self.mapToScene(touch_point.position().toPoint())
+                
+                mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
+                mouse_event.setButton(Qt.MouseButton.LeftButton)
+                mouse_event.setScenePos(scene_pos)
+                self.scene().mouseReleaseEvent(mouse_event)
+                
+            if was_gesture:
+                QTimer.singleShot(200, self._on_render_timer)
+                
+            return True
+            
+        return super().viewportEvent(event)
+
+    def tabletEvent(self, event: QTabletEvent) -> None:
+        if self._gesture_active:
+            event.accept()
+            return
+
+        scene_pos = self.mapToScene(event.position().toPoint())
+        
+        if event.type() == QEvent.Type.TabletPress:
+            self._touch_active = True
+            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
+            mouse_event.setButton(Qt.MouseButton.LeftButton)
+            mouse_event.setButtons(Qt.MouseButton.LeftButton)
+            mouse_event.setScenePos(scene_pos)
+            self.scene().mousePressEvent(mouse_event)
+            event.accept()
+            
+        elif event.type() == QEvent.Type.TabletMove:
+            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseMove)
+            mouse_event.setButtons(Qt.MouseButton.LeftButton)
+            mouse_event.setScenePos(scene_pos)
+            self.scene().mouseMoveEvent(mouse_event)
+            event.accept()
+            
+        elif event.type() == QEvent.Type.TabletRelease:
+            self._touch_active = False
+            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
+            mouse_event.setButton(Qt.MouseButton.LeftButton)
+            mouse_event.setScenePos(scene_pos)
+            self.scene().mouseReleaseEvent(mouse_event)
+            event.accept()
+        else:
+            super().tabletEvent(event)
+
     def mousePressEvent(self, event: object) -> None:
         """Handle pan (Space+Left / Middle), otherwise forward to scene."""
+        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
+            return
+
         if (
             self._space_pressed and event.button() == Qt.MouseButton.LeftButton
         ) or event.button() == Qt.MouseButton.MiddleButton:
@@ -227,6 +386,9 @@ class PageView(QGraphicsView):
 
     def mouseMoveEvent(self, event: object) -> None:
         """Pan or forward to scene."""
+        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
+            return
+
         if self._panning:
             dx = event.x() - self._pan_start_x
             dy = event.y() - self._pan_start_y
@@ -243,6 +405,9 @@ class PageView(QGraphicsView):
 
     def mouseReleaseEvent(self, event: object) -> None:
         """Stop panning or forward to scene."""
+        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
+            return
+
         if self._panning:
             self._panning = False
             self._kinetic_scroller.on_mouse_release()
@@ -357,12 +522,19 @@ class PageView(QGraphicsView):
             self._zoom_anim.state() == QVariantAnimation.State.Running):
             return
 
+        # Pause Python GC during rapid scroll events to avoid micro-stutters
+        gc.disable()
+
         # Restart the timer. If the user scrolls faster than the interval (30ms),
         # the renderer will remain suppressed until they pause.
         self._render_timer.start()
 
     def _on_render_timer(self) -> None:
         """Inform scene which pages are visible for rendering."""
+        # Scrolling stopped - re-enable GC and do a quick generation 0 collection
+        gc.enable()
+        gc.collect(0)
+        
         try:
             vp_rect = self.mapToScene(
                 self.viewport().rect()).boundingRect()

@@ -98,20 +98,20 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         # Document title
         self._title_label = EditableTitleLabel(tr("viewer.document"))
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        self._title_label.setStyleSheet("color: #ffffff;")
+        self._title_label.setObjectName("viewerTitleLabel")
         self._title_label.rename_requested.connect(self._on_title_rename_requested)
         header_layout.addWidget(self._title_label)
 
         # Extension label
         self._ext_label = QLabel(".pdf")
         self._ext_label.setFont(QFont("Segoe UI", 14))
-        self._ext_label.setStyleSheet("color: #888888;")
+        self._ext_label.setObjectName("viewerExtLabel")
         header_layout.addWidget(self._ext_label)
 
         # Breadcrumb
         self._breadcrumb_label = QLabel("")
         self._breadcrumb_label.setFont(QFont("Segoe UI", 11))
-        self._breadcrumb_label.setStyleSheet("color: #666666;")
+        self._breadcrumb_label.setObjectName("viewerBreadcrumbLabel")
         header_layout.addWidget(self._breadcrumb_label)
 
         header_layout.addStretch()
@@ -367,7 +367,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         if hasattr(self._page_scene, '_page_items'):
             self._page_scene._page_items.clear()
             self._page_scene._page_rects.clear()
-            self._page_scene._tile_cache._cache.clear()
+            self._page_scene._tile_cache.invalidate_all()
         self._sidebar.clear()
         self._title_label.setText(tr("viewer.loading"))
         self._ext_label.setText("")

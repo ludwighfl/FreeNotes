@@ -71,6 +71,9 @@ class ManagerGridMixin:
                 card._rendered = False
                 card.update_metadata(new_doc["name"], new_doc["modified"])
                 card.render_if_needed()
+                
+        # Make sure sizes are up-to-date, especially after returning from viewer
+        self.update_card_sizes()
 
     def _display_docs(self, docs: list[dict]) -> None:
         self._clear_grid()
@@ -100,11 +103,7 @@ class ManagerGridMixin:
             self._cards.append(card)
 
         # Apply current size
-        available_w = self._scroll.viewport().width() - 48 - 20
-        if available_w > 0:
-            card_w = max(120, available_w // 4)
-            for card in self._cards:
-                card.update_size(card_w)
+        self.update_card_sizes()
 
         # Stagger animate the new cards
         from ui.animations import StaggerFadeAnimation
@@ -112,6 +111,22 @@ class ManagerGridMixin:
         self._stagger_anim.start()
 
         QTimer.singleShot(50, self._check_visible_cards)
+
+    def update_card_sizes(self) -> None:
+        """Dynamically scale cards to fit exactly 4 columns."""
+        if not hasattr(self, "_scroll") or not self._cards:
+            return
+            
+        # Calculate width directly from the widget width to bypass QScrollArea layout deferrals.
+        # Subtractions: Sidebar (280), Separator (~2), Left margin (20), Right grid margin (20),
+        # 3 Grid gaps of 16px (48), and Vertical Scrollbar (~20). Total = 390.
+        available_w = self.width() - 390
+        
+        if available_w > 0:
+            card_w = max(120, available_w // 4)
+            for card in self._cards:
+                if hasattr(card, "update_size"):
+                    card.update_size(card_w)
 
     def _load_recent_grid(self) -> None:
         from core.app_settings import AppSettings

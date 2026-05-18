@@ -24,17 +24,7 @@ class EditableTitleLabel(QLabel):
         
         self._editor = QLineEdit(self)
         self._editor.hide()
-        
-        # Style matches the label roughly (background transparent, text white)
-        self._editor.setStyleSheet(
-            "QLineEdit {"
-            "  background-color: #2b2d31;"
-            "  color: #ffffff;"
-            "  border: 1px solid #3B7BF5;"
-            "  border-radius: 4px;"
-            "  padding: 0 4px;"
-            "}"
-        )
+        self._editor.setObjectName("editableTitleEditor")
         
         self._editor.editingFinished.connect(self._on_editing_finished)
         self._editor.textChanged.connect(self._adjust_editor_width)

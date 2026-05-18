@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QObject, QRunnable
 from PySide6.QtGui import (
     QFont, QPixmap, QPainter, QColor, QPen, QImage, QAction,
     QBrush, QPainterPath, QPolygonF, QContextMenuEvent,
@@ -20,6 +20,98 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMessageBox,
 )
+
+
+class PdfCardWorkerSignals(QObject):
+    """Signals for background PDF card rendering."""
+    finished = Signal(Path, Path, QImage, list, list, list, list, list, float, float, float)
+    error = Signal(Path)
+
+
+class PdfCardWorker(QRunnable):
+    """Generates PDF card thumbnails off the main thread to prevent UI lag."""
+    def __init__(self, pdf_path: Path, freenotes_path: Path | None):
+        super().__init__()
+        self.pdf_path = pdf_path
+        self.freenotes_path = freenotes_path
+        self.signals = PdfCardWorkerSignals()
+
+    def run(self) -> None:
+        import fitz
+        
+        try:
+            doc = fitz.open(str(self.pdf_path))
+            
+            data = None
+            if self.freenotes_path and self.freenotes_path.exists():
+                data = json.loads(self.freenotes_path.read_text(encoding="utf-8"))
+
+            zoom = 150.0 / 72.0
+            page0_w = 595.0 * zoom
+            h = 842.0 * zoom
+            max_w = 0.0
+
+            real_page_0 = 0
+            is_blank = False
+
+            if data:
+                page_map = data.get("page_map", [])
+                if page_map and isinstance(page_map, list):
+                    if page_map[0] == -1:
+                        is_blank = True
+                    elif 0 <= page_map[0] < doc.page_count:
+                        real_page_0 = page_map[0]
+
+            if not is_blank:
+                page = doc.load_page(real_page_0)
+                page0_w = page.rect.width * zoom
+                h = page.rect.height * zoom
+                
+                # Fast max_w calculation: check up to max 50 pages to avoid stutter
+                max_w = page0_w
+                limit = min(50, doc.page_count)
+                for i in range(limit):
+                    w = doc[i].rect.width * zoom
+                    if w > max_w:
+                        max_w = w
+
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+                img = QImage(
+                    pix.samples, pix.width, pix.height, pix.stride,
+                    QImage.Format.Format_RGB888).copy()
+            else:
+                if data:
+                    page_data = data.get("pages", {}).get(str(real_page_0), {})
+                    size = page_data.get("size", [595.0, 842.0])
+                    page0_w = size[0] * zoom
+                    h = size[1] * zoom
+                max_w = page0_w
+                img = QImage(int(page0_w), int(h), QImage.Format.Format_RGB888)
+                img.fill(Qt.GlobalColor.white)
+
+            doc.close()
+
+            strokes = []
+            highlights = []
+            textboxes = []
+            shapes = []
+            images = []
+            
+            if data:
+                page_data = data.get("pages", {}).get("0", {})
+                strokes = page_data.get("strokes", [])
+                highlights = page_data.get("highlights", [])
+                textboxes = page_data.get("textboxes", [])
+                shapes = page_data.get("shapes", [])
+                images = page_data.get("images", [])
+
+            self.signals.finished.emit(
+                self.pdf_path, self.freenotes_path, img, 
+                strokes, highlights, textboxes, shapes, images,
+                max_w, page0_w, h
+            )
+        except Exception:
+            self.signals.error.emit(self.pdf_path)
 
 
 class PdfCard(QFrame):
@@ -62,6 +154,11 @@ class PdfCard(QFrame):
         self._thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_label.setObjectName("pdfCardThumb")
         layout.addWidget(self._thumb_label)
+
+        self._shimmer = None
+        if not self._rendered:
+            from ui.animations.shimmer import ShimmerOverlay
+            self._shimmer = ShimmerOverlay(self._thumb_label, border_radius=4)
 
         # Filename
         display_name = name
@@ -129,104 +226,56 @@ class PdfCard(QFrame):
         if self._rendered:
             return
         self._rendered = True
+        
         if self._pdf_path and self._pdf_path.exists():
             try:
                 if self._thumbnail_cache is not None:
                     cached = self._thumbnail_cache.get(self._pdf_path, self.THUMB_W, self.THUMB_H)
                     if cached:
-                        self._thumb_label.setPixmap(cached.scaled(
-                            self.THUMB_W, self.THUMB_H,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation))
+                        self._apply_pixmap(cached)
                         return
 
-                pixmap = self._render_thumbnail_with_annotations(
-                    self._pdf_path, self._freenotes_path)
-                
-                if self._thumbnail_cache is not None and not pixmap.isNull():
-                    self._thumbnail_cache.put(self._pdf_path, pixmap)
+                # Spawn background worker to prevent UI lag
+                from PySide6.QtCore import QThreadPool
+                worker = PdfCardWorker(self._pdf_path, self._freenotes_path)
+                worker.signals.finished.connect(self._on_worker_finished)
+                worker.signals.error.connect(self._on_worker_error)
+                QThreadPool.globalInstance().start(worker)
 
-                self._thumb_label.setPixmap(pixmap.scaled(
-                    self.THUMB_W, self.THUMB_H,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation))
             except Exception:
                 self._show_placeholder()
         else:
             self._show_placeholder()
 
-    def _show_placeholder(self) -> None:
-        """Show placeholder icon if PDF could not be loaded."""
-        self._thumb_label.setText("📄")
-        self._thumb_label.setProperty("placeholder", True)
-        self._thumb_label.style().unpolish(self._thumb_label)
-        self._thumb_label.style().polish(self._thumb_label)
-
-    # ------------------------------------------------------------------
-    # Thumbnail with annotations
-    # ------------------------------------------------------------------
-
-    def _render_thumbnail_with_annotations(
-        self, pdf_path: Path, freenotes_path: Path | None
-    ) -> QPixmap:
-        """Render the first PDF page and overlay annotations efficiently."""
-        import fitz
-        from PySide6.QtWidgets import QGraphicsScene, QGraphicsPixmapItem
-        import json
-
-        try:
-            doc = fitz.open(str(pdf_path))
+    def _apply_pixmap(self, pixmap: QPixmap) -> None:
+        """Apply final pixmap and stop shimmer."""
+        if self._shimmer:
+            self._shimmer.stop()
+            self._shimmer = None
             
-            data = None
-            if freenotes_path and freenotes_path.exists():
-                data = json.loads(freenotes_path.read_text(encoding="utf-8"))
+        self._thumb_label.setPixmap(pixmap.scaled(
+            self.THUMB_W, self.THUMB_H,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
 
-            zoom = 150.0 / 72.0
-            page0_w = 595.0 * zoom
-            h = 842.0 * zoom
-            max_w = 0.0
+    def _on_worker_error(self, pdf_path: Path) -> None:
+        if self._pdf_path == pdf_path:
+            self._show_placeholder()
 
-            real_page_0 = 0
-            is_blank = False
+    def _on_worker_finished(
+        self, pdf_path: Path, freenotes_path: Path | None, img: QImage, 
+        strokes: list, highlights: list, textboxes: list, shapes: list, images: list,
+        max_w: float, page0_w: float, h: float
+    ) -> None:
+        """Called on main thread when fitz has finished generating the base image."""
+        if self._pdf_path != pdf_path:
+            return
 
-            if data:
-                page_map = data.get("page_map", [])
-                if page_map and isinstance(page_map, list):
-                    if page_map[0] == -1:
-                        is_blank = True
-                    elif 0 <= page_map[0] < doc.page_count:
-                        real_page_0 = page_map[0]
-
-            if not is_blank:
-                page = doc.load_page(real_page_0)
-                page0_w = page.rect.width * zoom
-                h = page.rect.height * zoom
-                
-                # Fast max_w calculation: check up to max 50 pages to avoid stutter
-                max_w = page0_w
-                limit = min(50, doc.page_count)
-                for i in range(limit):
-                    w = doc[i].rect.width * zoom
-                    if w > max_w:
-                        max_w = w
-
-                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-                img = QImage(
-                    pix.samples, pix.width, pix.height, pix.stride,
-                    QImage.Format.Format_RGB888).copy()
-                pixmap = QPixmap.fromImage(img)
-            else:
-                if data:
-                    page_data = data.get("pages", {}).get(str(real_page_0), {})
-                    size = page_data.get("size", [595.0, 842.0])
-                    page0_w = size[0] * zoom
-                    h = size[1] * zoom
-                max_w = page0_w
-                pixmap = QPixmap(int(page0_w), int(h))
-                pixmap.fill(Qt.GlobalColor.white)
-
-            doc.close()
-
+        from PySide6.QtWidgets import QGraphicsScene, QGraphicsPixmapItem
+        
+        try:
+            pixmap = QPixmap.fromImage(img)
+            
             x_off = (max_w - page0_w) / 2.0
             y_off = 20.0  # PageScene.PAGE_GAP
 
@@ -235,24 +284,22 @@ class PdfCard(QFrame):
             page_item = QGraphicsPixmapItem(pixmap)
             scene.addItem(page_item)
 
-            if data:
+            if strokes or highlights or textboxes or shapes or images:
                 from core.freenotes_store import FreenotesStore
                 from items.shape_item import ShapeItem
                 from items.image_item import ImageItem
                 
-                page_data = data.get("pages", {}).get("0", {})
-                
-                for d in page_data.get("strokes", []):
+                for d in strokes:
                     item = FreenotesStore._deserialize_stroke(d, 0)
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     scene.addItem(item)
                     
-                for d in page_data.get("highlights", []):
+                for d in highlights:
                     item = FreenotesStore._deserialize_highlight(d, 0)
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     scene.addItem(item)
                     
-                for d in page_data.get("textboxes", []):
+                for d in textboxes:
                     item = FreenotesStore._deserialize_textbox(d, 0)
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     if hasattr(item, "_is_editing"):
@@ -260,12 +307,12 @@ class PdfCard(QFrame):
                     item.clearFocus()
                     scene.addItem(item)
                     
-                for d in page_data.get("shapes", []):
+                for d in shapes:
                     item = ShapeItem.from_dict(d)
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     scene.addItem(item)
 
-                for d in page_data.get("images", []):
+                for d in images:
                     item = ImageItem.from_dict(d)
                     item.setPos(item.pos().x() - x_off, item.pos().y() - y_off)
                     scene.addItem(item)
@@ -280,14 +327,21 @@ class PdfCard(QFrame):
 
             scene.clear()
 
-            return final_pixmap.scaled(
+            final = final_pixmap.scaled(
                 400, 400,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
+                
+            if self._thumbnail_cache is not None and not final.isNull():
+                self._thumbnail_cache.put(self._pdf_path, final)
 
+            self._apply_pixmap(final)
+            
         except Exception as e:
             print(f"Thumb render error: {e}")
-            return QPixmap()
+            self._show_placeholder()
+            
+
 
     # ------------------------------------------------------------------
     # Events

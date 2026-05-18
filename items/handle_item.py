@@ -102,7 +102,8 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def _apply_default_style(self) -> None:
         if self._is_endpoint:
-            self.setBrush(QBrush(QColor("#ffffff")))
+            # Semi-transparent blue for linear item handles
+            self.setBrush(QBrush(QColor(59, 123, 245, 100)))
             self.setPen(QPen(QColor("#3B7BF5"), 2.0))
         else:
             self.setBrush(QBrush(QColor("#ffffff")))
@@ -114,7 +115,11 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def hoverEnterEvent(self, event) -> None:
         self._hovered = True
-        self.setBrush(QBrush(QColor("#ddeeff")))
+        if self._is_endpoint:
+            # Slightly more opaque blue on hover
+            self.setBrush(QBrush(QColor(59, 123, 245, 160)))
+        else:
+            self.setBrush(QBrush(QColor("#ddeeff")))
         self.update()
         event.accept()
 

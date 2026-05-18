@@ -148,7 +148,7 @@ class SidebarRenderMixin:
 
         self._thumb_generation_id += 1
         self._thumb_worker = ThumbnailWorker(
-            self._doc_manager, tasks, self.THUMBNAIL_DPI, False, self._thumb_generation_id
+            self._doc_manager, tasks, getattr(self, '_current_thumbnail_dpi', self.THUMBNAIL_DPI), False, self._thumb_generation_id
         )
         self._thumb_worker.finished.connect(self._thumb_worker.deleteLater)
         self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
@@ -156,12 +156,47 @@ class SidebarRenderMixin:
 
     def _on_thumbnail_ready(self: 'SidebarWidget', gen_id: int, idx: int, img: QImage) -> None:
         self._queued_pages.discard(idx)
+        self._ready_thumbs_queue.append((gen_id, idx, img))
+        if not self._thumb_process_timer.isActive():
+            self._thumb_process_timer.start()
+
+    def _process_thumb_queue(self: 'SidebarWidget') -> None:
+        """Time-sliced processing of ready thumbnails to prevent UI stutter."""
+        # Pause processing during active scroll or animations
+        if self._scene is not None:
+            views = self._scene.views()
+            if views:
+                view = views[0]
+                is_scrolling = (
+                    (hasattr(view, '_scroll_anim') and view._scroll_anim.is_running()) or
+                    (hasattr(view, '_render_timer') and view._render_timer.isActive()) or
+                    (hasattr(view, '_panning') and view._panning) or
+                    (hasattr(view, '_kinetic_scroller') and view._kinetic_scroller._anim_timer.isActive())
+                )
+                if is_scrolling:
+                    return
+
+        import time
+        start_time = time.perf_counter()
         
+        while self._ready_thumbs_queue:
+            gen_id, idx, img = self._ready_thumbs_queue.popleft()
+            self._apply_thumbnail(gen_id, idx, img)
+            
+            # 5ms budget
+            if (time.perf_counter() - start_time) > 0.005:
+                break
+
+        if not self._ready_thumbs_queue:
+            self._thumb_process_timer.stop()
+
+    def _apply_thumbnail(self: 'SidebarWidget', gen_id: int, idx: int, img: QImage) -> None:
         if gen_id != self._thumb_generation_id:
             return
             
         if idx < len(self._cards) and not img.isNull():
             self._loaded_pages.add(idx)
+            from PySide6.QtGui import QPixmap
             pixmap = QPixmap.fromImage(img)
             
             # --- Overlay Annotations (direct item painting) ---

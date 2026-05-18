@@ -159,7 +159,12 @@ class TileRenderTask(QRunnable):
                 # Inserted blank page - render blank tile
                 col = self._key.tile_col
                 row = self._key.tile_row
-                tile_scene = QRectF(0, row * TILE_SIZE_PX, scene_w, TILE_SIZE_PX)
+                tile_scene = QRectF(
+                    col * TILE_SIZE_PX,
+                    row * TILE_SIZE_PX,
+                    TILE_SIZE_PX + 1.0,  # 1px overlap to hide seams
+                    TILE_SIZE_PX + 1.0,
+                )
                 tile_scene = tile_scene.intersected(QRectF(0, 0, scene_w, scene_h))
                 if tile_scene.isEmpty():
                     return
@@ -210,10 +215,10 @@ class TileRenderTask(QRunnable):
             col = self._key.tile_col
             row = self._key.tile_row
             tile_scene = QRectF(
-                0, # Span full page width
+                col * TILE_SIZE_PX,
                 row * TILE_SIZE_PX,
-                scene_w,
-                TILE_SIZE_PX,
+                TILE_SIZE_PX + 1.0,  # 1px overlap to hide seams
+                TILE_SIZE_PX + 1.0,
             )
             page_local = QRectF(0, 0, scene_w, scene_h)
             tile_scene = tile_scene.intersected(page_local)
@@ -236,6 +241,21 @@ class TileRenderTask(QRunnable):
             dpi = MIP_DPI[self._key.mip_level]
             dpr = self._cached_dpr
             zoom = (dpi * dpr) / 72.0
+
+            # --- Hard cap for entire page pixel resolution ---
+            # If the physical PDF dimensions are extreme, even THUMB/MEDIUM can explode.
+            # We cap the zoom so the *entire page* doesn't exceed Full-HD (THUMB) or 4K (MEDIUM).
+            page_max_dim = max(pdf_w, pdf_h)
+            
+            if self._key.mip_level == MipLevel.THUMB:
+                if page_max_dim * zoom > 1920.0:
+                    zoom = 1920.0 / page_max_dim
+            elif self._key.mip_level == MipLevel.MEDIUM:
+                if page_max_dim * zoom > 3840.0:
+                    zoom = 3840.0 / page_max_dim
+            # MipLevel.FULL is intentionally not capped, as it is only ever
+            # requested for a few visible tiles when zoomed in.
+
             matrix = fitz.Matrix(zoom, zoom)
 
             # --- DisplayList Caching to eliminate repeated parsing overhead ---
@@ -267,10 +287,10 @@ class TileRenderTask(QRunnable):
             img = img.copy()  # deep-copy so QImage owns its buffer
 
             # Scale factor so the pixmap's logical size matches the tile's
-            # scene extent regardless of mip DPI.  At FULL (150 DPI) this
-            # equals plain dpr; at lower mips the ratio shrinks so Qt
-            # stretches the smaller pixmap to fill the same scene area.
-            effective_dpr = dpi * dpr / SCENE_DPI
+            # scene extent regardless of mip DPI. By setting the DPR to the
+            # exact zoom factor we used (adjusted for SCENE_DPI), Qt stretches
+            # the low-res pixmap to fill the original scene area.
+            effective_dpr = zoom * 72.0 / SCENE_DPI
             img.setDevicePixelRatio(effective_dpr)
 
             # Store raw QImage in cache (QPixmap conversion MUST happen on main thread)

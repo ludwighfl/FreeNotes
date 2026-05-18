@@ -147,18 +147,16 @@ class DragReorderController(QObject):
         self._ghost.show()
         self._ghost.raise_()
 
-        # Prevent scrollbar jump by preserving its value during layout swap
-        vbar = self._sidebar.verticalScrollBar()
-        saved_scroll = vbar.value()
-
-        # Hide card and insert gap at its position
-        layout.removeWidget(card)
-        card.setVisible(False)
         self._gap = _GapIndicator(card.height(), self._sidebar._container)
+        
+        # Insert gap FIRST to grow layout (N -> N+1)
         layout.insertWidget(self._source_idx, self._gap)
         
+        # Then hide card to shrink back (N+1 -> N), avoiding scrollbar clamping
+        layout.removeWidget(card)
+        card.setVisible(False)
+        self._gap.show()
         layout.activate()
-        vbar.setValue(saved_scroll)
 
         # Capture mouse on viewport
         vp.setMouseTracking(True)
@@ -238,14 +236,16 @@ class DragReorderController(QObject):
                 break
             overlap = max(0, min(ghost_bottom, w_top + w_h) - max(ghost_top, w_top))
             if overlap >= self.OVERLAP_RATIO * w_h:
-                vbar = self._sidebar.verticalScrollBar()
-                saved_scroll = vbar.value()
-
+                # Grow layout first, then shrink, to prevent scroll clamping
+                new_gap = _GapIndicator(self._gap.height(), self._sidebar._container)
+                layout.insertWidget(gap_idx + 2, new_gap)
+                
                 layout.removeWidget(self._gap)
-                layout.insertWidget(gap_idx + 1, self._gap)
+                self._gap.deleteLater()
+                self._gap = new_gap
+                self._gap.show()
                 layout.activate()
                 
-                vbar.setValue(saved_scroll)
                 gap_idx += 1
             else:
                 break
@@ -267,14 +267,16 @@ class DragReorderController(QObject):
                 break
             overlap = max(0, min(ghost_bottom, w_top + w_h) - max(ghost_top, w_top))
             if overlap >= self.OVERLAP_RATIO * w_h:
-                vbar = self._sidebar.verticalScrollBar()
-                saved_scroll = vbar.value()
-
+                # Grow layout first, then shrink
+                new_gap = _GapIndicator(self._gap.height(), self._sidebar._container)
+                layout.insertWidget(gap_idx - 1, new_gap)
+                
                 layout.removeWidget(self._gap)
-                layout.insertWidget(gap_idx - 1, self._gap)
+                self._gap.deleteLater()
+                self._gap = new_gap
+                self._gap.show()
                 layout.activate()
                 
-                vbar.setValue(saved_scroll)
                 gap_idx -= 1
             else:
                 break
@@ -301,17 +303,18 @@ class DragReorderController(QObject):
                 self._ghost.deleteLater()
                 self._ghost = None
 
+            # Grow first, shrink later
+            if self._drag_card:
+                gap_idx_in_layout = layout.indexOf(self._gap)
+                layout.insertWidget(gap_idx_in_layout, self._drag_card)
+                self._drag_card.setVisible(True)
+
             # Remove gap
             if self._gap:
                 layout.removeWidget(self._gap)
                 self._gap.hide()
                 self._gap.deleteLater()
                 self._gap = None
-
-            # Show card again
-            if self._drag_card:
-                layout.insertWidget(self._source_idx, self._drag_card)
-                self._drag_card.setVisible(True)
 
             # Build new order
             new_order = list(self._saved_order)
@@ -350,15 +353,17 @@ class DragReorderController(QObject):
                 self._ghost.deleteLater()
                 self._ghost = None
 
+            if self._drag_card:
+                gap_idx_in_layout = self._sidebar._layout.indexOf(self._gap)
+                insert_pos = gap_idx_in_layout if gap_idx_in_layout >= 0 else self._source_idx
+                self._sidebar._layout.insertWidget(insert_pos, self._drag_card)
+                self._drag_card.setVisible(True)
+
             if self._gap:
                 self._sidebar._layout.removeWidget(self._gap)
                 self._gap.hide()
                 self._gap.deleteLater()
                 self._gap = None
-
-            if self._drag_card:
-                self._sidebar._layout.insertWidget(self._source_idx, self._drag_card)
-                self._drag_card.setVisible(True)
         except Exception:
             pass
         finally:

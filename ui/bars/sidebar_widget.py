@@ -5,6 +5,7 @@ Extensively refactored into mixins to maintain architecture size limits.
 
 from __future__ import annotations
 
+from collections import deque
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QScrollArea,
@@ -37,6 +38,7 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
 
     page_clicked = Signal(int)
 
+    # Default fallback, but dynamically adjusted per document
     THUMBNAIL_DPI: int = 72
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -54,12 +56,21 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
         self._thumb_generation_id: int = 0
         self._zombie_workers: set['ThumbnailWorker'] = set()
         self._queued_pages: set[int] = set()
+        
+        # Time-sliced thumbnail processing to prevent UI stutter
+        self._ready_thumbs_queue: deque[tuple[int, int, 'QImage']] = deque()
+        self._thumb_process_timer = QTimer(self)
+        self._thumb_process_timer.setInterval(16)
+        self._thumb_process_timer.timeout.connect(self._process_thumb_queue)
+
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(8)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.setWidget(self._container)
+        
+        self._current_thumbnail_dpi = self.THUMBNAIL_DPI
 
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -125,6 +136,7 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
 
         self._loaded_pages.clear()
         self._queued_pages.clear()
+        self._ready_thumbs_queue.clear()
         self._active_index = -1
 
         if self._thumb_worker is not None:
@@ -143,6 +155,38 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
         self._cards.clear()
 
         page_count = doc_manager.get_page_count()
+
+        # Dynamic thumbnail DPI for large PDFs
+        self._current_thumbnail_dpi = self.THUMBNAIL_DPI
+        doc_path = doc_manager.get_doc_path()
+        if doc_path:
+            import os
+            try:
+                size_mb = os.path.getsize(doc_path) / (1024 * 1024)
+                
+                max_w_pt, max_h_pt = 0, 0
+                check_pages = min(5, page_count)
+                for p in range(check_pages):
+                    w, h = doc_manager.get_page_size(p)
+                    max_w_pt = max(max_w_pt, w)
+                    max_h_pt = max(max_h_pt, h)
+                
+                max_area = max_w_pt * max_h_pt
+                mb_per_page = size_mb / max(1, page_count)
+                
+                is_abnormally_large = max_w_pt > 1500 or max_h_pt > 1500 or max_area > 2000000
+                is_huge = max_w_pt > 2500 or max_h_pt > 2500 or max_area > 5000000
+                is_dense = mb_per_page > 2.0
+                is_extremely_dense = mb_per_page > 5.0
+                
+                if is_huge or is_extremely_dense or (size_mb > 50.0 and is_abnormally_large) or size_mb > 150.0:
+                    self._current_thumbnail_dpi = 36
+                elif is_abnormally_large or is_dense or size_mb > 60.0:
+                    self._current_thumbnail_dpi = 54
+            except OSError:
+                pass
+
+
         for i in range(page_count):
             card = ThumbnailCard(i, doc_manager)
             card.clicked.connect(self._on_card_clicked)

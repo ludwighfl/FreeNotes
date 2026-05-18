@@ -59,6 +59,14 @@ class ThumbnailWorker(QThread):
                 try:
                     page = doc.load_page(orig_idx)
                     zoom = self._dpi / 72.0
+                    
+                    # Hard cap for extreme PDFs (e.g. architectural plans) to prevent RAM explosion.
+                    # Max 960px on longest side (half Full-HD) is plenty for a sidebar thumbnail.
+                    rect = page.rect
+                    max_dim = max(rect.width, rect.height)
+                    if max_dim * zoom > 960.0:
+                        zoom = 960.0 / max_dim
+
                     matrix = fitz.Matrix(zoom, zoom)
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
 

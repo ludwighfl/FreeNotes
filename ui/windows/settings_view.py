@@ -87,7 +87,7 @@ class SettingsView(QWidget):
         # ── Placeholder pages ──
         self._pages: dict[str, QWidget] = {}
         self._page_keys: list[str] = [
-            "display", "pen", "language", "library"]
+            "display", "pen", "language", "library", "app"]
 
         for key in self._page_keys:
             placeholder = QLabel(f"[{key} – wird geladen]")
@@ -140,6 +140,21 @@ class SettingsView(QWidget):
             self._sidebar_btns[key] = btn
 
         layout.addStretch()
+        
+        # App Settings at the very bottom
+        app_btn = QToolButton()
+        app_btn.setObjectName("settingsSidebarBtn")
+        app_btn.setCheckable(True)
+        app_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        app_btn.setIcon(IconFactory.create("app_window", color="#cccccc", size=16))
+        app_btn.setIconSize(QSize(16, 16))
+        app_btn.setText(f"  {tr('settings.tabs.app')}")
+        app_btn.setFixedHeight(36)
+        app_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        app_btn.clicked.connect(lambda checked: self._set_active_page("app"))
+        layout.addWidget(app_btn)
+        self._sidebar_btns["app"] = app_btn
+
         return sidebar
 
     # ------------------------------------------------------------------

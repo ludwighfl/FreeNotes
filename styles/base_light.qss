@@ -654,3 +654,72 @@ QLineEdit#managerSearch {
 QLineEdit#managerSearch:focus {
     border-color: #3B7BF5;
 }
+
+/* ============================================================
+   FIRST RUN DIALOG
+   ============================================================ */
+
+QDialog#firstRunDialog { background: #f5f5f5; }
+QLabel#firstRunTitle { color: #1a1a1a; }
+QLabel#firstRunDesc { color: #666666; font-size: 13px; }
+QLabel#firstRunPathLabel {
+    color: #333333; font-size: 12px;
+    background: #e8e8e8; padding: 6px;
+    border-radius: 4px;
+}
+QPushButton#browseBtn {
+    background: #ffffff; color: #1a1a1a;
+    border: 1px solid #d0d0d0; border-radius: 4px;
+    padding: 6px 12px;
+}
+QPushButton#browseBtn:hover { background: #e8e8e8; }
+QPushButton#primaryBtn {
+    background: #3B7BF5; color: #ffffff;
+    border: none; border-radius: 6px;
+    font-size: 14px; font-weight: bold;
+}
+QPushButton#primaryBtn:hover { background: #5090FF; }
+
+#pageBadge {
+    background-color: rgba(240, 240, 240, 200);
+    color: #1a1a1a;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+#managerFolderTitle {
+    color: #1a1a1a;
+}
+
+#viewerTitleLabel {
+    color: #1a1a1a;
+}
+
+#viewerExtLabel {
+    color: #666666;
+}
+
+#viewerBreadcrumbLabel {
+    color: #888888;
+}
+
+#editableTitleEditor {
+    background-color: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #3B7BF5;
+    border-radius: 4px;
+    padding: 0 4px;
+}
+
+#settingsDangerTitle {
+    color: #c92a2a;
+}
+
+#settingsDangerBtn {
+    color: #c92a2a;
+    border-color: #c92a2a;
+}
+
+#settingsDangerBtn:hover {
+    background-color: rgba(201, 42, 42, 0.08);
+}

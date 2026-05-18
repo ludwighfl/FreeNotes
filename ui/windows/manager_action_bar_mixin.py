@@ -36,7 +36,7 @@ class ManagerActionBarMixin:
         
         self._folder_title = QLabel("Alle Dokumente")
         self._folder_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        self._folder_title.setStyleSheet("color: #ffffff;")
+        self._folder_title.setObjectName("managerFolderTitle")
         default_layout.addWidget(self._folder_title)
         default_layout.addStretch()
         
@@ -60,7 +60,7 @@ class ManagerActionBarMixin:
 
         # Cancel Selection Button
         btn_cancel = QToolButton()
-        btn_cancel.setIcon(IconFactory.create("x", color="#ffffff", size=18))
+        btn_cancel.setIcon(IconFactory.create("x", color="#fffffe", size=18))
         btn_cancel.setStyleSheet("background: transparent; border: none;")
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cancel.clicked.connect(self.clear_selection)
@@ -91,7 +91,7 @@ class ManagerActionBarMixin:
 
     def _create_action_btn(self, icon_name: str, tooltip: str, callback: object) -> QToolButton:
         btn = QToolButton()
-        btn.setIcon(IconFactory.create(icon_name, color="#ffffff", size=18))
+        btn.setIcon(IconFactory.create(icon_name, color="#fffffe", size=18))
         btn.setToolTip(tooltip)
         btn.setStyleSheet("""
             QToolButton {

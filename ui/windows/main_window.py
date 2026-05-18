@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         AppState().theme_updated.connect(self._update_title_bar_theme)
         self._update_title_bar_theme()
 
-        self._perform_startup_loading()
+        QTimer.singleShot(0, self._perform_startup_loading)
 
     def _update_title_bar_theme(self) -> None:
         import ctypes
@@ -138,11 +138,13 @@ class MainWindow(QMainWindow):
         from ui.windows.settings_pages.pen_page import PenPage
         from ui.windows.settings_pages.language_page import LanguagePage
         from ui.windows.settings_pages.library_page import LibraryPage
+        from ui.windows.settings_pages.app_page import AppPage
 
         self._settings_view.replace_page("display", DisplayPage())
         self._settings_view.replace_page("pen", PenPage())
         self._settings_view.replace_page("language", LanguagePage())
         self._settings_view.replace_page("library", LibraryPage())
+        self._settings_view.replace_page("app", AppPage())
 
     # ------------------------------------------------------------------
     # First-run / library init
@@ -220,12 +222,35 @@ class MainWindow(QMainWindow):
         dialog.setObjectName("firstRunDialog")
 
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(32, 32, 32, 24)
+        layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
+
+        # Banner / Logo
+        banner_path = get_app_path() / "assets" / "banner.png"
+        if banner_path.exists():
+            from PySide6.QtGui import QPixmap
+            from PySide6.QtWidgets import QApplication
+            banner_lbl = QLabel()
+            pix = QPixmap(str(banner_path))
+            
+            app = QApplication.instance()
+            dpr = 3.0
+            if app:
+                screen = app.primaryScreen()
+                if screen:
+                    dpr = max(3.0, screen.devicePixelRatio())
+                    
+            scaled_pix = pix.scaledToHeight(int(40 * dpr), Qt.TransformationMode.SmoothTransformation)
+            scaled_pix.setDevicePixelRatio(dpr)
+            banner_lbl.setPixmap(scaled_pix)
+            banner_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(banner_lbl)
+            layout.addSpacing(8)
 
         title = QLabel("Willkommen bei FreeNotes")
         title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        title.setStyleSheet("color: #ffffff;")
+        title.setObjectName("firstRunTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
         desc = QLabel(
@@ -233,7 +258,8 @@ class MainWindow(QMainWindow):
             "deine Dokumente und Annotationen speichert."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #aaaaaa; font-size: 13px;")
+        desc.setObjectName("firstRunDesc")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(desc)
 
         # Path row
@@ -242,11 +268,7 @@ class MainWindow(QMainWindow):
         self._first_run_path = default_root
 
         self._path_label = QLabel(str(default_root))
-        self._path_label.setStyleSheet(
-            "color: #cccccc; font-size: 12px; "
-            "background: #2a2a2a; padding: 6px; "
-            "border-radius: 4px;"
-        )
+        self._path_label.setObjectName("firstRunPathLabel")
         self._path_label.setWordWrap(True)
         path_row.addWidget(self._path_label, 1)
 
@@ -258,27 +280,13 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        ok_btn = QPushButton("Los geht's")
+        ok_btn = QPushButton(" Los geht's")
         ok_btn.setObjectName("primaryBtn")
         ok_btn.setFixedHeight(40)
+        from ui.components.icon_factory import IconFactory
+        ok_btn.setIcon(IconFactory.create("chevron_right", color="#ffffff", size=18))
         ok_btn.clicked.connect(dialog.accept)
         layout.addWidget(ok_btn)
-
-        dialog.setStyleSheet("""
-            #firstRunDialog { background: #1e1e1e; }
-            #browseBtn {
-                background: #333333; color: #cccccc;
-                border: 1px solid #444; border-radius: 4px;
-                padding: 6px 12px;
-            }
-            #browseBtn:hover { background: #444444; }
-            #primaryBtn {
-                background: #3B7BF5; color: #ffffff;
-                border: none; border-radius: 6px;
-                font-size: 14px; font-weight: bold;
-            }
-            #primaryBtn:hover { background: #5090FF; }
-        """)
 
         dialog.exec()
 
@@ -319,6 +327,14 @@ class MainWindow(QMainWindow):
                     card.set_checkbox_visible(False)
         if hasattr(self._manager_view, "clear_selection"):
             self._manager_view.clear_selection()
+            
+        # Force manager to resize and layout immediately before transition
+        # This prevents the QGraphicsOpacityEffect from rendering an intermediate/stale layout
+        self._manager_view.resize(self._stack.size())
+        
+        # Ensure card sizes are correct before the transition takes its snapshot
+        if hasattr(self._manager_view, "update_card_sizes"):
+            self._manager_view.update_card_sizes()
             
         self._stack_transition.switch_to(0)
         # Yield to event loop to allow cross-fade animation to render smoothly
