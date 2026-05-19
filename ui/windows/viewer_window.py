@@ -145,7 +145,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         content_layout.setSpacing(0)
 
         # --- Sidebar column ---
-        sidebar_column = QWidget()
+        self._sidebar_column = QWidget()
+        sidebar_column = self._sidebar_column
         sidebar_column.setObjectName("sidebarColumn")
         sidebar_column.setFixedWidth(210)
         sidebar_col_layout = QVBoxLayout(sidebar_column)
@@ -260,6 +261,15 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             QKeySequence("Ctrl+F"), self)
         self._search_shortcut.activated.connect(self._show_search)
 
+        self._app_state.theme_updated.connect(self._on_theme_updated)
+
+    def _on_theme_updated(self) -> None:
+        """Refresh static viewer window icons on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        self._back_btn.setIcon(
+            IconFactory.create("chevron_left", color="#cccccc", size=20)
+        )
+
     # ------------------------------------------------------------------
     # Slots
     # ------------------------------------------------------------------
@@ -293,7 +303,7 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
     # ------------------------------------------------------------------
 
     def _reposition_formatting_bar(self) -> None:
-        """Place the formatting bar below the toolbar, horizontally centered."""
+        """Place the formatting bar below the toolbar, horizontally centered relative to the active workspace."""
         if not hasattr(self, '_formatting_bar'):
             return
         if not hasattr(self, '_toolbar'):
@@ -303,7 +313,16 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         bar_width = self._formatting_bar.sizeHint().width()
         bar_width = max(bar_width, 400)
 
-        center_x = (self.width() - bar_width) // 2
+        # Center relative to the Page View area (to the right of the sidebar)
+        start_x = 0
+        visible_width = self.width()
+
+        if hasattr(self, '_sidebar_column') and self._sidebar_column.isVisible():
+            sidebar_width = self._sidebar_column.width()
+            start_x = sidebar_width
+            visible_width = self.width() - sidebar_width
+
+        center_x = start_x + (visible_width - bar_width) // 2
         y_pos = toolbar_rect.bottom() + 6
 
         self._formatting_bar.setFixedWidth(bar_width)

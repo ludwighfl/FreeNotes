@@ -23,6 +23,7 @@ class ManagerGridMixin:
         if lm is None:
             return
 
+        self._active_folder = folder
         AppState().current_folder = folder
 
         if folder is None:

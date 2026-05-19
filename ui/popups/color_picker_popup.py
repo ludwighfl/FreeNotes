@@ -32,8 +32,12 @@ class ColorPickerPopup(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlags(
-            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+            Qt.WindowType.Popup
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
         )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(self.POPUP_WIDTH)
         
         is_light = AppSettings.get_theme() == "light"
@@ -104,25 +108,32 @@ class ColorPickerPopup(QWidget):
     # ------------------------------------------------------------------
 
     def paintEvent(self, event: object) -> None:
-        """Draw opaque rounded background."""
+        """Draw translucent glass rounded background with a soft border."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(self.BG_COLOR))
-        painter.drawRoundedRect(
-            self.rect(), self.CORNER_RADIUS, self.CORNER_RADIUS
-        )
-        painter.end()
+        
+        # High-density glass background matching QMenu / GlassToolTip
+        is_light = AppSettings.get_theme() == "light"
+        if is_light:
+            bg_color = QColor(250, 250, 250, 225)
+            border_color = QColor(0, 0, 0, 22)
+        else:
+            bg_color = QColor(30, 30, 30, 225)
+            border_color = QColor(255, 255, 255, 25)
 
-    def resizeEvent(self, event: object) -> None:
-        """Apply rounded-corner mask on resize."""
         path = QPainterPath()
         path.addRoundedRect(
-            0.0, 0.0, float(self.width()), float(self.height()),
-            float(self.CORNER_RADIUS), float(self.CORNER_RADIUS),
+            self.rect().adjusted(0.5, 0.5, -0.5, -0.5),
+            self.CORNER_RADIUS, self.CORNER_RADIUS
         )
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
+        
+        # Fill glass background
+        painter.fillPath(path, bg_color)
+        
+        # Draw glass border
+        painter.setPen(border_color)
+        painter.drawPath(path)
+        painter.end()
 
     # ------------------------------------------------------------------
     # Slot handlers
@@ -170,6 +181,9 @@ class ColorPickerPopup(QWidget):
         sat_border = "rgba(0,0,0,0.15)" if self._is_light else "rgba(255,255,255,0.2)"
         
         self._saturation_slider.setStyleSheet(
+            f"QSlider#satSlider {{"
+            f"  background: transparent;"
+            f"}}"
             f"QSlider#satSlider::groove:horizontal {{"
             f"  height: 6px; border-radius: 3px;"
             f"  background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
@@ -185,6 +199,9 @@ class ColorPickerPopup(QWidget):
 
         val_end = QColor.fromHsvF(h / 360.0, s, 1.0)
         self._value_slider.setStyleSheet(
+            f"QSlider#valSlider {{"
+            f"  background: transparent;"
+            f"}}"
             f"QSlider#valSlider::groove:horizontal {{"
             f"  height: 6px; border-radius: 3px;"
             f"  background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"

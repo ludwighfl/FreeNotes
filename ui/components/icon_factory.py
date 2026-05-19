@@ -597,3 +597,12 @@ def _register_builtins() -> None:
 
 # Run registration at module import time
 _register_builtins()
+
+# Connect to theme update signal to automatically clear cache
+try:
+    from app.app_state import AppState
+    AppState().theme_updated.connect(IconFactory._ICON_CACHE.clear)
+    AppState().theme_updated.connect(IconFactory._PIXMAP_CACHE.clear)
+except Exception:
+    pass
+

@@ -74,7 +74,9 @@ def make_width_icon(dot_radius: int, size: int = 24) -> QIcon:
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     
-    painter.setBrush(QColor("#cccccc"))
+    from core.app_settings import AppSettings
+    dot_color = "#444444" if AppSettings.get_theme() == "light" else "#cccccc"
+    painter.setBrush(QColor(dot_color))
     painter.setPen(Qt.PenStyle.NoPen)
     
     # Deine Berechnungen bleiben exakt gleich! Qt malt den Kreis nun
@@ -87,3 +89,12 @@ def make_width_icon(dot_radius: int, size: int = 24) -> QIcon:
     icon = QIcon(pixmap)
     _width_icon_cache[key] = icon
     return icon
+
+
+# Connect to theme update signal to automatically clear width cache
+try:
+    from app.app_state import AppState
+    AppState().theme_updated.connect(_width_icon_cache.clear)
+except Exception:
+    pass
+

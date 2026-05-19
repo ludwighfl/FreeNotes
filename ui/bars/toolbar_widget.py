@@ -20,6 +20,92 @@ from ui.bars.toolbar_mode_popups import ToolbarModePopupsMixin
 from core.i18n import tr
 
 
+class ColorChipButton(QToolButton):
+    """Custom circular color chip button with custom paintEvent to bypass OS-specific rendering issues."""
+    def __init__(self, color: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.color_hex: str = color
+        self.setFixedSize(28, 28)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.hovered: bool = False
+        self.pressed: bool = False
+
+    def enterEvent(self, event) -> None:
+        self.hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.pressed = True
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.pressed = False
+            self.update()
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event) -> None:
+        from PySide6.QtGui import QPainter, QPen, QFont
+        from core.app_settings import AppSettings
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        
+        is_light = AppSettings.get_theme() == "light"
+        
+        # 1. Paint the outer hover / checked / pressed ring
+        # Adjust by 1px on each side to draw inside the 28x28 bounding box
+        outer_rect = self.rect().adjusted(1, 1, -1, -1)
+        
+        if self.isChecked():
+            # Checked outline (solid white/dark)
+            pen_color = QColor("#333333") if is_light else QColor("#ffffff")
+            painter.setPen(QPen(pen_color, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(outer_rect)
+        elif self.hovered:
+            # Hover outline (semi-transparent white/dark)
+            pen_color = QColor(0, 0, 0, 64) if is_light else QColor(255, 255, 255, 115)
+            painter.setPen(QPen(pen_color, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(outer_rect)
+            
+        # 2. Paint the inner color swatch circle
+        # Offset by 5px on all sides to make it a perfect 18x18 circle centered inside 28x28
+        inner_rect = self.rect().adjusted(5, 5, -5, -5)
+        
+        c = QColor(self.color_hex)
+        painter.setBrush(c)
+        
+        # Border around white swatch so it's visible on light backgrounds
+        if self.color_hex.lower() in ("#ffffff", "#fff"):
+            painter.setPen(QPen(QColor("#bbbbbb") if is_light else QColor("#555555"), 1))
+        else:
+            painter.setPen(Qt.PenStyle.NoPen)
+            
+        painter.drawEllipse(inner_rect)
+        
+        # 3. Draw a clean, antialiased checkmark ✓ in the center if checked
+        if self.isChecked():
+            luminance = 0.299 * c.redF() + 0.587 * c.greenF() + 0.114 * c.blueF()
+            check_color = QColor("#1a1a1a") if luminance > 0.6 else QColor("#ffffff")
+            painter.setPen(QPen(check_color, 2))
+            painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "✓")
+            
+        painter.end()
+
+
 class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
     """Horizontal toolbar with Lucide tool icons, 10 customizable color chips,
     and 5 pen width controls.
@@ -193,8 +279,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
         # --- Shape dropdown button ---
         from core.shape_style import ShapeType
-        from PySide6.QtWidgets import QMenu
         from PySide6.QtGui import QAction
+        from ui.popups.glass_menu import GlassMenu
 
         self._shape_btn = QToolButton()
         self._shape_btn.setObjectName("shapeToolBtn")
@@ -204,7 +290,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._shape_btn.setIconSize(QSize(22, 22))
         self._shape_btn.setToolTip(tr("toolbar.shapes_hint"))
 
-        self._shape_menu = QMenu(self)
+        self._shape_menu = GlassMenu(self)
         self._shape_menu.setObjectName("shapeMenu")
 
         _SHAPE_ICON_MAP = {
@@ -226,6 +312,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             (tr("toolbar.shape_triangle"),           ShapeType.TRIANGLE),
         ]
 
+        self._shape_actions = []
         for label, shape_type in shape_entries:
             icon_name = _SHAPE_ICON_MAP[shape_type]
             action = QAction(
@@ -234,6 +321,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 lambda checked, st=shape_type:
                     self._on_shape_selected(st))
             self._shape_menu.addAction(action)
+            self._shape_actions.append((action, shape_type))
 
         # Removed setMenu and _on_shape_btn_clicked overrides.
 
@@ -257,11 +345,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._color_buttons: list[QToolButton] = []
 
         for i, color in enumerate(self._chip_colors):
-            btn = QToolButton()
-            btn.setIcon(make_color_icon(color))
-            btn.setIconSize(QSize(20, 20))
-            btn.setFixedSize(28, 28)
-            btn.setCheckable(True)
+            btn = ColorChipButton(color, self)
             btn.setObjectName("colorChip")
             btn.setToolTip(tr("toolbar.color_hint").format(color))
             self._color_group.addButton(btn, i)
@@ -312,6 +396,65 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         
         # Clear/update chips safely for current tool state
         self.update_width_buttons(self._current_tool_name)
+
+        # Install smooth background hover fade animations on primary toolbar buttons
+        from ui.animations.fade_hover import BackgroundFadeHoverEffect
+        from core.app_settings import AppSettings
+        
+        is_light = AppSettings.get_theme() == "light"
+        hover_color = QColor(0, 0, 0, 18) if is_light else QColor(255, 255, 255, 25)
+        
+        self._hover_effects = []
+        self._hover_effects.append(BackgroundFadeHoverEffect(self._undo_btn, hover_color, duration=150, border_radius=6))
+        self._hover_effects.append(BackgroundFadeHoverEffect(self._redo_btn, hover_color, duration=150, border_radius=6))
+        
+        for btn in self._tool_buttons:
+            self._hover_effects.append(BackgroundFadeHoverEffect(btn, hover_color, duration=150, border_radius=6))
+
+        self._app_state.theme_updated.connect(self._on_theme_updated)
+
+    def _on_theme_updated(self) -> None:
+        """Dynamically refresh all static SVG icons and hover effect colors on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        from core.app_settings import AppSettings
+        from PySide6.QtGui import QColor
+        from ui.animations.fade_hover import BackgroundFadeHoverEffect
+        
+        # 1. Update static icons (Undo / Redo / Tools)
+        self._undo_btn.setIcon(IconFactory.create("undo", color="#cccccc"))
+        self._redo_btn.setIcon(IconFactory.create("redo", color="#cccccc"))
+        
+        for i, tool_id in enumerate(self.TOOL_IDS):
+            if i < len(self._tool_buttons):
+                self._tool_buttons[i].setIcon(IconFactory.create(tool_id))
+                
+        # 2. Update active shape icon and shapes menu actions
+        from app.app_state import AppState
+        active_shape = AppState().active_shape_type
+        icon_name = self._shape_icon_map.get(active_shape, "shape_rect")
+        self._shape_btn.setIcon(IconFactory.create(icon_name))
+        
+        if hasattr(self, '_shape_actions'):
+            for action, st in self._shape_actions:
+                action_icon_name = self._shape_icon_map.get(st, "shape_rect")
+                action.setIcon(IconFactory.create(action_icon_name))
+        
+        # 3. Refresh hover animation fade colors
+        self._hover_effects.clear()
+        is_light = AppSettings.get_theme() == "light"
+        hover_color = QColor(0, 0, 0, 18) if is_light else QColor(255, 255, 255, 25)
+        
+        self._hover_effects.append(BackgroundFadeHoverEffect(self._undo_btn, hover_color, duration=150, border_radius=6))
+        self._hover_effects.append(BackgroundFadeHoverEffect(self._redo_btn, hover_color, duration=150, border_radius=6))
+        for btn in self._tool_buttons:
+            self._hover_effects.append(BackgroundFadeHoverEffect(btn, hover_color, duration=150, border_radius=6))
+
+        # 4. Refresh pen width dot icons
+        from ui.bars.toolbar_icons import make_width_icon
+        if hasattr(self, "_width_buttons"):
+            for i, (width, dot_r) in enumerate(zip(self.PEN_WIDTHS, self.WIDTH_DOT_RADII)):
+                if i < len(self._width_buttons):
+                    self._width_buttons[i].setIcon(make_width_icon(dot_r))
 
     def showEvent(self, event) -> None:
         """Reload settings from AppSettings when toolbar becomes visible."""
@@ -398,13 +541,11 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
     def _update_chip_icons(self) -> None:
         """Refresh all chip icons, showing checkmark on the active one."""
         for i, btn in enumerate(self._color_buttons):
-            btn.setIcon(make_color_icon(
-                self._chip_colors[i],
-                checked=(i == self._active_color_index),
-            ))
+            btn.color_hex = self._chip_colors[i]
             btn.setToolTip(
                 tr("toolbar.color_hint").format(self._chip_colors[i])
             )
+            btn.update()
 
     def select_matching_color(self, color: QColor) -> None:
         """Select the chip whose color is closest to *color*.

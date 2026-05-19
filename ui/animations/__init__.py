@@ -7,9 +7,6 @@ from ui.animations.fade import (
 from ui.animations.stagger import (
     StaggerFadeAnimation,
 )
-from ui.animations.shadow import (
-    ShadowHoverAnimation,
-)
 from ui.animations.slide import (
     SlideDownAnimation,
 )
@@ -19,13 +16,17 @@ from ui.animations.thumbnail import (
 from ui.animations.drag_reorder import (
     DragReorderController,
 )
+from ui.animations.fade_hover import (
+    BackgroundFadeHoverEffect,
+)
 
 __all__ = [
     "FadeAnimation",
     "StackFadeTransition",
     "StaggerFadeAnimation",
-    "ShadowHoverAnimation",
     "SlideDownAnimation",
     "ThumbnailFadeAnimation",
     "DragReorderController",
+    "BackgroundFadeHoverEffect",
 ]
+

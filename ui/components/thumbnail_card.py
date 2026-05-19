@@ -74,6 +74,21 @@ class ThumbnailCard(QFrame):
         self._update_style()
         self._position_badge()
 
+        # Background hover fade effect (completely replaces dynamic shadow to prevent sidebar wiggling/jitter)
+        from ui.animations.fade_hover import BackgroundFadeHoverEffect
+        from core.app_settings import AppSettings
+        from PySide6.QtGui import QColor
+        
+        is_light = AppSettings.get_theme() == "light"
+        hover_color = QColor(0, 0, 0, 8) if is_light else QColor(255, 255, 255, 12)
+        
+        self._hover_effect = BackgroundFadeHoverEffect(
+            widget=self,
+            hover_color=hover_color,
+            border_radius=4
+        )
+
+
     def set_thumbnail(self, pixmap: QPixmap) -> None:
         """Set the thumbnail pixmap, scaled to THUMB_WIDTH with page badge."""
         if getattr(self, '_shimmer', None):
@@ -205,3 +220,6 @@ class ThumbnailCard(QFrame):
                 self.setFixedHeight(inner_h + 8)
                 
         self._position_badge()
+
+
+

@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QPoint
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QMenu, QInputDialog, QMessageBox
 )
+from ui.popups.glass_menu import GlassMenu
 
 from ui.components.icon_factory import IconFactory
 from core.i18n import tr
@@ -91,7 +92,7 @@ class ManagerSidebarMixin:
 
     def _show_folder_context_menu(self, pos: QPoint, widget: QWidget, folder: Path) -> None:
         """Show context menu for a folder in the sidebar."""
-        menu = QMenu()
+        menu = GlassMenu(self)
         menu.setObjectName("pageContextMenu")
         menu.addAction(tr("menu.rename", "Umbenennen"), lambda: self._on_rename_folder_action(folder))
         menu.addSeparator()

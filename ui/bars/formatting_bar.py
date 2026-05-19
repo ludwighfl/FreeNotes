@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QPointF, QSize, Signal
+from PySide6.QtCore import Qt, QPointF, QRectF, QSize, Signal
 from PySide6.QtGui import (
     QAction,
     QBrush,
@@ -12,7 +12,9 @@ from PySide6.QtGui import (
     QFont,
     QPainter,
     QPaintEvent,
+    QPainterPath,
     QPen,
+    QRegion,
     QTextBlockFormat,
     QTextListFormat,
 )
@@ -37,6 +39,137 @@ if TYPE_CHECKING:
     from items.text_box_item import TextBoxItem
 
 
+class GlassComboBox(QComboBox):
+    """Custom translucent QComboBox with a custom vector drop-down arrow and frameless glass popup list."""
+
+    DEFAULT_FONTS = [
+        "Arial", "Times New Roman", "Courier New",
+        "Georgia", "Helvetica", "Verdana",
+    ]
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.addItems(self.DEFAULT_FONTS)
+
+    def showPopup(self) -> None:
+        # 1. Dynamically re-order the fonts so the selected one is always at the top (index 0)
+        current = self.currentText()
+        if current in self.DEFAULT_FONTS:
+            ordered = [current] + [f for f in self.DEFAULT_FONTS if f != current]
+            self.blockSignals(True)
+            self.clear()
+            self.addItems(ordered)
+            self.setCurrentIndex(0)
+            self.blockSignals(False)
+
+        # 2. Set popupActive property to true for CSS transitions
+        self.setProperty("popupActive", True)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        view = self.view()
+        container = view.parentWidget() if view else None
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        
+        if container:
+            container.setObjectName("comboPopupContainer")
+            container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            container.setWindowFlags(
+                container.windowFlags() 
+                | Qt.WindowType.FramelessWindowHint 
+                | Qt.WindowType.NoDropShadowWindowHint
+            )
+            # Container is purely transparent – it only serves as the clip-mask holder
+            container.setStyleSheet("QFrame#comboPopupContainer { background: transparent; border: none; }")
+        if view:
+            view.setObjectName("fontComboView")
+            view.setRowHidden(0, True)
+            # The viewport paints the frosted glass background
+            if is_light:
+                glass_bg = "rgba(250, 250, 250, 224)"
+                border_color = "rgba(0, 0, 0, 25)"
+                text_color = "#333333"
+                sel_bg = "rgba(0, 0, 0, 15)"
+                sel_color = "#000000"
+            else:
+                glass_bg = "rgba(25, 25, 25, 224)"
+                border_color = "rgba(255, 255, 255, 28)"
+                text_color = "#e0e0e0"
+                sel_bg = "rgba(255, 255, 255, 20)"
+                sel_color = "#ffffff"
+            view.setStyleSheet(f"""
+                QAbstractItemView#fontComboView {{
+                    background-color: {glass_bg};
+                    border: 1px solid {border_color};
+                    border-top: none;
+                    outline: none;
+                    color: {text_color};
+                    font-size: 13px;
+                    padding: 4px;
+                }}
+                QAbstractItemView#fontComboView::item {{
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    background: transparent;
+                }}
+                QAbstractItemView#fontComboView::item:selected {{
+                    background-color: {sel_bg};
+                    color: {sel_color};
+                }}
+            """)
+        super().showPopup()
+        if container:
+            # Align exactly underneath the combobox, seamless border overlap
+            geom = container.geometry()
+            global_pos = self.mapToGlobal(QPointF(0, self.height() - 1)).toPoint()
+            container.setGeometry(global_pos.x(), global_pos.y(), self.width(), geom.height())
+
+            # Apply a physical window mask: sharp top corners, rounded bottom corners
+            radius = 8
+            r = QRectF(container.rect())
+            path = QPainterPath()
+            path.moveTo(r.topLeft())
+            path.lineTo(r.topRight())
+            path.lineTo(r.right(), r.bottom() - radius)
+            path.arcTo(r.right() - 2 * radius, r.bottom() - 2 * radius, 2 * radius, 2 * radius, 0, -90)
+            path.lineTo(r.left() + radius, r.bottom())
+            path.arcTo(r.left(), r.bottom() - 2 * radius, 2 * radius, 2 * radius, 270, -90)
+            path.closeSubpath()
+            container.setMask(QRegion(path.toFillPolygon().toPolygon()))
+
+    def hidePopup(self) -> None:
+        super().hidePopup()
+        self.setProperty("popupActive", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        
+        # Draw a beautiful, clean vector drop-down arrow
+        from core.app_settings import AppSettings
+        is_light = AppSettings.get_theme() == "light"
+        arrow_color = QColor(68, 68, 68) if is_light else QColor(170, 170, 170)
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(arrow_color, 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        # Chevron down path on the right side
+        r = self.rect()
+        x = r.right() - 16
+        y = r.center().y() - 1
+        
+        path = QPainterPath()
+        path.moveTo(x, y)
+        path.lineTo(x + 3.5, y + 3.5)
+        path.lineTo(x + 7, y)
+        
+        painter.drawPath(path)
+
+
 class FormattingBar(QWidget):
     """Floating formatting bar shown when the text tool is active.
 
@@ -50,31 +183,34 @@ class FormattingBar(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("FormattingBar")
-        self.setFixedHeight(42)
+        self.setFixedHeight(46)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # --- Drop shadow ---
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(12)
-        shadow.setOffset(QPointF(0, 3))
-        shadow.setColor(QColor(0, 0, 0, 160))
+        shadow.setBlurRadius(20)
+        shadow.setOffset(QPointF(0, 5))
+        shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(shadow)
+
 
         # --- Layout ---
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 1, 8, 7)
-        layout.setSpacing(4)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(8)
 
         # --- Font family ---
-        self._font_combo = QComboBox()
-        self._font_combo.addItems([
-            "Arial", "Times New Roman", "Courier New",
-            "Georgia", "Helvetica", "Verdana",
-        ])
+        self._font_combo = GlassComboBox()
         self._font_combo.setFixedWidth(130)
         self._font_combo.setObjectName("fontCombo")
         self._font_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        
+        # Make the combobox popup viewport translucent for rounded corners in QSS
+        view = self._font_combo.view()
+        if view and view.parentWidget():
+            view.parentWidget().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._font_combo.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         # --- Font size (custom widget) ---
         self._size_spin = FontSizeWidget()
@@ -102,13 +238,7 @@ class FormattingBar(QWidget):
         self._align_group.addButton(self._align_right_btn)
 
         # --- Assemble layout ---
-        font_container = QWidget()
-        font_layout = QVBoxLayout(font_container)
-        font_layout.setContentsMargins(0, 1, 0, 0)
-        font_layout.setSpacing(0)
-        font_layout.addWidget(self._font_combo)
-        
-        layout.addWidget(font_container)
+        layout.addWidget(self._font_combo)
         layout.addWidget(self._size_spin)
         layout.addWidget(self._make_separator())
         layout.addWidget(self._bold_btn)
@@ -126,9 +256,20 @@ class FormattingBar(QWidget):
 
         # --- Connect signals ---
         self._connect_signals()
+        
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
 
         # --- Initially hidden ---
         self.hide()
+
+    def _on_theme_updated(self) -> None:
+        """Refresh static text alignment icons on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        self._align_left_btn.setIcon(IconFactory.create("align_left", size=16))
+        self._align_center_btn.setIcon(IconFactory.create("align_center", size=16))
+        self._align_right_btn.setIcon(IconFactory.create("align_right", size=16))
+
 
     # ==================================================================
     # Widget factory helpers
@@ -142,7 +283,7 @@ class FormattingBar(QWidget):
         btn.setText(text)
         btn.setToolTip(tooltip)
         btn.setCheckable(True)
-        btn.setFixedSize(30, 28)
+        btn.setFixedSize(30, 30)
         btn.setObjectName("formatBtn")
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -163,11 +304,11 @@ class FormattingBar(QWidget):
 
     @staticmethod
     def _make_icon_btn(icon_name: str, tooltip: str) -> QToolButton:
-        """Create a 30×28 icon button using a Lucide SVG from IconFactory."""
+        """Create a 30×30 icon button using a Lucide SVG from IconFactory."""
         btn = QToolButton()
         btn.setToolTip(tooltip)
         btn.setCheckable(True)
-        btn.setFixedSize(30, 28)
+        btn.setFixedSize(30, 30)
         btn.setObjectName("formatBtn")
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setIcon(IconFactory.create(icon_name, size=16))
@@ -351,11 +492,18 @@ class FormattingBar(QWidget):
         """Draw rounded-rect background (more reliable than QSS)."""
         from core.app_settings import AppSettings
         is_light = AppSettings.get_theme() == "light"
-        bg_color = "#ffffff" if is_light else "#1e1e1e"
-        border_color = "#d0d0d0" if is_light else "#3a3a3a"
+        
+        # Premium translucent backgrounds (exactly 88% opacity = 224 alpha)
+        if is_light:
+            bg_color = QColor(255, 255, 255, 224)
+            border_color = QColor(0, 0, 0, 25)
+        else:
+            bg_color = QColor(25, 25, 25, 224)
+            border_color = QColor(255, 255, 255, 28)
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor(bg_color)))
-        painter.setPen(QPen(QColor(border_color), 1))
-        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 8, 8)
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(QPen(border_color, 1))
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 12, 12)
+

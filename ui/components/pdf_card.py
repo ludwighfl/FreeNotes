@@ -181,6 +181,21 @@ class PdfCard(QFrame):
         self._date_label.setObjectName("pdfCardDate")
         layout.addWidget(self._date_label)
         
+        # Background hover fade effect (completely replaces dynamic shadow to prevent grid wiggling/jitter)
+        from ui.animations.fade_hover import BackgroundFadeHoverEffect
+        from core.app_settings import AppSettings
+        from PySide6.QtGui import QColor
+        
+        is_light = AppSettings.get_theme() == "light"
+        hover_color = QColor(0, 0, 0, 10) if is_light else QColor(255, 255, 255, 15)
+        
+        self._hover_effect = BackgroundFadeHoverEffect(
+            widget=self,
+            hover_color=hover_color,
+            border_radius=8
+        )
+        
+        
     def update_size(self, width: int) -> None:
         height = int(width * 1.4) # 280/200
         self.setFixedSize(width, height)
@@ -420,3 +435,6 @@ class PdfCard(QFrame):
         if visible:
             # Set unselected state by default
             self._checkbox.setPixmap(IconFactory.create_pixmap("square", "#666666", 20))
+
+
+

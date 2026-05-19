@@ -15,10 +15,6 @@ QToolButton {
     padding: 4px;
 }
 
-QToolButton:hover {
-    background-color: #333333;
-}
-
 QToolButton:checked {
     background-color: #3B7BF5;
     color: #ffffff;
@@ -30,19 +26,10 @@ QToolButton:disabled {
 
 /* ── Color Chip Buttons ── */
 #colorChip {
-    border: 2px solid transparent;
-    border-radius: 14px;
+    border: none;
+    background: transparent;
+    background-color: transparent;
     padding: 0px;
-    background-color: transparent;
-}
-
-#colorChip:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-}
-
-#colorChip:checked {
-    border: 2px solid #ffffff;
-    background-color: transparent;
 }
 
 /* ── Pen Width Buttons ── */
@@ -216,20 +203,22 @@ QToolButton#shapeToolBtn::menu-arrow {
 }
 
 QMenu#shapeMenu {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
-    border-radius: 6px;
-    padding: 4px;
-    color: #cccccc;
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
+    border-radius: 8px;
+    padding: 6px 4px;
+    color: #e0e0e0;
 }
 
 QMenu#shapeMenu::item {
     padding: 6px 12px;
     border-radius: 4px;
+    background-color: transparent;
+    margin: 1px 2px;
 }
 
 QMenu#shapeMenu::item:selected {
-    background: #3B7BF5;
+    background-color: rgba(59, 123, 245, 220);
     color: #ffffff;
 }
 
@@ -259,55 +248,59 @@ QToolButton#threeDotBtn::menu-indicator {
 }
 
 QMenu#threeDotMenu {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
     border-radius: 8px;
-    padding: 4px;
-    color: #cccccc;
+    padding: 6px 4px;
+    color: #e0e0e0;
     font-size: 13px;
 }
 QMenu#threeDotMenu::item {
-    padding: 8px 20px;
+    padding: 6px 20px;
     border-radius: 4px;
+    background-color: transparent;
+    margin: 1px 2px;
 }
 QMenu#threeDotMenu::item:selected {
-    background: #3B7BF5;
+    background-color: rgba(59, 123, 245, 220);
     color: #ffffff;
 }
 QMenu#threeDotMenu::item:disabled {
-    color: #555555;
+    color: #666666;
 }
 QMenu#threeDotMenu::separator {
     height: 1px;
-    background: #3a3a3a;
-    margin: 4px 8px;
+    background-color: rgba(255, 255, 255, 18);
+    margin: 4px 6px;
 }
 
 /* Page Context Menu */
 QMenu#pageContextMenu {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
     border-radius: 8px;
-    padding: 4px;
-    color: #cccccc;
+    padding: 6px 4px;
+    color: #e0e0e0;
     font-size: 13px;
 }
 QMenu#pageContextMenu::item {
-    padding: 8px 20px 8px 36px;
+    padding: 6px 20px 6px 36px;
     border-radius: 4px;
+    background-color: transparent;
+    margin: 1px 2px;
 }
 QMenu#pageContextMenu::icon {
     padding-left: 12px;
 }
 QMenu#pageContextMenu::item:selected {
-    background: #3B7BF5;
+    background-color: rgba(59, 123, 245, 220);
     color: #ffffff;
 }
 QMenu#pageContextMenu::item:disabled {
-    color: #555555;
+    color: #666666;
 }
 QMenu#pageContextMenu::separator {
     height: 1px;
-    background: #3a3a3a;
-    margin: 4px 8px;
+    background-color: rgba(255, 255, 255, 18);
+    margin: 4px 6px;
 }

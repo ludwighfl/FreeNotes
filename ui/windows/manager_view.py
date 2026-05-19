@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMessageBox,
 )
+from ui.popups.glass_menu import GlassMenu
 
 from ui.components.icon_factory import IconFactory
 from ui.components.pdf_card import PdfCard
@@ -51,6 +52,9 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
 
         from core.thumbnail_cache import ThumbnailCache
         self._thumbnail_cache = ThumbnailCache()
+
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -112,14 +116,15 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         self._search_input.setPlaceholderText(tr("manager.search_placeholder"))
         self._search_input.setFixedWidth(220)
         self._search_input.setFixedHeight(32)
-        self._search_input.addAction(
-            IconFactory.create("search", color="#666666", size=14),
+        self._search_action = self._search_input.addAction(
+            IconFactory.create("search", color="#cccccc", size=14),
             QLineEdit.ActionPosition.LeadingPosition)
         self._search_input.textChanged.connect(self._on_search_changed)
         self._default_header_right_layout.addWidget(self._search_input)
 
         # Create button with Lucide file_plus icon
-        create_btn = QToolButton()
+        self._create_btn = QToolButton()
+        create_btn = self._create_btn
         create_btn.setIcon(
             IconFactory.create("file_plus", color="#fffffe", size=16))
         create_btn.setIconSize(QSize(16, 16))
@@ -131,12 +136,15 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         create_btn.setPopupMode(
             QToolButton.ToolButtonPopupMode.InstantPopup)
 
-        create_menu = QMenu(create_btn)
+        create_menu = GlassMenu(create_btn)
         create_menu.setObjectName("pageContextMenu")
         
-        act_note = QAction(IconFactory.create("file_text", color="#cccccc", size=16), tr("menu.file.new_note"), self)
-        act_import = QAction(IconFactory.create("upload", color="#cccccc", size=16), tr("menu.file.import_pdf"), self)
-        act_folder = QAction(IconFactory.create("folder_plus", color="#cccccc", size=16), tr("menu.file.new_folder"), self)
+        self._act_note = QAction(IconFactory.create("file_text", color="#cccccc", size=16), tr("menu.file.new_note"), self)
+        self._act_import = QAction(IconFactory.create("upload", color="#cccccc", size=16), tr("menu.file.import_pdf"), self)
+        self._act_folder = QAction(IconFactory.create("folder_plus", color="#cccccc", size=16), tr("menu.file.new_folder"), self)
+        act_note = self._act_note
+        act_import = self._act_import
+        act_folder = self._act_folder
         
         create_menu.addAction(act_note)
         create_menu.addAction(act_import)
@@ -149,7 +157,8 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         self._default_header_right_layout.addWidget(create_btn)
 
         # Multi Select toggle button
-        multi_select_btn = QToolButton()
+        self._multi_select_btn = QToolButton()
+        multi_select_btn = self._multi_select_btn
         multi_select_btn.setIcon(
             IconFactory.create("check_square", color="#cccccc", size=20))
         multi_select_btn.setIconSize(QSize(20, 20))
@@ -160,7 +169,8 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         self._default_header_right_layout.addWidget(multi_select_btn)
 
         # Settings button (gear)
-        settings_btn = QToolButton()
+        self._settings_btn = QToolButton()
+        settings_btn = self._settings_btn
         settings_btn.setIcon(
             IconFactory.create("settings", color="#cccccc", size=20))
         settings_btn.setIconSize(QSize(20, 20))
@@ -319,6 +329,32 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
     def load_folder(self, folder: Path | None) -> None:
         """Alias for load_grid (backward compatibility)."""
         self.load_grid(folder)
+
+    def _on_theme_updated(self) -> None:
+        """Dynamically refresh manager header icons on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        
+        if hasattr(self, "_search_action"):
+            self._search_action.setIcon(IconFactory.create("search", color="#cccccc", size=14))
+            
+        if hasattr(self, "_create_btn"):
+            self._create_btn.setIcon(IconFactory.create("file_plus", color="#fffffe", size=16))
+            
+        if hasattr(self, "_act_note"):
+            self._act_note.setIcon(IconFactory.create("file_text", color="#cccccc", size=16))
+            
+        if hasattr(self, "_act_import"):
+            self._act_import.setIcon(IconFactory.create("upload", color="#cccccc", size=16))
+            
+        if hasattr(self, "_act_folder"):
+            self._act_folder.setIcon(IconFactory.create("folder_plus", color="#cccccc", size=16))
+            
+        if hasattr(self, "_multi_select_btn"):
+            self._multi_select_btn.setIcon(IconFactory.create("check_square", color="#cccccc", size=20))
+            
+        if hasattr(self, "_settings_btn"):
+            self._settings_btn.setIcon(IconFactory.create("settings", color="#cccccc", size=20))
+
 
 
 

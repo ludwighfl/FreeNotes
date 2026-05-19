@@ -41,7 +41,8 @@ class SettingsView(QWidget):
         header_layout.setContentsMargins(16, 0, 16, 0)
         header_layout.setSpacing(12)
 
-        back_btn = QPushButton()
+        self._back_btn = QPushButton()
+        back_btn = self._back_btn
         back_btn.setIcon(
             IconFactory.create("chevron_left", color="#cccccc", size=20))
         back_btn.setIconSize(QSize(20, 20))
@@ -56,6 +57,17 @@ class SettingsView(QWidget):
         title.setObjectName("settingsTitleLabel")
         header_layout.addWidget(title)
         header_layout.addStretch()
+        
+        self._sidebar_icon_names = {
+            "display": "monitor",
+            "pen": "pen",
+            "language": "globe",
+            "library": "folder",
+            "app": "app_window",
+        }
+        
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
         main_layout.addWidget(header)
 
         # Horizontal separator
@@ -184,3 +196,20 @@ class SettingsView(QWidget):
             self._page_keys.index(key), widget)
         if self._active_key == key:
             self._stack.setCurrentWidget(widget)
+
+    def _on_theme_updated(self) -> None:
+        """Dynamically refresh settings view icons on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        
+        if hasattr(self, "_back_btn"):
+            self._back_btn.setIcon(
+                IconFactory.create("chevron_left", color="#cccccc", size=20)
+            )
+            
+        for key, btn in self._sidebar_btns.items():
+            icon_name = self._sidebar_icon_names.get(key)
+            if icon_name:
+                btn.setIcon(
+                    IconFactory.create(icon_name, color="#cccccc", size=16)
+                )
+

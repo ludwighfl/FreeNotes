@@ -61,7 +61,8 @@ class DisplayPage(QWidget):
 
         hint_row = QHBoxLayout()
         hint_row.setSpacing(6)
-        hint_icon = QLabel()
+        self._hint_icon = QLabel()
+        hint_icon = self._hint_icon
         hint_icon.setPixmap(
             IconFactory.create_pixmap(
                 "info", color="#5577cc", size=14))
@@ -73,6 +74,10 @@ class DisplayPage(QWidget):
         hint_text.setWordWrap(True)
         hint_row.addWidget(hint_text, 1)
         layout.addLayout(hint_row)
+        
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
+        
         layout.addSpacing(24)
 
         # ── Separator ──
@@ -162,3 +167,21 @@ class DisplayPage(QWidget):
         btn.setFixedHeight(36)
         btn.setMinimumWidth(140)
         return btn
+
+    def _on_theme_updated(self) -> None:
+        """Dynamically refresh display settings page icons on theme switch."""
+        from ui.components.icon_factory import IconFactory
+        
+        if hasattr(self, "_dark_btn"):
+            self._dark_btn.setIcon(
+                IconFactory.create("moon", color="#cccccc", size=16)
+            )
+        if hasattr(self, "_light_btn"):
+            self._light_btn.setIcon(
+                IconFactory.create("sun", color="#cccccc", size=16)
+            )
+        if hasattr(self, "_hint_icon"):
+            self._hint_icon.setPixmap(
+                IconFactory.create_pixmap("info", color="#5577cc", size=14)
+            )
+

@@ -156,7 +156,6 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 }
 
 #pdfCard:hover {
-    background-color: #333333;
     border-color: #555555;
 }
 
@@ -193,25 +192,27 @@ QToolButton#settingsBtn::menu-indicator {
 
 /* Settings Menu */
 QMenu#settingsMenu {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
     border-radius: 8px;
-    padding: 4px;
-    color: #cccccc;
+    padding: 6px 4px;
+    color: #e0e0e0;
     font-size: 13px;
 }
 QMenu#settingsMenu::item {
-    padding: 8px 20px;
+    padding: 6px 20px;
     border-radius: 4px;
+    background-color: transparent;
+    margin: 1px 2px;
 }
 QMenu#settingsMenu::item:selected {
-    background: #3B7BF5;
+    background-color: rgba(59, 123, 245, 220);
     color: #ffffff;
 }
 QMenu#settingsMenu::separator {
     height: 1px;
-    background: #3a3a3a;
-    margin: 4px 8px;
+    background-color: rgba(255, 255, 255, 18);
+    margin: 4px 6px;
 }
 
 /* ============================================================
@@ -266,25 +267,28 @@ QFrame#PopupSeparator {
    ============================================================ */
 
 QMenu#eraserModeMenu, QMenu#selectionModeMenu, QMenu#shapeMenu {
-    background-color: #2d2d2d;
-    border: 1px solid #3a3a3a;
-    border-radius: 6px;
-    padding: 4px 0;
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
+    border-radius: 8px;
+    padding: 6px 4px;
     font-family: "Segoe UI", sans-serif;
     font-size: 13px;
 }
 QMenu#eraserModeMenu::item, QMenu#selectionModeMenu::item, QMenu#shapeMenu::item {
-    padding: 8px 32px 8px 12px;
-    color: #cccccc;
+    padding: 6px 32px 6px 12px;
+    color: #e0e0e0;
+    border-radius: 4px;
+    background-color: transparent;
+    margin: 1px 2px;
 }
 QMenu#eraserModeMenu::item:selected, QMenu#selectionModeMenu::item:selected, QMenu#shapeMenu::item:selected {
-    background-color: #3B7BF5;
+    background-color: rgba(59, 123, 245, 220);
     color: #ffffff;
 }
 QMenu#eraserModeMenu::separator, QMenu#selectionModeMenu::separator, QMenu#shapeMenu::separator {
     height: 1px;
-    background: #3a3a3a;
-    margin: 4px 8px;
+    background-color: rgba(255, 255, 255, 18);
+    margin: 4px 6px;
 }
 
 /* ============================================================
@@ -361,10 +365,6 @@ QMenu#eraserModeMenu::separator, QMenu#selectionModeMenu::separator, QMenu#shape
     background-color: #242424;
     border: 2px solid transparent;
     border-radius: 4px;
-}
-
-#thumbnailCard:hover {
-    background-color: #2d2d2d;
 }
 
 #thumbnailCard[active="true"] {
@@ -446,11 +446,13 @@ QScrollBar::sub-page:horizontal {
    ============================================================ */
 
 QToolTip {
-    background-color: #2d2d2d;
-    color: #ffffff;
-    border: 1px solid #3a3a3a;
-    padding: 4px 8px;
-    border-radius: 4px;
+    background-color: rgba(30, 30, 30, 225);
+    color: #e0e0e0;
+    border: 1px solid rgba(255, 255, 255, 18);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 12px;
 }
 
 /* ============================================================
@@ -664,37 +666,44 @@ QWidget#searchBar {
     background: transparent;
 }
 QLineEdit#searchInput {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
-    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 12);
+    border: 1px solid rgba(255, 255, 255, 20);
+    border-radius: 6px;
     color: #ffffff;
     font-size: 13px;
     padding: 4px 8px;
     selection-background-color: #3B7BF5;
 }
+QLineEdit#searchInput:hover {
+    background-color: rgba(255, 255, 255, 18);
+    border-color: rgba(255, 255, 255, 28);
+}
 QLineEdit#searchInput:focus {
     border-color: #3B7BF5;
+    background-color: rgba(255, 255, 255, 18);
 }
 QLabel#searchCount {
-    color: #888888;
+    color: #aaaaaa;
     font-size: 12px;
     background: transparent;
 }
 QToolButton#searchNavBtn {
     background: transparent;
-    border: 1px solid #3a3a3a;
-    border-radius: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
 }
 QToolButton#searchNavBtn:hover {
-    background: #333333;
+    background-color: rgba(255, 255, 255, 16);
+    border-color: rgba(255, 255, 255, 25);
 }
 QToolButton#searchCloseBtn {
     background: transparent;
-    border: none;
-    border-radius: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
 }
 QToolButton#searchCloseBtn:hover {
-    background: #3a3a3a;
+    background-color: rgba(239, 68, 68, 40);
+    border-color: rgba(239, 68, 68, 60);
 }
 
 /* ============================================================
@@ -764,4 +773,35 @@ QPushButton#primaryBtn:hover { background: #5090FF; }
 
 #settingsDangerBtn:hover {
     background-color: rgba(255, 107, 107, 0.15);
+}
+
+/* ============================================================
+   GLOBAL GLASSMORPHIC CONTEXT MENU (DARK)
+   ============================================================ */
+QMenu {
+    background-color: rgba(30, 30, 30, 225);
+    border: 1px solid rgba(255, 255, 255, 18);
+    border-radius: 8px;
+    padding: 6px 4px;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+QMenu::item {
+    padding: 6px 28px 6px 12px;
+    color: #e0e0e0;
+    border-radius: 4px;
+    background-color: transparent;
+    margin: 2px 2px;
+}
+QMenu::item:selected {
+    background-color: rgba(59, 123, 245, 220);
+    color: #ffffff;
+}
+QMenu::item:disabled {
+    color: #666666;
+}
+QMenu::separator {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 18);
+    margin: 4px 6px;
 }

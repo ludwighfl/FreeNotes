@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeNotes")
 QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
+
 def run_splash_process() -> None:
     """Run the standalone splash screen process."""
     app = QApplication(sys.argv)
@@ -44,6 +45,11 @@ def main() -> None:
     init_i18n()
     from styles.loader import load_stylesheet
     app.setStyleSheet(load_stylesheet())
+
+    # Replace native tooltips with frosted-glass custom tooltips
+    from ui.popups.glass_tooltip import GlassTooltipFilter
+    _tooltip_filter = GlassTooltipFilter(app)
+    app.installEventFilter(_tooltip_filter)
 
     # Build the heavy main application
     from ui.windows.main_window import MainWindow

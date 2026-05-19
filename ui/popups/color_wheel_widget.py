@@ -121,21 +121,21 @@ class ColorWheelWidget(QWidget):
         outer_r = self._outer_radius()
         inner_r = self._inner_radius()
 
-        # --- Step 1: Hue ring via conical gradient ---
+        # --- Step 1: Hue ring via conical gradient on a donut path ---
         gradient = QConicalGradient(center, 90.0)  # Start at top (12 o'clock)
         num_stops = 13
         for i in range(num_stops):
             h = i / (num_stops - 1)
             gradient.setColorAt(h, QColor.fromHsvF(h, 1.0, 1.0))
 
-        # Draw outer filled circle with gradient
+        # Create donut path
+        donut_path = QPainterPath()
+        donut_path.addEllipse(center, outer_r, outer_r)
+        donut_path.addEllipse(center, inner_r, inner_r)
+
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(gradient))
-        painter.drawEllipse(center, outer_r, outer_r)
-
-        # Punch inner hole with background color
-        painter.setBrush(QColor("#1a1a1a"))
-        painter.drawEllipse(center, inner_r, inner_r)
+        painter.drawPath(donut_path)
 
         # --- Step 2: Inner preview circle ---
         preview_r = inner_r - 6.0

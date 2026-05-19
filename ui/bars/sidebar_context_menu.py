@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from PySide6.QtGui import QContextMenuEvent, QAction
-from PySide6.QtWidgets import QMenu, QWidget
+from PySide6.QtWidgets import QWidget
+from ui.popups.glass_menu import GlassMenu
 
 # TYPE_CHECKING
 from typing import TYPE_CHECKING
@@ -34,7 +35,7 @@ class SidebarContextMenuMixin:
 
         from ui.components.icon_factory import IconFactory
 
-        menu = QMenu(self)
+        menu = GlassMenu(self)
         menu.setObjectName("pageContextMenu")
 
         icon_color = "#cccccc"

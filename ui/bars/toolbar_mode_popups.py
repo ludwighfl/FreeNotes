@@ -27,10 +27,10 @@ class ToolbarModePopupsMixin:
 
     def _show_eraser_mode_popup(self) -> None:
         """Show a popup menu to choose eraser mode."""
-        from PySide6.QtWidgets import QMenu
+        from ui.popups.glass_menu import GlassMenu
         from PySide6.QtGui import QAction
 
-        menu = QMenu(self)
+        menu = GlassMenu(self)
         menu.setObjectName("eraserModeMenu")
 
         check = "  ✓  "
@@ -85,10 +85,10 @@ class ToolbarModePopupsMixin:
 
     def _show_selection_mode_popup(self) -> None:
         """Show a popup menu to choose selection mode."""
-        from PySide6.QtWidgets import QMenu
+        from ui.popups.glass_menu import GlassMenu
         from PySide6.QtGui import QAction
 
-        menu = QMenu(self)
+        menu = GlassMenu(self)
         menu.setObjectName("selectionModeMenu")
 
         check = "  ✓  "

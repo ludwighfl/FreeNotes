@@ -1,7 +1,7 @@
 """Floating search bar for the PDF viewer."""
 
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QPainter, QBrush, QPen
+from PySide6.QtGui import QColor, QPainter, QBrush, QPen, QPainterPath
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -28,6 +28,8 @@ class SearchBar(QWidget):
         super().__init__(parent)
         self.setObjectName("searchBar")
         self.setFixedHeight(44)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Drop shadow
         shadow = QGraphicsDropShadowEffect(self)
@@ -41,12 +43,12 @@ class SearchBar(QWidget):
         layout.setSpacing(8)
 
         # Search icon
-        search_icon = QLabel()
-        search_icon.setPixmap(
-            IconFactory.create_pixmap("search", color="#666666", size=14))
-        search_icon.setFixedSize(14, 14)
-        search_icon.setStyleSheet("background: transparent;")
-        layout.addWidget(search_icon)
+        self._search_icon = QLabel()
+        self._search_icon.setPixmap(
+            IconFactory.create_pixmap("search", color="#888888", size=14))
+        self._search_icon.setFixedSize(14, 14)
+        self._search_icon.setStyleSheet("background: transparent;")
+        layout.addWidget(self._search_icon)
 
         # Search input
         self._input = QLineEdit()
@@ -84,14 +86,14 @@ class SearchBar(QWidget):
         layout.addWidget(self._next_btn)
 
         # Close button
-        close_btn = QToolButton()
-        close_btn.setIcon(
+        self._close_btn = QToolButton()
+        self._close_btn.setIcon(
             IconFactory.create("x", color="#cccccc", size=16))
-        close_btn.setObjectName("searchCloseBtn")
-        close_btn.setFixedSize(28, 28)
-        close_btn.setToolTip(tr("search.close"))
-        close_btn.clicked.connect(self._on_close)
-        layout.addWidget(close_btn)
+        self._close_btn.setObjectName("searchCloseBtn")
+        self._close_btn.setFixedSize(28, 28)
+        self._close_btn.setToolTip(tr("search.close"))
+        self._close_btn.clicked.connect(self._on_close)
+        layout.addWidget(self._close_btn)
 
         # Debounce timer (300ms)
         self._search_timer = QTimer()
@@ -104,7 +106,21 @@ class SearchBar(QWidget):
         # Enter key navigates to next
         self._input.returnPressed.connect(self.navigate_next)
 
+        from app.app_state import AppState
+        AppState().theme_updated.connect(self._on_theme_updated)
+
         self.hide()
+
+    def _on_theme_updated(self) -> None:
+        """Refresh static search bar icons on theme switch."""
+        self._search_icon.setPixmap(
+            IconFactory.create_pixmap("search", color="#888888", size=14))
+        self._prev_btn.setIcon(
+            IconFactory.create("chevron_up", color="#cccccc", size=16))
+        self._next_btn.setIcon(
+            IconFactory.create("chevron_down", color="#cccccc", size=16))
+        self._close_btn.setIcon(
+            IconFactory.create("x", color="#cccccc", size=16))
 
     # ------------------------------------------------------------------
 
@@ -123,7 +139,7 @@ class SearchBar(QWidget):
             pw = p.width()
             self.setFixedWidth(min(420, pw - 40))
             x = pw - self.width() - 20
-            y = 70  # Below toolbar
+            y = 82  # Below toolbar
             self.move(x, y)
 
     def _on_close(self) -> None:
@@ -164,12 +180,26 @@ class SearchBar(QWidget):
     def paintEvent(self, event) -> None:
         from core.app_settings import AppSettings
         is_light = AppSettings.get_theme() == "light"
-        bg_color = "#ffffff" if is_light else "#1e1e1e"
-        border_color = "#d0d0d0" if is_light else "#3a3a3a"
+        if is_light:
+            bg_color = QColor(250, 250, 250, 225)
+            border_color = QColor(0, 0, 0, 22)
+        else:
+            bg_color = QColor(30, 30, 30, 225)
+            border_color = QColor(255, 255, 255, 25)
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor(bg_color)))
-        painter.setPen(QPen(QColor(border_color), 1))
-        painter.drawRoundedRect(
-            self.rect().adjusted(0, 0, -1, -1), 8, 8)
+        
+        path = QPainterPath()
+        path.addRoundedRect(
+            self.rect().adjusted(0.5, 0.5, -0.5, -0.5),
+            8, 8
+        )
+        
+        # Fill glass background
+        painter.fillPath(path, bg_color)
+        
+        # Draw glass border
+        painter.setPen(QPen(border_color, 1))
+        painter.drawPath(path)
+        painter.end()

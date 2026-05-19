@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QToolButton, QMenu
+from PySide6.QtWidgets import QToolButton
 from PySide6.QtGui import QAction
 from core.i18n import tr
-from ui.animations.pop_in import PopInAnimation
-
-class AnimatedMenu(QMenu):
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        PopInAnimation(self).start()
+from ui.popups.glass_menu import GlassMenu
 
 
 class ThreeDotMenu(QToolButton):
@@ -33,7 +28,7 @@ class ThreeDotMenu(QToolButton):
         self.setToolTip(tr("menu.tooltip"))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self._menu = AnimatedMenu(self)
+        self._menu = GlassMenu(self)
         self._menu.setObjectName("threeDotMenu")
 
         # Actions
