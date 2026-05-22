@@ -145,13 +145,14 @@ class LibraryManager:
             "folder": dest_folder,
         }
 
-    def create_note_from_preset(self, name: str, preset_pdf_path: Path, target_folder: Path | None = None) -> dict:
+    def create_note_from_preset(self, name: str, preset_pdf_path: Path, target_folder: Path | None = None, orientation: str = "portrait") -> dict:
         """Create a new note from a preset PDF.
         
         Args:
             name: The desired name for the note.
             preset_pdf_path: Path to the preset PDF file.
             target_folder: Folder to place the new note in (defaults to root).
+            orientation: "portrait" or "landscape"
             
         Returns:
             The document dictionary of the new note.
@@ -166,12 +167,17 @@ class LibraryManager:
         base_path = dest_folder / safe_name
         dest_pdf = self._resolve_name_conflict(base_path.with_suffix(".pdf"))
         
-        # Copy the preset PDF to the destination
-        shutil.copy2(preset_pdf_path, dest_pdf)
+        # Generate landscape dynamically or copy preset PDF to the destination
+        if orientation == "landscape":
+            from core.template_generator import generate_pdf_bytes
+            pdf_bytes = generate_pdf_bytes(preset_pdf_path.name, "landscape")
+            dest_pdf.write_bytes(pdf_bytes)
+        else:
+            shutil.copy2(preset_pdf_path, dest_pdf)
         
         # Create empty .freenotes
         fn_path = dest_pdf.with_suffix(".freenotes")
-        self._create_empty_freenotes(fn_path, dest_pdf)
+        self._create_empty_freenotes(fn_path, dest_pdf, template_name=preset_pdf_path.name, orientation=orientation)
         
         # Return the new document dict
         for doc in self.get_documents(dest_folder):
@@ -303,13 +309,17 @@ class LibraryManager:
             i += 1
 
     @staticmethod
-    def _create_empty_freenotes(fn_path: Path, pdf_path: Path) -> None:
+    def _create_empty_freenotes(fn_path: Path, pdf_path: Path, template_name: str | None = None, orientation: str | None = None) -> None:
         """Write a minimal .freenotes JSON file."""
         data = {
             "version": 1,
             "pdf_path": str(pdf_path),
             "pages": {},
         }
+        if template_name:
+            data["template_name"] = template_name
+        if orientation:
+            data["orientation"] = orientation
         fn_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     @staticmethod

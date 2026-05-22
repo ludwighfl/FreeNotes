@@ -40,6 +40,10 @@ class FreenotesStore:
             "page_map": getattr(doc_manager, "page_map", []),
             "pages": {},
         }
+        if getattr(doc_manager, "template_name", None):
+            data["template_name"] = doc_manager.template_name
+        if getattr(doc_manager, "orientation", None):
+            data["orientation"] = doc_manager.orientation
 
         # Collect all page indices with annotations
         all_pages: set[int] = set()
@@ -95,6 +99,17 @@ class FreenotesStore:
 
         pdf_path: str = data.get("pdf_path", "")
         page_map: list[int] = data.get("page_map", [])
+
+        if doc_manager:
+            if "template_name" in data:
+                doc_manager.template_name = data["template_name"]
+            else:
+                doc_manager.template_name = doc_manager._detect_template_name()
+
+            if "orientation" in data:
+                doc_manager.orientation = data["orientation"]
+            else:
+                doc_manager.orientation = doc_manager._detect_orientation()
 
         structural_modified = False
         if page_map and isinstance(page_map, list) and doc_manager:

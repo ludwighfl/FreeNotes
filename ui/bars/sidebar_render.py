@@ -103,8 +103,8 @@ class SidebarRenderMixin:
             self._thumb_worker = None
             try:
                 worker_ref.cancel()
-                for current_idx, _ in worker_ref._tasks:
-                    self._queued_pages.discard(current_idx)
+                for task in worker_ref._tasks:
+                    self._queued_pages.discard(task[0])
                 # Keep python reference alive until C++ thread exits natively
                 self._zombie_workers.add(worker_ref)
                 worker_ref.finished.connect(lambda w=worker_ref: self._zombie_workers.discard(w))
@@ -144,7 +144,8 @@ class SidebarRenderMixin:
         for i in indices:
             self._queued_pages.add(i)
             orig_idx = self._doc_manager.page_map[i] if i < len(self._doc_manager.page_map) else -1
-            tasks.append((i, orig_idx))
+            w, h = self._doc_manager.get_page_size(i)
+            tasks.append((i, orig_idx, w, h))
 
         self._thumb_generation_id += 1
         self._thumb_worker = ThumbnailWorker(

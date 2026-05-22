@@ -32,18 +32,23 @@ class MoveTextBoxCommand(QUndoCommand):
         self.setText("Textbox verschieben")
 
     def undo(self) -> None:
-        if self._scene_ref() is None:
+        scene = self._scene_ref()
+        if scene is None:
             return
         self._box.setPos(self._old_pos)
         self._box._update_handle_positions()
         self._box.update()
+        scene.update_item_page_index(self._box)
 
     def redo(self) -> None:
+        scene = self._scene_ref()
+        if scene is None:
+            return
         if self._first_redo:
             self._first_redo = False
-            return
-        if self._scene_ref() is None:
+            scene.update_item_page_index(self._box)
             return
         self._box.setPos(self._new_pos)
         self._box._update_handle_positions()
         self._box.update()
+        scene.update_item_page_index(self._box)

@@ -276,10 +276,11 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         if dialog.exec():
             preset = dialog.selected_preset
             name = dialog.note_name
+            orientation = dialog.orientation
             if preset and name:
                 lm = AppState().library_manager
                 folder = AppState().current_folder
-                new_doc = lm.create_note_from_preset(name, preset, folder)
+                new_doc = lm.create_note_from_preset(name, preset, folder, orientation)
                 self.load_sidebar()
                 self._select_folder(folder)
                 

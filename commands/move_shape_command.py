@@ -33,14 +33,19 @@ class MoveShapeCommand(QUndoCommand):
         self.setText("Form verschieben")
 
     def undo(self) -> None:
-        if self._scene_ref() is None:
+        scene = self._scene_ref()
+        if scene is None:
             return
         self._item.setPos(self._old_pos)
+        scene.update_item_page_index(self._item)
 
     def redo(self) -> None:
+        scene = self._scene_ref()
+        if scene is None:
+            return
         if self._first_redo:
             self._first_redo = False
-            return
-        if self._scene_ref() is None:
+            scene.update_item_page_index(self._item)
             return
         self._item.setPos(self._new_pos)
+        scene.update_item_page_index(self._item)

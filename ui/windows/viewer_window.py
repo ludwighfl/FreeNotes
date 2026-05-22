@@ -242,6 +242,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
         # Tool switch requested from page_scene (e.g. clicking TextBox with hand tool)
         self._page_scene.tool_switch_requested.connect(self._on_tool_switch_requested)
+        self._page_scene.selection_changed.connect(self._on_selection_changed)
+        self._page_scene.item_page_changed.connect(self._on_item_page_changed)
 
         # --- Search ---
         from ui.bars.search_bar import SearchBar
@@ -562,3 +564,11 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
             
         cmd = RenameDocumentCommand(self, old_name, new_name)
         get_stack().push(cmd)
+
+    def _on_item_page_changed(self, old_page: int, new_page: int) -> None:
+        """Mark affected thumbnails as needing re-rendering in the sidebar."""
+        if hasattr(self, "_sidebar") and self._sidebar is not None:
+            if old_page >= 0:
+                self._sidebar.invalidate_thumb(old_page)
+            if new_page >= 0:
+                self._sidebar.invalidate_thumb(new_page)

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QScrollArea,
     QWidget,
+    QButtonGroup,
 )
 
 import fitz
@@ -104,7 +105,7 @@ class NewNoteDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.new_note.title"))
-        self.setFixedSize(540, 400)
+        self.setFixedSize(540, 480)
         self.setObjectName("newNoteDialog")
 
         self._selected_preset: Path | None = None
@@ -133,6 +134,37 @@ class NewNoteDialog(QDialog):
         
         presets_scroll.setWidget(presets_container)
         layout.addWidget(presets_scroll)
+
+        # Orientation selection
+        orientation_layout = QHBoxLayout()
+        orientation_layout.setSpacing(12)
+
+        orientation_label = QLabel(tr("dialog.new_note.orientation_label"))
+        orientation_label.setObjectName("newNoteOrientationLabel")
+        orientation_layout.addWidget(orientation_label)
+
+        self._portrait_btn = QPushButton(tr("dialog.new_note.portrait"))
+        self._portrait_btn.setObjectName("newNotePortraitBtn")
+        self._portrait_btn.setCheckable(True)
+        self._portrait_btn.setChecked(True)
+        self._portrait_btn.setFixedSize(120, 32)
+        self._portrait_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        orientation_layout.addWidget(self._portrait_btn)
+
+        self._landscape_btn = QPushButton(tr("dialog.new_note.landscape"))
+        self._landscape_btn.setObjectName("newNoteLandscapeBtn")
+        self._landscape_btn.setCheckable(True)
+        self._landscape_btn.setFixedSize(120, 32)
+        self._landscape_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        orientation_layout.addWidget(self._landscape_btn)
+
+        self._orientation_group = QButtonGroup(self)
+        self._orientation_group.addButton(self._portrait_btn)
+        self._orientation_group.addButton(self._landscape_btn)
+        self._orientation_group.setExclusive(True)
+
+        orientation_layout.addStretch()
+        layout.addLayout(orientation_layout)
 
         # Name input
         name_label = QLabel(tr("dialog.new_note.name_label"))
@@ -204,3 +236,9 @@ class NewNoteDialog(QDialog):
     @property
     def note_name(self) -> str:
         return self._name_input.text().strip()
+
+    @property
+    def orientation(self) -> str:
+        if self._landscape_btn.isChecked():
+            return "landscape"
+        return "portrait"

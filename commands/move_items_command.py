@@ -39,15 +39,19 @@ class MoveItemsCommand(QUndoCommand):
             return
         for item, (old_pos, _) in self._moves.items():
             item.setPos(old_pos)
+            scene.update_item_page_index(item)
         scene._update_selection_overlay()
 
     def redo(self) -> None:
-        if self._first_redo:
-            self._first_redo = False
-            return
         scene = self._scene_ref()
         if scene is None:
             return
+        if self._first_redo:
+            self._first_redo = False
+            for item in self._moves.keys():
+                scene.update_item_page_index(item)
+            return
         for item, (_, new_pos) in self._moves.items():
             item.setPos(new_pos)
+            scene.update_item_page_index(item)
         scene._update_selection_overlay()

@@ -222,8 +222,10 @@ class BoundingBoxHandleManager(QObject):
         new_state = self._target_item.get_path_state()
 
         # Check if anything actually changed
-        old_path, old_pos = self._old_state
-        new_path, new_pos = new_state
+        old_path = self._old_state[0]
+        old_pos = self._old_state[1]
+        new_path = new_state[0]
+        new_pos = new_state[1]
         if old_path == new_path and old_pos == new_pos:
             self._old_state = None
             return

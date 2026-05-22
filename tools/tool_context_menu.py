@@ -111,7 +111,7 @@ def build_tool_context_menu(event: QGraphicsSceneMouseEvent, scene: PageScene) -
 
         paste_action = QAction("Einfügen\tStrg+V", menu)
         paste_action.setEnabled(can_paste)
-        paste_action.triggered.connect(scene.paste_clipboard)
+        paste_action.triggered.connect(lambda: scene.paste_clipboard(pos))
         menu.addAction(paste_action)
 
         menu.addSeparator()
@@ -124,7 +124,7 @@ def build_tool_context_menu(event: QGraphicsSceneMouseEvent, scene: PageScene) -
         # 2. Empty Space Context Menu
         paste_action = QAction("Einfügen\tStrg+V", menu)
         paste_action.setEnabled(can_paste)
-        paste_action.triggered.connect(scene.paste_clipboard)
+        paste_action.triggered.connect(lambda: scene.paste_clipboard(pos))
         menu.addAction(paste_action)
         
         menu.addSeparator()

@@ -65,6 +65,7 @@ class PageScene(
 
     tool_switch_requested = Signal(str)
     selection_changed = Signal()
+    item_page_changed = Signal(int, int) # (old_page, new_page)
 
     def __init__(self, parent: object = None) -> None:
         super().__init__(parent)
@@ -498,3 +499,27 @@ class PageScene(
                     pass
 
         return items
+
+    def update_item_page_index(self, item: object) -> None:
+        """Update the page index of an item based on its current position.
+
+        Remaps registries and notifies sidebar thumbnails of changes.
+        """
+        try:
+            scene_rect = item.sceneBoundingRect()
+            center = scene_rect.center()
+        except Exception:
+            return
+
+        new_page_idx = self.get_page_index_at(center)
+        if new_page_idx < 0:
+            return
+
+        old_page_idx = getattr(item, "_page_index", -1)
+
+        if old_page_idx != new_page_idx:
+            self.remove_item_from_registry(item)
+            if hasattr(item, "_page_index"):
+                item._page_index = new_page_idx
+            self.add_item_to_registry(item)
+            self.item_page_changed.emit(old_page_idx, new_page_idx)

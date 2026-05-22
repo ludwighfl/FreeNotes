@@ -19,8 +19,8 @@ class ResizeHighlightCommand(QUndoCommand):
     def __init__(
         self,
         item: HighlightItem,
-        old_state: tuple[QPainterPath, QPointF],
-        new_state: tuple[QPainterPath, QPointF],
+        old_state: tuple[QPainterPath, QPointF, float],
+        new_state: tuple[QPainterPath, QPointF, float],
         scene: PageScene,
         parent: QUndoCommand | None = None,
     ) -> None:
@@ -35,8 +35,8 @@ class ResizeHighlightCommand(QUndoCommand):
     def undo(self) -> None:
         if self._scene_ref() is None:
             return
-        path, pos = self._old_state
-        self._item.set_path_state(QPainterPath(path), QPointF(pos))
+        path, pos, width = self._old_state
+        self._item.set_path_state(QPainterPath(path), QPointF(pos), width)
 
     def redo(self) -> None:
         if self._first_redo:
@@ -44,5 +44,5 @@ class ResizeHighlightCommand(QUndoCommand):
             return
         if self._scene_ref() is None:
             return
-        path, pos = self._new_state
-        self._item.set_path_state(QPainterPath(path), QPointF(pos))
+        path, pos, width = self._new_state
+        self._item.set_path_state(QPainterPath(path), QPointF(pos), width)

@@ -69,7 +69,7 @@ class SceneClipboardMixin:
         cmd = DeleteItemsCommand(items, self)
         undo_stack.push(cmd)
 
-    def paste_clipboard(self) -> None:
+    def paste_clipboard(self, mouse_pos: QPointF | None = None) -> None:
         """Paste items from internal clipboard or system clipboard image/url."""
         from app.app_state import AppState
         app_state = AppState()
@@ -109,7 +109,21 @@ class SceneClipboardMixin:
             return
 
         if use_internal:
-            paste_offset = QPointF(16, 16)
+            # Determine paste_offset based on mouse_pos if provided
+            if mouse_pos is not None:
+                xs = [entry["pos"][0] for entry in clipboard if "pos" in entry]
+                ys = [entry["pos"][1] for entry in clipboard if "pos" in entry]
+                if xs and ys:
+                    min_x, max_x = min(xs), max(xs)
+                    min_y, max_y = min(ys), max(ys)
+                    center_x = (min_x + max_x) / 2
+                    center_y = (min_y + max_y) / 2
+                    paste_offset = mouse_pos - QPointF(center_x, center_y)
+                else:
+                    paste_offset = QPointF(16, 16)
+            else:
+                paste_offset = QPointF(16, 16)
+
             new_items = []
             for entry in clipboard:
                 item = self._deserialize_item(entry, paste_offset)
@@ -119,7 +133,21 @@ class SceneClipboardMixin:
             if new_items:
                 for item in new_items:
                     self.addItem(item)
+                    
+                    # Dynamically calculate the item's target page index based on its position in the scene!
+                    try:
+                        center = item.sceneBoundingRect().center()
+                        new_page_idx = self.get_page_index_at(center)
+                    except Exception:
+                        new_page_idx = -1
+                    if new_page_idx >= 0:
+                        item._page_index = new_page_idx
+                        
                     self.add_item_to_registry(item)
+                    
+                    # Emit page changed signal to update the thumbnail card in sidebar!
+                    if new_page_idx >= 0:
+                        self.item_page_changed.emit(-1, new_page_idx)
 
                 from commands.paste_items_command import PasteItemsCommand
                 from core import undo_stack
@@ -132,7 +160,9 @@ class SceneClipboardMixin:
         page_idx = app_state.current_page
         page_rect = self.get_page_rect(page_idx) if hasattr(self, 'get_page_rect') else None
 
-        if page_rect and not page_rect.isEmpty():
+        if mouse_pos is not None:
+            pos = mouse_pos
+        elif page_rect and not page_rect.isEmpty():
             pos = QPointF(page_rect.center().x(), page_rect.top() + 50)
         else:
             pos = QPointF(100, 100)
@@ -140,8 +170,17 @@ class SceneClipboardMixin:
         try:
             if image_path_to_paste:
                 item = ImageItem.from_image_file(image_path_to_paste, pos, page_idx)
+                if mouse_pos is not None:
+                    w = item._rect.width()
+                    h = item._rect.height()
+                    item.setPos(QPointF(mouse_pos.x() - w / 2, mouse_pos.y() - h / 2))
             else:
-                pos = QPointF(pos.x() - image_to_paste.width() / 2, pos.y())
+                if mouse_pos is not None:
+                    w = image_to_paste.width()
+                    h = image_to_paste.height()
+                    pos = QPointF(mouse_pos.x() - w / 2, mouse_pos.y() - h / 2)
+                else:
+                    pos = QPointF(pos.x() - image_to_paste.width() / 2, pos.y())
                 item = ImageItem.from_qimage(image_to_paste, pos, page_idx)
 
             # Scale down large images
@@ -152,7 +191,20 @@ class SceneClipboardMixin:
                 item.set_rect(QRectF(item._rect.x(), item._rect.y(), new_w, new_h))
 
             self.addItem(item)
+            
+            # Dynamically calculate the item's target page index based on its position in the scene!
+            try:
+                center = item.sceneBoundingRect().center()
+                new_page_idx = self.get_page_index_at(center)
+            except Exception:
+                new_page_idx = -1
+            if new_page_idx >= 0:
+                item._page_index = new_page_idx
+                
             self.add_item_to_registry(item)
+            
+            if new_page_idx >= 0:
+                self.item_page_changed.emit(-1, new_page_idx)
 
             from commands.paste_items_command import PasteItemsCommand
             from core import undo_stack

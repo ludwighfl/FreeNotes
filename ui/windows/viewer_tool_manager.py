@@ -46,6 +46,9 @@ class ViewerToolManagerMixin:
 
     def _on_tool_changed(self, tool_name: str) -> None:
         """Activate the corresponding tool on the scene."""
+        # Deselect all items when changing tools to prevent accidental style modifications
+        self._page_scene.clear_selection()
+
         self._app_state.active_tool_name = tool_name
 
         # When leaving text mode: stop editing + hide bar first
@@ -234,3 +237,42 @@ class ViewerToolManagerMixin:
                 if isinstance(box, TextBoxItem) and box._is_editing:
                     return box
         return None
+
+    def _on_selection_changed(self) -> None:
+        """Triggered when the PageScene selection changes."""
+        selected_items = self._page_scene.get_selected_items()
+        
+        # Only sync toolbar styles if selection is not empty and the active tool is selection or hand
+        if not selected_items:
+            # Re-sync to active tool style if selection becomes empty
+            tool_name = self._app_state.active_tool_name
+            self._toolbar.update_width_buttons(tool_name)
+            return
+
+        if self._app_state.active_tool_name not in ("selection", "hand"):
+            return
+
+        colors = set()
+        widths = set()
+        
+        from items.stroke_item import StrokeItem
+        from items.highlight_item import HighlightItem
+        from items.shape_item import ShapeItem
+        from items.text_box_item import TextBoxItem
+        
+        for item in selected_items:
+            if isinstance(item, (StrokeItem, HighlightItem, TextBoxItem)):
+                if hasattr(item, 'style') and hasattr(item.style, 'color') and item.style.color is not None:
+                    colors.add(item.style.color.name().lower())
+            elif isinstance(item, ShapeItem):
+                if hasattr(item, 'style') and hasattr(item.style, 'stroke_color') and item.style.stroke_color is not None:
+                    colors.add(item.style.stroke_color.name().lower())
+            
+            if isinstance(item, (StrokeItem, HighlightItem)):
+                if hasattr(item, 'style') and hasattr(item.style, 'width') and item.style.width is not None:
+                    widths.add(item.style.width)
+            elif isinstance(item, ShapeItem):
+                if hasattr(item, 'style') and hasattr(item.style, 'stroke_width') and item.style.stroke_width is not None:
+                    widths.add(item.style.stroke_width)
+                    
+        self._toolbar.sync_selection_style(colors, widths)

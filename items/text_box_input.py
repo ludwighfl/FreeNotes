@@ -335,5 +335,44 @@ class TextBoxInputMixin:
         focus_item = self.scene().focusItem() if self.scene() else None
         if focus_item is not None and focus_item.parentItem() is self:
             return
-        self.stop_editing()
+        
+        # Defer focus-out check to let the new focus widget establish
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._check_focus_out)
         super().focusOutEvent(event)
+
+    def _check_focus_out(self) -> None:
+        from shiboken6 import isValid
+        if not isValid(self):
+            return
+            
+        from PySide6.QtWidgets import QApplication
+        focus_widget = QApplication.focusWidget()
+        if focus_widget is None:
+            # Focus went outside the application, or no widget has focus
+            return
+            
+        # Traverse up the parent hierarchy to see if the focus went to:
+        # - FormattingBar
+        # - ToolbarWidget
+        # - PageView
+        # Or if the widget is a popup
+        from PySide6.QtCore import Qt
+        
+        temp = focus_widget
+        while temp is not None:
+            # Check window flags for Popups
+            if temp.windowFlags() & Qt.WindowType.Popup:
+                return
+            
+            # Check class names or object names
+            cls_name = temp.__class__.__name__
+            obj_name = temp.objectName()
+            if cls_name in ("FormattingBar", "ToolbarWidget", "PageView") or obj_name in ("FormattingBar", "comboPopupContainer", "fontComboView"):
+                return
+                
+            temp = temp.parentWidget()
+            
+        # If we didn't find any exempt parent widget, stop editing
+        self.stop_editing()
+

@@ -242,6 +242,15 @@ class ViewerFileIOMixin:
                     renderer.cancel_all()
                     renderer.wait_for_idle()
                 
+                # Also cancel and wait for any thumbnail workers to prevent file lock errors on Windows
+                if hasattr(self, '_sidebar') and hasattr(self._sidebar, 'cancel_and_wait_for_thumbnails'):
+                    self._sidebar.cancel_and_wait_for_thumbnails()
+                
+                # Clear and wait for any global thread pool tasks (like dashboard PdfCardWorkers) to release file handles
+                from PySide6.QtCore import QThreadPool
+                QThreadPool.globalInstance().clear()
+                QThreadPool.globalInstance().waitForDone()
+                
                 doc_mgr.overwrite_pdf()
                 
                 # Invalidate cache, so that next tile requests trigger new pool connections

@@ -100,6 +100,25 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
             parent=self,
         )
 
+    def cancel_and_wait_for_thumbnails(self) -> None:
+        """Cancel all active and zombie thumbnail workers and wait for them to finish."""
+        if self._thumb_worker is not None:
+            worker_ref = self._thumb_worker
+            self._thumb_worker = None
+            try:
+                worker_ref.cancel()
+                worker_ref.wait()
+            except RuntimeError:
+                pass
+
+        for worker in list(self._zombie_workers):
+            try:
+                worker.cancel()
+                worker.wait()
+            except RuntimeError:
+                pass
+        self._zombie_workers.clear()
+
     def clear(self) -> None:
         """Instantly wipe all thumbnails (prevents flashing old data during transitions)."""
         self._loaded_pages.clear()

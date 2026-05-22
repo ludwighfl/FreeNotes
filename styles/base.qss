@@ -243,6 +243,22 @@ QPushButton#newNoteOkBtn { background: #3B7BF5; color: #ffffff; border: none; bo
 QPushButton#newNoteOkBtn:hover { background: #5090FF; }
 QPushButton#newNoteOkBtn:disabled { background: #555555; color: #888888; }
 
+QLabel#newNoteOrientationLabel { color: #cccccc; font-size: 14px; }
+QPushButton#newNotePortraitBtn, QPushButton#newNoteLandscapeBtn {
+    background: #2A2A2A;
+    color: #ffffff;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    font-weight: bold;
+}
+QPushButton#newNotePortraitBtn:hover, QPushButton#newNoteLandscapeBtn:hover {
+    background: #333333;
+}
+QPushButton#newNotePortraitBtn:checked, QPushButton#newNoteLandscapeBtn:checked {
+    background: #333333;
+    border: 2px solid #3B7BF5;
+}
+
 /* ============================================================
    TEXTBOX OPTIONS POPUP
    ============================================================ */

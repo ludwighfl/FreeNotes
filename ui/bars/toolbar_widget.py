@@ -729,6 +729,63 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         # No match — keep current selection
         self._update_chip_icons()
 
+    def sync_selection_style(self, colors: set[str], widths: set[float]) -> None:
+        """Sync the toolbar state (checked chips/widths) to the current selection's colors and widths.
+        
+        If colors contains a single color, check the matching chip if exists, else uncheck all.
+        If colors contains multiple or zero colors, uncheck all chips.
+        If widths contains a single width, check the matching width button if exists, else uncheck all.
+        If widths contains multiple or zero widths, uncheck all width buttons.
+        """
+        # Block signals from group selections to avoid recursive style change triggers
+        self._color_group.blockSignals(True)
+        self._width_group.blockSignals(True)
+        
+        try:
+            # 1. Colors
+            if len(colors) == 1:
+                color_hex = list(colors)[0].lower()
+                matched_idx = -1
+                for i, chip_hex in enumerate(self._chip_colors):
+                    if chip_hex.lower() == color_hex:
+                        matched_idx = i
+                        break
+                
+                if matched_idx != -1:
+                    self._active_color_index = matched_idx
+                    self._color_buttons[matched_idx].setChecked(True)
+                    self._update_chip_icons()
+                else:
+                    self._clear_color_selection()
+                
+                # Update app state's style color
+                self._app_state.update_style(color=QColor(color_hex))
+            else:
+                self._clear_color_selection()
+            
+            # 2. Widths
+            if len(widths) == 1:
+                width_val = list(widths)[0]
+                matched_idx = -1
+                for i, w in enumerate(self._active_widths):
+                    if abs(w - width_val) < 0.01:
+                        matched_idx = i
+                        break
+                
+                if matched_idx != -1:
+                    self._width_buttons[matched_idx].setChecked(True)
+                else:
+                    self._clear_width_selection()
+                
+                # Update app state's style width
+                self._app_state.update_style(width=width_val)
+            else:
+                self._clear_width_selection()
+                
+        finally:
+            self._color_group.blockSignals(False)
+            self._width_group.blockSignals(False)
+
     def update_width_buttons(self, tool_name: str) -> None:
         """Swap width value mapping and restore saved selections.
 

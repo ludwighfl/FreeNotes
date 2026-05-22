@@ -27,6 +27,8 @@ class DocumentManager:
         # LRU cache: key = (page_index, dpi), value = QImage
         self._cache: OrderedDict[tuple[int, int], QImage] = OrderedDict()
         self._lock = threading.Lock()
+        self.template_name: str | None = None
+        self.orientation: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -40,6 +42,8 @@ class DocumentManager:
                 self._document = fitz.open(str(path))
                 self._path = path
                 self.page_map = list(range(self._document.page_count))
+                self.template_name = self._detect_template_name()
+                self.orientation = self._detect_orientation()
                 return True
             except Exception:
                 self._document = None
@@ -58,6 +62,8 @@ class DocumentManager:
             self._path = None
             self.page_map.clear()
             self._cache.clear()
+            self.template_name = None
+            self.orientation = None
 
     def get_page_count(self) -> int:
         """Return the number of pages in the open document (0 if none)."""
@@ -148,12 +154,38 @@ class DocumentManager:
                 temp.close()
                 self.page_map.insert(at_index, -1)
             elif source_idx is None:
-                width, height = 595.0, 842.0
-                if reference_idx is not None and 0 <= reference_idx < self._document.page_count:
-                    page = self._document[reference_idx]
-                    width, height = page.rect.width, page.rect.height
-                self._document.insert_page(at_index, width=width, height=height)
-                self.page_map.insert(at_index, -1)
+                # If we have a template preset, insert a page from that preset PDF
+                inserted_via_template = False
+                template_name = self.template_name or self._detect_template_name()
+                if template_name:
+                    # Detect orientation
+                    orientation = self.orientation or self._detect_orientation()
+                    if reference_idx is not None and 0 <= reference_idx < self._document.page_count:
+                        ref_page = self._document[reference_idx]
+                        if ref_page.rect.width > ref_page.rect.height:
+                            orientation = "landscape"
+                        else:
+                            orientation = "portrait"
+                    
+                    try:
+                        from core.template_generator import generate_pdf_bytes
+                        pdf_bytes = generate_pdf_bytes(template_name, orientation)
+                        import fitz
+                        temp_doc = fitz.open("pdf", pdf_bytes)
+                        self._document.insert_pdf(temp_doc, from_page=0, to_page=0, start_at=at_index)
+                        temp_doc.close()
+                        self.page_map.insert(at_index, -1)
+                        inserted_via_template = True
+                    except Exception as e:
+                        print(f"Failed to insert page from template {template_name} ({orientation}): {e}")
+                
+                if not inserted_via_template:
+                    width, height = 595.0, 842.0
+                    if reference_idx is not None and 0 <= reference_idx < self._document.page_count:
+                        page = self._document[reference_idx]
+                        width, height = page.rect.width, page.rect.height
+                    self._document.insert_page(at_index, width=width, height=height)
+                    self.page_map.insert(at_index, -1)
             else:
                 # Use temp doc to safely copy page and insert at correct index
                 import fitz
@@ -265,6 +297,37 @@ class DocumentManager:
     def reset_structurally_modified(self) -> None:
         self._structurally_modified = False
 
+    def _detect_template_name(self) -> str | None:
+        """Analyze page 0 of the document to detect template presets by drawing count.
+        Note: Assumes self._lock is held by the caller.
+        """
+        if not self._document or self._document.page_count == 0:
+            return None
+        try:
+            drawings = self._document[0].get_drawings()
+            drawings_count = len(drawings)
+            if drawings_count == 82:
+                return "kariert.pdf"
+            elif drawings_count == 36 or drawings_count == 25:
+                return "liniert.pdf"
+        except Exception:
+            pass
+        return None
+
+    def _detect_orientation(self) -> str:
+        """Detect document orientation based on page 0 aspect ratio.
+        Note: Assumes self._lock is held by the caller.
+        """
+        if not self._document or self._document.page_count == 0:
+            return "portrait"
+        try:
+            page = self._document[0]
+            if page.rect.width > page.rect.height:
+                return "landscape"
+        except Exception:
+            pass
+        return "portrait"
+
     def overwrite_pdf(self) -> None:
         """Safely overwrite the original PDF file with current structural changes.
         Must be called ONLY when TileRenderer has been temporarily stopped and its
@@ -279,6 +342,9 @@ class DocumentManager:
             self._document.close()
             
             import time
+            import gc
+            gc.collect()  # Force garbage collection of any remaining fitz objects
+            
             replace_success = False
             last_err = None
             try:
@@ -289,6 +355,7 @@ class DocumentManager:
                         break
                     except OSError as e:
                         last_err = e
+                        gc.collect()  # Retry GC
                         time.sleep(0.1)
                 
                 if not replace_success and last_err:
