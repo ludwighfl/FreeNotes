@@ -152,7 +152,7 @@ class ColorWheelWidget(QWidget):
 
         # --- Step 3: Reset icon in center ---
         painter.setPen(QPen(QColor(255, 255, 255, 180), 0))
-        reset_font = QFont("Segoe UI", 20)
+        reset_font = QFont("Roboto", 20)
         painter.setFont(reset_font)
         icon_rect = QRectF(
             center.x() - 20, center.y() - 16, 40, 32

@@ -216,14 +216,14 @@ class MainWindow(QMainWindow):
 
     def _show_first_run_dialog(self) -> None:
         """Show welcome dialog to choose annotations root folder."""
-        dialog = QDialog(self)
+        from ui.popups.glass_dialog import GlassDialog
+        dialog = GlassDialog(self)
         dialog.setWindowTitle("Willkommen bei FreeNotes")
-        dialog.setFixedSize(480, 280)
+        dialog.setFixedSize(480, 320)
         dialog.setObjectName("firstRunDialog")
 
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(16)
+        layout = dialog._content_layout
+        layout.setSpacing(12)
 
         # Banner / Logo
         banner_path = get_app_path() / "assets" / "banner.png"
@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
             layout.addSpacing(8)
 
         title = QLabel("Willkommen bei FreeNotes")
-        title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        title.setFont(QFont("Roboto", 18, QFont.Weight.Bold))
         title.setObjectName("firstRunTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)

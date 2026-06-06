@@ -348,7 +348,7 @@ class FreenotesStore:
         rx, ry, rw, rh = d["rect"]
         style = ToolStyle(
             color=QColor(d.get("style_color", "#000000")),
-            font_family=d.get("font_family", "Segoe UI"),
+            font_family=d.get("font_family", "Roboto"),
             font_size=d.get("font_size", 14),
         )
         item = TextBoxItem(

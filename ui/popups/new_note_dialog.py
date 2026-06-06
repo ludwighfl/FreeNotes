@@ -24,6 +24,9 @@ from utils.path_helpers import get_app_path
 from core.i18n import tr
 
 
+from ui.popups.glass_dialog import GlassDialog
+
+
 class PresetButton(QFrame):
     """A button-like widget representing a preset PDF."""
 
@@ -61,7 +64,7 @@ class PresetButton(QFrame):
         name = self.pdf_path.stem.capitalize()
         self._title_label = QLabel(name)
         self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._title_label.setFont(QFont("Segoe UI", 12))
+        self._title_label.setFont(QFont("Roboto", 12))
         self._title_label.setObjectName("presetTitleLabel")
         layout.addWidget(self._title_label)
 
@@ -99,21 +102,20 @@ class PresetButton(QFrame):
         super().mousePressEvent(event)
 
 
-class NewNoteDialog(QDialog):
+class NewNoteDialog(GlassDialog):
     """Dialog to create a new note from a preset PDF."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.new_note.title"))
-        self.setFixedSize(540, 480)
+        self.setFixedSize(540, 510)
         self.setObjectName("newNoteDialog")
 
         self._selected_preset: Path | None = None
         self._preset_buttons: list[PresetButton] = []
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(20)
+        layout = self._content_layout
+        layout.setSpacing(12)
 
         # Presets area
 

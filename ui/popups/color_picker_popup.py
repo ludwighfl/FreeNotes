@@ -54,13 +54,13 @@ class ColorPickerPopup(QWidget):
 
         # 1. Header: "Farbe"
         title = QLabel(tr("color_picker.title"))
-        title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        title.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         title.setObjectName("colorPickerTitle")
         layout.addWidget(title)
 
         # 2. "Farbton" label + wheel
         hue_label = QLabel(tr("color_picker.hue"))
-        hue_label.setFont(QFont("Segoe UI", 11))
+        hue_label.setFont(QFont("Roboto", 11))
         hue_label.setObjectName("colorPickerLabel")
         layout.addWidget(hue_label)
 
@@ -71,7 +71,7 @@ class ColorPickerPopup(QWidget):
 
         # 3. "Sättigung" label + slider
         sat_label = QLabel(tr("color_picker.saturation"))
-        sat_label.setFont(QFont("Segoe UI", 11))
+        sat_label.setFont(QFont("Roboto", 11))
         sat_label.setObjectName("colorPickerLabel")
         layout.addWidget(sat_label)
 
@@ -84,7 +84,7 @@ class ColorPickerPopup(QWidget):
 
         # 4. "Helligkeit" label + slider
         val_label = QLabel(tr("color_picker.value"))
-        val_label.setFont(QFont("Segoe UI", 11))
+        val_label.setFont(QFont("Roboto", 11))
         val_label.setObjectName("colorPickerLabel")
         layout.addWidget(val_label)
 

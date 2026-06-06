@@ -199,7 +199,7 @@ class PdfTextExporter:
 
         fl = family.lower()
 
-        # Map Segoe UI
+        # Map Roboto
         if "segoe" in fl:
             if bold and italic:
                 filename = "segoeuiz.ttf"

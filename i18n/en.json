@@ -124,5 +124,13 @@
     "viewer.no_pdf_title": "No PDF",
     "viewer.no_pdf_msg": "No PDF is open.",
     "viewer.export_pdf_as": "Export PDF as",
-    "viewer.export_progress": "Exporting PDF …"
+    "viewer.export_progress": "Exporting PDF …",
+    "dialog.button.yes": "Yes",
+    "dialog.button.no": "No",
+    "dialog.button.ok": "OK",
+    "dialog.button.cancel": "Cancel",
+    "dialog.title.info": "Information",
+    "dialog.title.warning": "Warning",
+    "dialog.title.error": "Error",
+    "dialog.title.question": "Question"
 }

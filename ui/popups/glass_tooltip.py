@@ -41,7 +41,7 @@ class GlassToolTip(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         self._text: str = ""
-        self._font = QFont("Segoe UI", 9, QFont.Weight.Medium)
+        self._font = QFont("Roboto", 9, QFont.Weight.Medium)
         self._padding_h = 12
         self._padding_v = 6
         self._radius = 6

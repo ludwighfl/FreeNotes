@@ -46,7 +46,7 @@ def make_color_icon(color: str, size: int = 20, checked: bool = False) -> QIcon:
         
         # Pen-Dicke bleibt bei 2 (logischen) Pixeln
         painter.setPen(QPen(check_color, 2))
-        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.setFont(QFont("Roboto", 10, QFont.Weight.Bold))
         painter.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "✓")
 
     painter.end()

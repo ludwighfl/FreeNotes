@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog, QApplication
+from PySide6.QtWidgets import QFileDialog, QProgressDialog, QApplication
 
+from ui.popups.custom_dialogs import CustomMessageBox
 from core import undo_stack
 from core.freenotes_store import FreenotesStore
 from core.pdf_exporter import PdfExporter
@@ -76,7 +77,7 @@ class ViewerFileIOMixin:
         from PySide6.QtGui import QIntValidator
 
         if not success:
-            QMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_open_pdf"))  # type: ignore
+            CustomMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_open_pdf"))  # type: ignore
             self._title_label.setText(tr("viewer.load_error"))
             return
 
@@ -183,10 +184,10 @@ class ViewerFileIOMixin:
             if pdf_path and os.path.exists(pdf_path):
                 self.open_pdf(Path(pdf_path), auto_load_freenotes=False, _freenotes_to_load=path)
             else:
-                QMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_missing_pdf"))  # type: ignore
+                CustomMessageBox.critical(self, tr("viewer.error_title"), tr("viewer.error_missing_pdf"))  # type: ignore
 
         except Exception as e:
-            QMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
+            CustomMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
 
     def _load_specific_freenotes(self, path: str) -> None:
         """Called internally after the PDF is loaded to load the corresponding .freenotes data."""
@@ -212,7 +213,7 @@ class ViewerFileIOMixin:
             from core.app_settings import AppSettings
             AppSettings.set_last_opened_doc(path)
         except Exception as e:
-            QMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
+            CustomMessageBox.critical(self, tr("viewer.load_error"), str(e))  # type: ignore
 
     def _on_load(self) -> None:
         """Slot for Load action from ThreeDotMenu."""
@@ -269,15 +270,14 @@ class ViewerFileIOMixin:
 
     def _on_clear_annotations(self) -> None:
         """Slot for Clear Annotations action from ThreeDotMenu."""
-        from PySide6.QtWidgets import QMessageBox
-        reply = QMessageBox.warning(
+        reply = CustomMessageBox.warning(
             self,  # type: ignore
             tr("viewer.clear_annotations"),
             tr("viewer.clear_annotations_msg"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            CustomMessageBox.StandardButton.Yes | CustomMessageBox.StandardButton.No,
+            CustomMessageBox.StandardButton.No
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == CustomMessageBox.StandardButton.Yes:
             from commands.clear_annotations_command import ClearAnnotationsCommand
             cmd = ClearAnnotationsCommand(
                 scene=self._page_scene,
@@ -290,7 +290,7 @@ class ViewerFileIOMixin:
         """Slot for Export action from ThreeDotMenu."""
         pdf_path = self._app_state.current_pdf_path
         if not pdf_path:
-            QMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
+            CustomMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
             return
         base, ext = os.path.splitext(str(pdf_path))
         default_target = f"{base}_annotiert{ext}"
@@ -300,7 +300,7 @@ class ViewerFileIOMixin:
         """Slot for Export As action from ThreeDotMenu."""
         pdf_path = self._app_state.current_pdf_path
         if not pdf_path:
-            QMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
+            CustomMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
             return
         default_name = os.path.splitext(str(pdf_path))[0] + ".pdf"
         target, _ = QFileDialog.getSaveFileName(
@@ -331,13 +331,13 @@ class ViewerFileIOMixin:
                 progress_callback=on_progress,
             )
             progress.close()
-            QMessageBox.information(
+            CustomMessageBox.information(
                 self, tr("settings.library.export_success"),  # type: ignore
                 tr("settings.library.pdf_saved").format(target),
             )
         except Exception as e:
             progress.close()
-            QMessageBox.critical(
+            CustomMessageBox.critical(
                 self, tr("settings.library.export_failed"), str(e),  # type: ignore
             )
 

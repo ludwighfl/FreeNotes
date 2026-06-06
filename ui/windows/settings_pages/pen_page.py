@@ -137,7 +137,7 @@ class PenPage(QWidget):
 
     def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        lbl.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         lbl.setObjectName("settingsPageTitle")
         return lbl
 

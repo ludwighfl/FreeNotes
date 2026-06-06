@@ -97,20 +97,20 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
 
         # Document title
         self._title_label = EditableTitleLabel(tr("viewer.document"))
-        self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        self._title_label.setFont(QFont("Roboto", 14, QFont.Weight.Bold))
         self._title_label.setObjectName("viewerTitleLabel")
         self._title_label.rename_requested.connect(self._on_title_rename_requested)
         header_layout.addWidget(self._title_label)
 
         # Extension label
         self._ext_label = QLabel(".pdf")
-        self._ext_label.setFont(QFont("Segoe UI", 14))
+        self._ext_label.setFont(QFont("Roboto", 14))
         self._ext_label.setObjectName("viewerExtLabel")
         header_layout.addWidget(self._ext_label)
 
         # Breadcrumb
         self._breadcrumb_label = QLabel("")
-        self._breadcrumb_label.setFont(QFont("Segoe UI", 11))
+        self._breadcrumb_label.setFont(QFont("Roboto", 11))
         self._breadcrumb_label.setObjectName("viewerBreadcrumbLabel")
         header_layout.addWidget(self._breadcrumb_label)
 
@@ -164,16 +164,16 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._page_input.setObjectName("pageInput")
         self._page_input.setFixedWidth(40)
         self._page_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._page_input.setFont(QFont("Segoe UI", 12))
+        self._page_input.setFont(QFont("Roboto", 12))
         page_counter_layout.addWidget(self._page_input)
 
         slash_label = QLabel("/")
-        slash_label.setFont(QFont("Segoe UI", 12))
+        slash_label.setFont(QFont("Roboto", 12))
         slash_label.setStyleSheet("color: #888888;")
         page_counter_layout.addWidget(slash_label)
 
         self._total_pages_label = QLabel("0")
-        self._total_pages_label.setFont(QFont("Segoe UI", 12))
+        self._total_pages_label.setFont(QFont("Roboto", 12))
         self._total_pages_label.setStyleSheet("color: #888888;")
         page_counter_layout.addWidget(self._total_pages_label)
 

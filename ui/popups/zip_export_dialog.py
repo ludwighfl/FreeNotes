@@ -16,17 +16,19 @@ from PySide6.QtWidgets import (
 from core.app_settings import AppSettings
 
 
-class ZipExportDialog(QDialog):
+from ui.popups.glass_dialog import GlassDialog
+
+
+class ZipExportDialog(GlassDialog):
     """Dialog for choosing ZIP export mode."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Bibliothek exportieren")
-        self.setFixedSize(440, 300)
+        self.setFixedSize(440, 340)
         self.setObjectName("zipExportDialog")
 
         is_light = AppSettings.get_theme() == "light"
-        bg_color = "#f5f5f5" if is_light else "#1e1e1e"
         title_color = "#1a1a1a" if is_light else "#ffffff"
         text_color = "#333333" if is_light else "#cccccc"
         desc_color = "#666666" if is_light else "#888888"
@@ -36,12 +38,11 @@ class ZipExportDialog(QDialog):
         btn_border = "#d0d0d0" if is_light else "#444444"
         btn_hover_bg = "#e8e8e8" if is_light else "#444444"
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 20)
-        layout.setSpacing(16)
+        layout = self._content_layout
+        layout.setSpacing(12)
 
         title = QLabel("Bibliothek exportieren")
-        title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        title.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {title_color};")
         layout.addWidget(title)
 
@@ -87,7 +88,7 @@ class ZipExportDialog(QDialog):
         layout.addLayout(btn_row)
 
         self.setStyleSheet(f"""
-            #zipExportDialog {{ background: {bg_color}; }}
+            #zipExportDialog {{ background: transparent; }}
             QRadioButton {{ color: {text_color}; }}
             QPushButton {{
                 background: {btn_bg}; color: {btn_text};

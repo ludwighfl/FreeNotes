@@ -9,12 +9,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QPushButton,
-    QMessageBox,
     QApplication,
 )
 
 from core.i18n import tr
 from core.app_settings import AppSettings
+from ui.popups.custom_dialogs import CustomMessageBox
 
 
 class AppPage(QWidget):
@@ -34,7 +34,7 @@ class AppPage(QWidget):
 
         # Danger zone
         danger_title = QLabel(tr("settings.app.reset_title"))
-        danger_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        danger_title.setFont(QFont("Roboto", 12, QFont.Weight.Bold))
         danger_title.setObjectName("settingsDangerTitle")
         layout.addWidget(danger_title)
         layout.addSpacing(8)
@@ -54,20 +54,20 @@ class AppPage(QWidget):
 
     def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        lbl.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         lbl.setObjectName("settingsPageTitle")
         return lbl
 
     def _on_reset_clicked(self) -> None:
         """Prompt confirmation and clear all settings."""
-        reply = QMessageBox.warning(
+        reply = CustomMessageBox.warning(
             self,
             tr("settings.app.reset_confirm_title"),
             tr("settings.app.reset_confirm_msg"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            CustomMessageBox.StandardButton.Yes | CustomMessageBox.StandardButton.No,
+            CustomMessageBox.StandardButton.No
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == CustomMessageBox.StandardButton.Yes:
             # Clear QSettings
             AppSettings._get().clear()
             

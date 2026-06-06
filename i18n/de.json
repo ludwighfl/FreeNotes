@@ -124,5 +124,13 @@
     "viewer.no_pdf_title": "Kein PDF",
     "viewer.no_pdf_msg": "Kein PDF geöffnet.",
     "viewer.export_pdf_as": "PDF exportieren als",
-    "viewer.export_progress": "PDF wird exportiert …"
+    "viewer.export_progress": "PDF wird exportiert …",
+    "dialog.button.yes": "Ja",
+    "dialog.button.no": "Nein",
+    "dialog.button.ok": "OK",
+    "dialog.button.cancel": "Abbrechen",
+    "dialog.title.info": "Information",
+    "dialog.title.warning": "Warnung",
+    "dialog.title.error": "Fehler",
+    "dialog.title.question": "Frage"
 }

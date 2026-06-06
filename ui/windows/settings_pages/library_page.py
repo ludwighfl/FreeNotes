@@ -13,10 +13,11 @@ from PySide6.QtWidgets import (
     QFrame,
     QPushButton,
     QFileDialog,
-    QMessageBox,
     QProgressDialog,
     QApplication,
 )
+
+from ui.popups.custom_dialogs import CustomMessageBox
 
 from core.i18n import tr
 
@@ -99,13 +100,13 @@ class LibraryPage(QWidget):
         if not chosen:
             return
 
-        reply = QMessageBox.question(
+        reply = CustomMessageBox.question(
             self,
             tr("settings.library.change_path_title"),
             tr("settings.library.change_path_msg").format(chosen),
-            QMessageBox.StandardButton.Ok
-            | QMessageBox.StandardButton.Cancel)
-        if reply != QMessageBox.StandardButton.Ok:
+            CustomMessageBox.StandardButton.Ok
+            | CustomMessageBox.StandardButton.Cancel)
+        if reply != CustomMessageBox.StandardButton.Ok:
             return
 
         new_root = Path(chosen)
@@ -119,7 +120,7 @@ class LibraryPage(QWidget):
 
         lm = AppState().library_manager
         if lm is None:
-            QMessageBox.warning(
+            CustomMessageBox.warning(
                 self, tr("settings.library.no_library_title"),
                 tr("settings.library.no_library_msg"))
             return
@@ -152,12 +153,12 @@ class LibraryPage(QWidget):
                 exporter.export_backup(
                     Path(target), on_progress)
             progress.close()
-            QMessageBox.information(
+            CustomMessageBox.information(
                 self, tr("settings.library.export_success"),
                 tr("settings.library.zip_saved").format(target))
         except Exception as e:
             progress.close()
-            QMessageBox.critical(
+            CustomMessageBox.critical(
                 self, tr("settings.library.export_failed"), str(e))
 
     # ------------------------------------------------------------------
@@ -166,7 +167,7 @@ class LibraryPage(QWidget):
 
     def _make_title(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        lbl.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         lbl.setObjectName("settingsPageTitle")
         return lbl
 

@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING
 from pathlib import Path
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QMenu, QInputDialog, QMessageBox
+    QWidget, QHBoxLayout, QLabel, QMenu
 )
 from ui.popups.glass_menu import GlassMenu
+from ui.popups.custom_dialogs import CustomInputDialog, CustomMessageBox
 
 from ui.components.icon_factory import IconFactory
 from core.i18n import tr
@@ -108,7 +109,7 @@ class ManagerSidebarMixin:
         if not lm:
             return
             
-        new_name, ok = QInputDialog.getText(
+        new_name, ok = CustomInputDialog.getText(
             self, "Ordner umbenennen", "Neuer Name:", text=folder.name)
         if ok and new_name.strip() and new_name.strip() != folder.name:
             try:
@@ -124,7 +125,7 @@ class ManagerSidebarMixin:
                 else:
                     self.load_sidebar()
             except Exception as e:
-                QMessageBox.warning(self, "Fehler", str(e))
+                CustomMessageBox.warning(self, "Fehler", str(e))
                 
     def _on_delete_folder_action(self, folder: Path) -> None:
         from app.app_state import AppState
@@ -138,11 +139,11 @@ class ManagerSidebarMixin:
             subfolders = lm.get_all_folders(folder)
             
             if docs or subfolders:
-                reply = QMessageBox.question(
+                reply = CustomMessageBox.question(
                     self, "Ordner löschen",
                     f'Der Ordner "{folder.name}" enthält Dokumente oder Unterordner.\nWirklich in den Papierkorb verschieben?',
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply != QMessageBox.StandardButton.Yes:
+                    CustomMessageBox.StandardButton.Yes | CustomMessageBox.StandardButton.No)
+                if reply != CustomMessageBox.StandardButton.Yes:
                     return
             
             lm.delete_folder(folder)
@@ -156,7 +157,7 @@ class ManagerSidebarMixin:
                 self.load_sidebar()
                 
         except Exception as e:
-            QMessageBox.warning(self, "Fehler", f"Konnte Ordner nicht löschen: {e}")
+            CustomMessageBox.warning(self, "Fehler", f"Konnte Ordner nicht löschen: {e}")
 
     def _make_sidebar_item(
         self,
@@ -210,7 +211,7 @@ class ManagerSidebarMixin:
         # Sidebar is 280px. Margins and icons take up roughly 90px + indent * 16px.
         from PySide6.QtGui import QFont, QFontMetrics
         available_w = max(40, 190 - (indent * 16))
-        metrics = QFontMetrics(QFont("Segoe UI", 10))
+        metrics = QFontMetrics(QFont("Roboto", 10))
         elided_text = metrics.elidedText(text, Qt.TextElideMode.ElideRight, available_w)
         text_lbl.setText(elided_text)
         text_lbl.setToolTip(text)

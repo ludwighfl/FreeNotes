@@ -15,9 +15,22 @@ ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FreeNotes")
 QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
+def load_fonts() -> None:
+    """Load Roboto fonts from assets/fonts."""
+    from PySide6.QtGui import QFontDatabase
+    from utils.path_helpers import get_app_path
+    fonts_dir = get_app_path() / "assets" / "fonts"
+    if fonts_dir.exists():
+        for font_file in fonts_dir.glob("*.ttf"):
+            QFontDatabase.addApplicationFont(str(font_file))
+
+
 def run_splash_process() -> None:
     """Run the standalone splash screen process."""
     app = QApplication(sys.argv)
+    load_fonts()
+    from PySide6.QtGui import QFont
+    app.setFont(QFont("Roboto", 9))
     from utils.path_helpers import get_app_path
     from ui.windows.splash_screen import SplashScreen
     
@@ -39,6 +52,9 @@ def main() -> None:
     splash_proc = subprocess.Popen([sys.executable, sys.argv[0], "--splash"])
 
     app = QApplication(sys.argv)
+    load_fonts()
+    from PySide6.QtGui import QFont
+    app.setFont(QFont("Roboto", 10))
     app.setDoubleClickInterval(300)
     app.setStyle("Fusion") # Prevent PyInstaller from losing style plugins
     from core.i18n import init_i18n

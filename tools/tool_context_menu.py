@@ -62,7 +62,7 @@ def build_tool_context_menu(event: QGraphicsSceneMouseEvent, scene: PageScene) -
             border: 1px solid {border};
             border-radius: 8px;
             padding: 4px 0;
-            font-family: "Segoe UI", sans-serif;
+            font-family: "Roboto", sans-serif;
             font-size: 13px;
         }}
         QMenu#toolContextMenu::item {{

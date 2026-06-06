@@ -19,10 +19,9 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMenu,
     QToolButton,
-    QInputDialog,
-    QMessageBox,
 )
 from ui.popups.glass_menu import GlassMenu
+from ui.popups.custom_dialogs import CustomInputDialog
 
 from ui.components.icon_factory import IconFactory
 from ui.components.pdf_card import PdfCard
@@ -69,7 +68,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         sidebar_outer.setSpacing(4)
 
         title_label = QLabel(tr("manager.notes"))
-        title_label.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        title_label.setFont(QFont("Roboto", 16, QFont.Weight.Bold))
         title_label.setObjectName("managerTitleLabel")
         sidebar_outer.addWidget(title_label)
         sidebar_outer.addSpacing(12)
@@ -289,7 +288,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
 
     def _on_create_folder(self) -> None:
         from app.app_state import AppState
-        name, ok = QInputDialog.getText(
+        name, ok = CustomInputDialog.getText(
             self, "Neuer Ordner", "Ordnername:", text="Neuer Ordner")
         if not ok or not name.strip():
             return

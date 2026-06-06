@@ -17,8 +17,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QMenu,
-    QInputDialog,
-    QMessageBox,
 )
 
 
@@ -165,7 +163,7 @@ class PdfCard(QFrame):
         if len(display_name) > 22:
             display_name = display_name[:20] + "…"
         self._name_label = QLabel(display_name)
-        self._name_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self._name_label.setFont(QFont("Roboto", 11, QFont.Weight.Bold))
         self._name_label.setObjectName("pdfCardName")
         self._name_label.setWordWrap(False)
         layout.addWidget(self._name_label)
@@ -177,7 +175,7 @@ class PdfCard(QFrame):
         except Exception:
             date_str = ""
         self._date_label = QLabel(date_str)
-        self._date_label.setFont(QFont("Segoe UI", 10))
+        self._date_label.setFont(QFont("Roboto", 10))
         self._date_label.setObjectName("pdfCardDate")
         layout.addWidget(self._date_label)
         

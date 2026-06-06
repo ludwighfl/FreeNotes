@@ -13,7 +13,7 @@
 QWidget {
     background-color: #1a1a1a;
     color: #ffffff;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Roboto", "Segoe UI", sans-serif;
 }
 
 /* --- Main Window --- */
@@ -31,16 +31,16 @@ QStackedWidget {
    ============================================================ */
 
 #managerView {
-    background-color: #1a1a1a;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f1f22, stop:1 #121214);
 }
 
 #managerSidebar {
-    background-color: #242424;
-    border-right: 1px solid #3a3a3a;
+    background-color: rgba(36, 36, 36, 160);
+    border-right: 1px solid rgba(255, 255, 255, 15);
 }
 
 #managerContent {
-    background-color: #1a1a1a;
+    background-color: transparent;
 }
 
 #managerTitleLabel {
@@ -90,7 +90,7 @@ QWidget#sidebarItem {
     border-radius: 6px;
 }
 QWidget#sidebarItem:hover {
-    background: #2d2d2d;
+    background: rgba(255, 255, 255, 12);
 }
 QWidget#sidebarItem[active="true"] {
     background: #3B7BF5;
@@ -100,12 +100,12 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 }
 
 #managerScroll {
-    background-color: #1a1a1a;
+    background-color: transparent;
     border: none;
 }
 
 #folderList {
-    background-color: #242424;
+    background-color: rgba(36, 36, 36, 160);
     border: none;
     outline: none;
 }
@@ -117,7 +117,7 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 }
 
 #folderList::item:hover {
-    background-color: #333333;
+    background-color: rgba(255, 255, 255, 10);
 }
 
 #folderList::item:selected {
@@ -127,20 +127,20 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 
 /* Create / Import button */
 #createBtn {
-    background-color: #3B7BF5;
+    background-color: rgba(59, 123, 245, 210);
     color: #ffffff;
-    border: none;
-    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 12);
+    border-radius: 8px;
     padding: 8px 18px;
     font-weight: bold;
 }
 
 #createBtn:hover {
-    background-color: #4a8aff;
+    background-color: rgba(74, 138, 255, 230);
 }
 
 #createBtn:pressed {
-    background-color: #2e6be0;
+    background-color: rgba(46, 107, 224, 240);
 }
 
 #createBtn::menu-indicator {
@@ -150,41 +150,42 @@ QWidget#sidebarItem[active="true"] #sidebarItemText {
 
 /* PDF Cards */
 #pdfCard {
-    background-color: #2d2d2d;
-    border: 1px solid #3a3a3a;
-    border-radius: 8px;
+    background-color: rgba(45, 45, 45, 140);
+    border: 1px solid rgba(255, 255, 255, 15);
+    border-radius: 12px;
 }
 
 #pdfCard:hover {
-    border-color: #555555;
+    border-color: rgba(255, 255, 255, 30);
+    background-color: rgba(55, 55, 55, 180);
 }
 
 #pdfCard[selected="true"] {
     border: 2px solid #3B7BF5;
-    background-color: #333333;
+    background-color: rgba(59, 123, 245, 30);
 }
 
 #pdfCardThumb {
-    background-color: #3a3a3a;
-    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 8);
+    border-radius: 8px;
 }
 
 /* Manager separator */
 #managerSeparator {
-    color: #3a3a3a;
+    color: rgba(255, 255, 255, 15);
 }
 
 /* Settings & Multi-Select Buttons */
 QToolButton#settingsBtn,
 QToolButton#multiSelectBtn {
-    background: transparent;
-    border: 1px solid #3a3a3a;
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 8);
+    border: 1px solid rgba(255, 255, 255, 12);
+    border-radius: 8px;
 }
 QToolButton#settingsBtn:hover,
 QToolButton#multiSelectBtn:hover {
-    background: #333333;
-    border-color: #555555;
+    background: rgba(255, 255, 255, 16);
+    border-color: rgba(255, 255, 255, 25);
 }
 QToolButton#settingsBtn::menu-indicator {
     width: 0; height: 0;
@@ -219,7 +220,7 @@ QMenu#settingsMenu::separator {
    NEW NOTE DIALOG
    ============================================================ */
 
-QDialog#newNoteDialog { background: #1e1e1e; }
+QDialog#newNoteDialog { background: transparent; }
 QLabel#presetTitleLabel { color: #ffffff; }
 QLabel#newNoteNameLabel { color: #cccccc; font-size: 14px; }
 QLineEdit#newNoteNameInput { 
@@ -287,7 +288,7 @@ QMenu#eraserModeMenu, QMenu#selectionModeMenu, QMenu#shapeMenu {
     border: 1px solid rgba(255, 255, 255, 18);
     border-radius: 8px;
     padding: 6px 4px;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Roboto", "Segoe UI", sans-serif;
     font-size: 13px;
 }
 QMenu#eraserModeMenu::item, QMenu#selectionModeMenu::item, QMenu#shapeMenu::item {
@@ -467,7 +468,7 @@ QToolTip {
     border: 1px solid rgba(255, 255, 255, 18);
     padding: 6px 10px;
     border-radius: 6px;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Roboto", "Segoe UI", sans-serif;
     font-size: 12px;
 }
 
@@ -571,29 +572,32 @@ QFrame[frameShape="5"] { /* VLine */
    ============================================================ */
 
 QWidget#settingsView {
-    background: #1a1a1a;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f1f22, stop:1 #121214);
 }
 
 QWidget#settingsSidebar {
-    background: #242424;
+    background: rgba(36, 36, 36, 160);
+    border-right: 1px solid rgba(255, 255, 255, 15);
 }
 
 QWidget#settingsHeader {
-    background: #1a1a1a;
+    background: transparent;
 }
 
 QFrame#settingsSeparator {
-    color: #3a3a3a;
+    border: none;
+    background-color: rgba(255, 255, 255, 15);
     max-height: 1px;
+    min-height: 1px;
 }
 
 QStackedWidget#settingsStack {
-    background: #1a1a1a;
+    background: transparent;
 }
 
 /* Settings Pages */
 QWidget#settingsPage {
-    background: #1a1a1a;
+    background: transparent;
 }
 QLabel#settingsTitleLabel { color: #ffffff; }
 QLabel#settingsPlaceholder { color: #555555; }
@@ -601,7 +605,7 @@ QLabel#settingsPlaceholder { color: #555555; }
 /* Sidebar Buttons */
 QToolButton#settingsSidebarBtn {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 6px;
     color: #cccccc;
     font-size: 13px;
@@ -609,18 +613,19 @@ QToolButton#settingsSidebarBtn {
     text-align: left;
 }
 QToolButton#settingsSidebarBtn:hover {
-    background: #2d2d2d;
+    background: rgba(255, 255, 255, 12);
 }
 QToolButton#settingsSidebarBtn:checked {
-    background: #3B7BF5;
+    background: rgba(59, 123, 245, 180);
+    border: 1px solid rgba(255, 255, 255, 20);
     color: #ffffff;
 }
 
 /* Mode / Lang Buttons */
 QToolButton#modeBtn,
 QToolButton#langBtn {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
+    background: rgba(255, 255, 255, 8);
+    border: 1px solid rgba(255, 255, 255, 12);
     border-radius: 6px;
     color: #cccccc;
     font-size: 13px;
@@ -628,33 +633,33 @@ QToolButton#langBtn {
 }
 QToolButton#modeBtn:checked,
 QToolButton#langBtn:checked {
-    background: #3B7BF5;
-    border-color: #3B7BF5;
+    background: rgba(59, 123, 245, 180);
+    border: 1px solid rgba(59, 123, 245, 200);
     color: #ffffff;
 }
 QToolButton#modeBtn:hover:!checked,
 QToolButton#langBtn:hover:!checked {
-    background: #333333;
+    background: rgba(255, 255, 255, 16);
 }
 
 /* Action Buttons */
 QPushButton#settingsActionBtn {
-    background: #2d2d2d;
-    border: 1px solid #3a3a3a;
+    background: rgba(255, 255, 255, 8);
+    border: 1px solid rgba(255, 255, 255, 12);
     border-radius: 6px;
     color: #cccccc;
     padding: 8px 16px;
     font-size: 13px;
 }
 QPushButton#settingsActionBtn:hover {
-    background: #333333;
-    border-color: #555555;
+    background: rgba(255, 255, 255, 16);
+    border-color: rgba(255, 255, 255, 25);
 }
 
 /* Settings Path Label */
 QLabel#settingsPathLabel {
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
+    background: rgba(255, 255, 255, 6);
+    border: 1px solid rgba(255, 255, 255, 10);
     border-radius: 4px;
     color: #cccccc;
     font-size: 12px;
@@ -726,7 +731,7 @@ QToolButton#searchCloseBtn:hover {
    FIRST RUN DIALOG
    ============================================================ */
 
-QDialog#firstRunDialog { background: #1e1e1e; }
+QDialog#firstRunDialog { background: transparent; }
 QLabel#firstRunTitle { color: #ffffff; }
 QLabel#firstRunDesc { color: #aaaaaa; font-size: 13px; }
 QLabel#firstRunPathLabel {
@@ -799,7 +804,7 @@ QMenu {
     border: 1px solid rgba(255, 255, 255, 18);
     border-radius: 8px;
     padding: 6px 4px;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Roboto", "Segoe UI", sans-serif;
     font-size: 13px;
 }
 QMenu::item {

@@ -100,7 +100,7 @@ class ColorChipButton(QToolButton):
             luminance = 0.299 * c.redF() + 0.587 * c.greenF() + 0.114 * c.blueF()
             check_color = QColor("#1a1a1a") if luminance > 0.6 else QColor("#ffffff")
             painter.setPen(QPen(check_color, 2))
-            painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            painter.setFont(QFont("Roboto", 9, QFont.Weight.Bold))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "✓")
             
         painter.end()

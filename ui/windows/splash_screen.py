@@ -1,15 +1,9 @@
-"""Splash screen – banner logo with a modern spinning loader underneath.
-
-The spinner is drawn as a simple QPainter arc that rotates via QTimer.
-paintEvent cost is ~1 ms (background fill + drawPixmap + drawArc), making
-the animation immune to main-thread load.
-"""
-
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QPen, QKeyEvent, QGuiApplication,
+    QPixmap, QPainter, QColor, QPen, QKeyEvent, QGuiApplication, QPainterPath,
 )
+from core.app_settings import AppSettings
 
 
 class SplashScreen(QWidget):
@@ -30,9 +24,9 @@ class SplashScreen(QWidget):
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.SplashScreen
         )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.resize(500, 300)
         
-        self.bg_color = QColor("#1a1a1a")
         self.logical_width = 0
         self.logical_height = 0
         self.pixmap = QPixmap()
@@ -108,7 +102,22 @@ class SplashScreen(QWidget):
     def paintEvent(self, event) -> None:                # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), self.bg_color)
+
+        is_light = AppSettings.get_theme() == "light"
+        if is_light:
+            bg = QColor(245, 245, 245, 245)
+            border = QColor(0, 0, 0, 30)
+            spinner_color = QColor(0, 0, 0, 180)
+        else:
+            bg = QColor(30, 30, 30, 245)
+            border = QColor(255, 255, 255, 30)
+            spinner_color = QColor(255, 255, 255, 200)
+
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.fillPath(path, bg)
+        p.setPen(QPen(border, 1.5))
+        p.drawPath(path)
 
         if self.logical_width == 0:
             p.end()
@@ -129,7 +138,7 @@ class SplashScreen(QWidget):
         r = self.SPINNER_SIZE / 2.0
         spinner_rect = QRectF(cx - r, cy - r, self.SPINNER_SIZE, self.SPINNER_SIZE)
 
-        pen = QPen(QColor(255, 255, 255, 200))
+        pen = QPen(spinner_color)
         pen.setWidthF(self.SPINNER_THICKNESS)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)

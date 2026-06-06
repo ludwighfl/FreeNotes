@@ -17,7 +17,7 @@ class PageBadge(QLabel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self.setFont(QFont("Roboto", 9, QFont.Weight.Bold))
         self.setObjectName("pageBadge")
         # Don't block click events on the thumbnail
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -80,7 +80,7 @@ class ThumbnailCard(QFrame):
         from PySide6.QtGui import QColor
         
         is_light = AppSettings.get_theme() == "light"
-        hover_color = QColor(0, 0, 0, 8) if is_light else QColor(255, 255, 255, 12)
+        hover_color = QColor(0, 0, 0, 0) if is_light else QColor(255, 255, 255, 12)
         
         self._hover_effect = BackgroundFadeHoverEffect(
             widget=self,

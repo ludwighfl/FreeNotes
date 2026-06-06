@@ -53,7 +53,7 @@ class SettingsView(QWidget):
         header_layout.addWidget(back_btn)
 
         title = QLabel(tr("settings.title"))
-        title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        title.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
         title.setObjectName("settingsTitleLabel")
         header_layout.addWidget(title)
         header_layout.addStretch()

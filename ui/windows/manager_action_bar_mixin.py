@@ -7,11 +7,12 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QToolButton,
-    QStackedWidget, QMessageBox, QInputDialog, QFileDialog
+    QStackedWidget, QFileDialog
 )
 from PySide6.QtGui import QFont
 
 from ui.components.icon_factory import IconFactory
+from ui.popups.custom_dialogs import CustomMessageBox, CustomInputDialog
 
 if TYPE_CHECKING:
     from ui.components.pdf_card import PdfCard
@@ -35,7 +36,7 @@ class ManagerActionBarMixin:
         default_layout.setContentsMargins(0, 0, 0, 0)
         
         self._folder_title = QLabel("Alle Dokumente")
-        self._folder_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        self._folder_title.setFont(QFont("Roboto", 16, QFont.Weight.Bold))
         self._folder_title.setObjectName("managerFolderTitle")
         default_layout.addWidget(self._folder_title)
         default_layout.addStretch()
@@ -68,7 +69,7 @@ class ManagerActionBarMixin:
 
         # Selection Count Label
         self._selection_count_lbl = QLabel("1 ausgewählt")
-        self._selection_count_lbl.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        self._selection_count_lbl.setFont(QFont("Roboto", 12, QFont.Weight.Bold))
         self._selection_count_lbl.setStyleSheet("color: #ffffff; background: transparent;")
         action_layout.addWidget(self._selection_count_lbl)
         
@@ -168,7 +169,7 @@ class ManagerActionBarMixin:
         if len(docs) != 1: return
         doc = docs[0]
         
-        name, ok = QInputDialog.getText(
+        name, ok = CustomInputDialog.getText(
             self, "Umbenennen", "Neuer Name:", text=doc.get("name", ""))
         self.clear_selection()
         if ok and name.strip():
@@ -180,13 +181,13 @@ class ManagerActionBarMixin:
         if not docs: return
         
         text = f'"{docs[0].get("name")}"' if len(docs) == 1 else f"{len(docs)} Dokumente"
-        reply = QMessageBox.question(
+        reply = CustomMessageBox.question(
             self, "Löschen",
             f'{text} in den Papierkorb verschieben?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            CustomMessageBox.StandardButton.Yes | CustomMessageBox.StandardButton.No)
             
         self.clear_selection()
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == CustomMessageBox.StandardButton.Yes:
             for doc in docs:
                 self._on_delete(doc) # Existing delete handler
 
@@ -234,7 +235,7 @@ class ManagerActionBarMixin:
                     exporter = PdfExporter(scene, dm)
                     exporter.export(str(pdf_path), out_file)
                     
-                QMessageBox.information(self, "Export", "Erfolgreich exportiert.")
+                CustomMessageBox.information(self, "Export", "Erfolgreich exportiert.")
         else:
             # Multi Export (ZIP)
             out_file, _ = QFileDialog.getSaveFileName(self, "Exportieren als ZIP", "export.zip", "ZIP Dateien (*.zip)")
@@ -279,6 +280,6 @@ class ManagerActionBarMixin:
                             
                     progress.setValue(len(docs))
                     if not progress.wasCanceled():
-                        QMessageBox.information(self, "Export", "Erfolgreich als ZIP exportiert.")
+                        CustomMessageBox.information(self, "Export", "Erfolgreich als ZIP exportiert.")
                 except Exception as e:
-                    QMessageBox.warning(self, "Fehler", f"Export fehlgeschlagen: {e}")
+                    CustomMessageBox.warning(self, "Fehler", f"Export fehlgeschlagen: {e}")
