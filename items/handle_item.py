@@ -102,8 +102,8 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def _apply_default_style(self) -> None:
         if self._is_endpoint:
-            # Semi-transparent blue for linear item handles
-            self.setBrush(QBrush(QColor(59, 123, 245, 100)))
+            # Solid white for linear item handles, matching corner handles
+            self.setBrush(QBrush(QColor("#ffffff")))
             self.setPen(QPen(QColor("#3B7BF5"), 2.0))
         else:
             self.setBrush(QBrush(QColor("#ffffff")))
@@ -116,8 +116,8 @@ class ResizeHandleItem(QGraphicsEllipseItem):
     def hoverEnterEvent(self, event) -> None:
         self._hovered = True
         if self._is_endpoint:
-            # Slightly more opaque blue on hover
-            self.setBrush(QBrush(QColor(59, 123, 245, 160)))
+            # Soft blue hover effect, matching corner handles
+            self.setBrush(QBrush(QColor("#ddeeff")))
         else:
             self.setBrush(QBrush(QColor("#ddeeff")))
         self.update()
@@ -202,6 +202,9 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def paint(self, painter, option, widget=None) -> None:
         if getattr(self.scene(), "_is_rendering_thumbnail", False):
+            return
+        parent = self.parentItem()
+        if parent and getattr(parent, "_handles_dragged", False):
             return
         super().paint(painter, option, widget)
 

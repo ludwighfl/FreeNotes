@@ -259,7 +259,7 @@ class ScenePageManagerMixin:
         if hasattr(self, '_pending_tiles'):
             self._pending_tiles.clear()
 
-    def relayout_after_insert(self, at_index: int, doc_manager: DocumentManager) -> None:
+    def relayout_after_insert(self, at_index: int, doc_manager: DocumentManager, inserted_rect: QRectF | None = None) -> None:
         """Incremental relayout after a single page was inserted at *at_index*.
 
         Instead of destroying and recreating all page items, this:
@@ -300,7 +300,8 @@ class ScenePageManagerMixin:
 
         # Insert into lists at the correct position
         self._page_items.insert(at_index, item)
-        self._page_rects.insert(at_index, QRectF(0, 0, log_w, log_h))
+        rect = QRectF(inserted_rect) if inserted_rect is not None else QRectF(0, 0, log_w, log_h)
+        self._page_rects.insert(at_index, rect)
         self._page_states.insert(at_index, "placeholder")
 
         # Recalculate Y-offsets for all pages and reposition

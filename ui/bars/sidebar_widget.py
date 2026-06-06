@@ -74,6 +74,7 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
 
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setMinimumWidth(180)
         self.setMaximumWidth(210)
         self.setObjectName("sidebarWidget")

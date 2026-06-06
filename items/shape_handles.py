@@ -31,10 +31,25 @@ if TYPE_CHECKING:
 class ShapeResizeHandle(ResizeHandleItem):
     """ResizeHandleItem that creates ResizeShapeCommand on release."""
 
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        super().mousePressEvent(event)
+        if self._dragging:
+            parent: ShapeItem = self.parentItem()  # type: ignore[assignment]
+            from core.shape_style import ShapeType
+            if parent.style.shape_type in (ShapeType.LINE, ShapeType.ARROW):
+                parent._handles_dragged = True
+                for h in parent._handles.values():
+                    h.update()
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if not self._dragging:
             return
         parent: ShapeItem = self.parentItem()  # type: ignore[assignment]
+        from core.shape_style import ShapeType
+        if parent.style.shape_type in (ShapeType.LINE, ShapeType.ARROW):
+            parent._handles_dragged = False
+            for h in parent._handles.values():
+                h.update()
         final_rect = parent.get_rect()
         if self._drag_start_rect is not None and final_rect != self._drag_start_rect:
             from commands.resize_shape_command import ResizeShapeCommand

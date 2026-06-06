@@ -133,7 +133,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable, True)
-        self.setZValue(15)
+        self.setZValue(6)
         self.setAcceptHoverEvents(True)
 
         # --- 6 Resize handles (corners + left/right edges) ---
@@ -430,7 +430,10 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self.prepareGeometryChange()
         self._is_selected_custom = selected
         self._set_handles_visible(selected)
-        if not selected:
+        if selected:
+            self.setZValue(100)
+        else:
+            self.setZValue(6)
             self.stop_editing()
             # Ensure cursor selection is cleared
             pos = self._cursor.position()

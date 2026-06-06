@@ -105,7 +105,10 @@ class ShapeItem(QGraphicsItem):
         self._cached_br = None
         self._set_handles_visible(selected)
         if selected:
+            self.setZValue(100)
             self._update_handle_positions()
+        else:
+            self.setZValue(10)
         self.update()
 
     def get_line_dir(self) -> int:

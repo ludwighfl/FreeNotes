@@ -6,6 +6,7 @@ import weakref
 from typing import TYPE_CHECKING
 
 import fitz
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ class DeletePageCommand(QUndoCommand):
         self._first_redo = True
         self._saved_annotations: dict | None = None
         self._saved_pdf_bytes: bytes | None = None
+        self._saved_page_rect: QRectF | None = None
 
     def undo(self) -> None:
         scene = self._scene_ref()
@@ -54,7 +56,7 @@ class DeletePageCommand(QUndoCommand):
         if self._saved_annotations:
             scene.restore_page_annotations(
                 self._page_idx, self._saved_annotations)
-        scene.relayout_after_insert(self._page_idx, doc_mgr)
+        scene.relayout_after_insert(self._page_idx, doc_mgr, self._saved_page_rect)
         sidebar.insert_card(self._page_idx)
         AppState().total_pages = doc_mgr.get_page_count()
         self._navigate_to(self._page_idx)
@@ -74,6 +76,7 @@ class DeletePageCommand(QUndoCommand):
             self._saved_pdf_bytes = doc_mgr.save_page_bytes(
                 self._page_idx)
             self._saved_map_idx = doc_mgr.page_map[self._page_idx]
+            self._saved_page_rect = scene.get_page_rect(self._page_idx)
 
         # Remove page
         scene.remove_page(self._page_idx, doc_mgr)

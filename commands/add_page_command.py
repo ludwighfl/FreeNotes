@@ -5,6 +5,7 @@ from __future__ import annotations
 import weakref
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import QUndoCommand
 
 if TYPE_CHECKING:
@@ -47,6 +48,9 @@ class AddPageCommand(QUndoCommand):
         self._sidebar_ref = weakref.ref(sidebar)
         self._first_redo = True
         self._saved_annotations: dict | None = None
+        self._saved_page_bytes: bytes | None = None
+        self._saved_map_idx: int = -1
+        self._saved_page_rect: QRectF | None = None
 
     def undo(self) -> None:
         scene = self._scene_ref()
@@ -58,6 +62,9 @@ class AddPageCommand(QUndoCommand):
         # Save annotations before removing (for re-redo)
         self._saved_annotations = scene.save_page_annotations(
             self._insert_at)
+        self._saved_page_bytes = doc_mgr.save_page_bytes(self._insert_at)
+        self._saved_map_idx = doc_mgr.page_map[self._insert_at]
+        self._saved_page_rect = scene.get_page_rect(self._insert_at)
 
         scene.remove_page(self._insert_at, doc_mgr)
         doc_mgr.remove_page(self._insert_at)
@@ -120,8 +127,12 @@ class AddPageCommand(QUndoCommand):
             self._navigate_to_page()
             return
 
-        # Subsequent redos — always use saved annotations
-        if self._source_page_data is not None:
+        # Subsequent redos — always use saved page bytes if available to prevent duplicating/recreating wrong/shifted indices
+        if self._saved_page_bytes is not None:
+            doc_mgr.insert_page(self._insert_at, source_bytes=self._saved_page_bytes)
+            if self._saved_map_idx != -1:
+                doc_mgr.page_map[self._insert_at] = self._saved_map_idx
+        elif self._source_page_data is not None:
             pdf_bytes = self._source_page_data.get("pdf_bytes", b"")
             doc_mgr.insert_page(self._insert_at, source_bytes=pdf_bytes)
         else:
@@ -131,7 +142,7 @@ class AddPageCommand(QUndoCommand):
         if self._saved_annotations:
             scene.restore_page_annotations(
                 self._insert_at, self._saved_annotations)
-        scene.relayout_after_insert(self._insert_at, doc_mgr)
+        scene.relayout_after_insert(self._insert_at, doc_mgr, self._saved_page_rect)
         sidebar.insert_card(self._insert_at)
         AppState().total_pages = doc_mgr.get_page_count()
         self._navigate_to_page()

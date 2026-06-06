@@ -161,7 +161,7 @@ class StrokeItem(QGraphicsItem):
         # Map eraser from scene coords to item-local coords
         local_eraser = self.mapFromScene(eraser_ellipse) if self.scene() else eraser_ellipse
 
-        new_path = self._path.subtracted(local_eraser).simplified()
+        new_path = self._path.subtracted(local_eraser)
         if new_path.isEmpty() or new_path.boundingRect().width() < 1:
             return False
         self.prepareGeometryChange()
@@ -169,6 +169,15 @@ class StrokeItem(QGraphicsItem):
         self._cached_br = None
         self.update()
         return True
+
+    def simplify_path(self) -> None:
+        """Simplify the path after editing is complete to clean up geometry."""
+        if self._path.isEmpty():
+            return
+        self.prepareGeometryChange()
+        self._path = self._path.simplified()
+        self._cached_br = None
+        self.update()
 
     def restore_path(self, path: QPainterPath, outline_mode: bool) -> None:
         """Restore a path and outline mode state (for undo/redo).

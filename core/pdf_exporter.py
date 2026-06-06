@@ -66,13 +66,14 @@ class PdfExporter:
             # Highlights (Z=5)
             PdfPathExporter.export_highlights(
                 self._scene, page, page_idx, sx, sy, page_origin)
+            # TextBoxes (Z=6)
+            PdfTextExporter.export(
+                self._scene, page, page_idx, sx, sy, page_origin)
             # Strokes (Z=10)
             PdfPathExporter.export_strokes(
                 self._scene, page, page_idx, sx, sy, page_origin)
-            # Shapes (Z=10) / TextBoxes (Z=15)
+            # Shapes (Z=10)
             PdfShapeExporter.export(
-                self._scene, page, page_idx, sx, sy, page_origin)
-            PdfTextExporter.export(
                 self._scene, page, page_idx, sx, sy, page_origin)
 
             if progress_callback:

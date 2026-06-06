@@ -1,7 +1,0 @@
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!
-Paint Event successfully intercepted directly on QTipLabel!

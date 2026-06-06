@@ -62,13 +62,6 @@ class HighlighterTool(BaseTool):
         if page_index < 0:
             return
 
-        # Skip if clicking on a TextBox
-        from PySide6.QtCore import QRectF as _QRF
-        rect = _QRF(pos.x() - 2, pos.y() - 2, 4, 4)
-        for box in scene.get_textboxes_for_page(page_index):
-            if box.sceneBoundingRect().intersects(rect):
-                return
-
         app_style = AppState().tool_style
         self._active_style = ToolStyle(
             color=app_style.color,

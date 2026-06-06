@@ -110,6 +110,7 @@ class PdfTextExporter:
                         if overlap_start < overlap_end:
                             text = fragment.text()[overlap_start - frag_start:
                                                    overlap_end - frag_start]
+                            text = text.replace('\u2011', '-')
                             if text.strip() or text:
                                 char_fmt = fragment.charFormat()
 
@@ -160,11 +161,22 @@ class PdfTextExporter:
                                 insert_y = line_y + ascent_pdf
 
                                 try:
+                                    font_file = PdfTextExporter._get_system_font_file(family or "arial", bold, italic)
+                                    font_name_pdf = fitz_font
+                                    if font_file:
+                                        # Use a custom name to prevent fitz from using base-14 fallbacks
+                                        font_name_pdf = f"F_{family.replace(' ', '_')}"
+                                        if bold:
+                                            font_name_pdf += "-Bold"
+                                        if italic:
+                                            font_name_pdf += "-Italic"
+
                                     page.insert_text(
                                         point=fitz.Point(x_in_line, insert_y),
                                         text=text,
                                         fontsize=font_size_pdf,
-                                        fontname=fitz_font,
+                                        fontname=font_name_pdf,
+                                        fontfile=font_file,
                                         color=PdfExporter.qcolor_to_fitz(
                                             fg_color),
                                         morph=morph,
@@ -175,6 +187,88 @@ class PdfTextExporter:
                     it.__next__()
 
             block = block.next()
+
+    @staticmethod
+    def _get_system_font_file(family: str, bold: bool, italic: bool) -> str | None:
+        """Find a system font file that matches the family, bold, and italic options."""
+        import os
+        sys_root = os.environ.get("SystemRoot", "C:\\Windows")
+        fonts_dir = os.path.join(sys_root, "Fonts")
+        if not os.path.isdir(fonts_dir):
+            return None
+
+        fl = family.lower()
+
+        # Map Segoe UI
+        if "segoe" in fl:
+            if bold and italic:
+                filename = "segoeuiz.ttf"
+            elif bold:
+                filename = "segoeuib.ttf"
+            elif italic:
+                filename = "segoeuii.ttf"
+            else:
+                filename = "segoeui.ttf"
+            path = os.path.join(fonts_dir, filename)
+            if os.path.exists(path):
+                return path
+
+        # Map Calibri
+        elif "calibri" in fl:
+            if bold and italic:
+                filename = "calibriz.ttf"
+            elif bold:
+                filename = "calibrib.ttf"
+            elif italic:
+                filename = "calibrii.ttf"
+            else:
+                filename = "calibri.ttf"
+            path = os.path.join(fonts_dir, filename)
+            if os.path.exists(path):
+                return path
+
+        # Map Monospace / Courier
+        elif any(k in fl for k in ("courier", "mono", "consolas")):
+            if bold and italic:
+                filename = "courbi.ttf"
+            elif bold:
+                filename = "courbd.ttf"
+            elif italic:
+                filename = "couri.ttf"
+            else:
+                filename = "cour.ttf"
+            path = os.path.join(fonts_dir, filename)
+            if os.path.exists(path):
+                return path
+
+        # Map Times / Serif
+        elif any(k in fl for k in ("times", "serif", "georgia")):
+            if bold and italic:
+                filename = "timesbi.ttf"
+            elif bold:
+                filename = "timesbd.ttf"
+            elif italic:
+                filename = "timesi.ttf"
+            else:
+                filename = "times.ttf"
+            path = os.path.join(fonts_dir, filename)
+            if os.path.exists(path):
+                return path
+
+        # Default / Arial
+        if bold and italic:
+            filename = "arialbi.ttf"
+        elif bold:
+            filename = "arialbd.ttf"
+        elif italic:
+            filename = "ariali.ttf"
+        else:
+            filename = "arial.ttf"
+        path = os.path.join(fonts_dir, filename)
+        if os.path.exists(path):
+            return path
+
+        return None
 
     @staticmethod
     def _map_font(family: str, bold: bool, italic: bool) -> str:

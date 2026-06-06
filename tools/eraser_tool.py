@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QObject, QRectF, QPointF
-from PySide6.QtGui import QPainterPath
+from PySide6.QtGui import QPainterPath, QPainterPathStroker
 from PySide6.QtWidgets import QGraphicsSceneMouseEvent, QGraphicsItem
 
 from items.eraser_cursor_item import EraserCursorItem
@@ -62,6 +62,15 @@ class EraserTool(BaseTool):
         self._created_items: list[HighlightItem] = []
         # Interpolation: remember last mouse position
         self._last_erase_pos: QPointF | None = None
+        
+        # Stroker caching
+        self._stroker = QPainterPathStroker()
+        self._update_stroker()
+
+    def _update_stroker(self) -> None:
+        self._stroker.setWidth(self._radius * 2)
+        self._stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
+        self._stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
 
     # ------------------------------------------------------------------
     # Properties
@@ -82,6 +91,7 @@ class EraserTool(BaseTool):
     @radius.setter
     def radius(self, value: float) -> None:
         self._radius = value
+        self._update_stroker()
         if self._cursor_item is not None:
             self._cursor_item.radius = value
 
@@ -150,6 +160,17 @@ class EraserTool(BaseTool):
             return
         self._is_erasing = False
         self._last_erase_pos = None
+
+        # Simplify modified StrokeItems' paths before completing the action
+        if self._mode == EraserMode.PIXEL:
+            deleted_ids = {id(it) for it in self._deleted_items}
+            for item_id, item in self._item_refs.items():
+                if item_id not in deleted_ids and isinstance(item, StrokeItem):
+                    try:
+                        item.simplify_path()
+                    except RuntimeError:
+                        pass
+
         self.tool_action_completed.emit()
 
         # Clean up state data after undo command generation
@@ -178,11 +199,7 @@ class EraserTool(BaseTool):
             line_path.lineTo(pos)
         
         # 2. Thicken this line to the exact width and shape of the eraser radius
-        stroker = QPainterPathStroker()
-        stroker.setWidth(self._radius * 2)
-        stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
-        stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        eraser_path = stroker.createStroke(line_path)
+        eraser_path = self._stroker.createStroke(line_path)
 
         # 3. Find candidates via page-scoped registry search instead of
         #    scene.items() which is O(all_scene_items) with NoIndex.

@@ -70,12 +70,6 @@ class PenTool(BaseTool):
         if page_index < 0:
             return
 
-        # Skip if clicking on a TextBox
-        rect = QRectF(pos.x() - 2, pos.y() - 2, 4, 4)
-        for box in scene.get_textboxes_for_page(page_index):
-            if box.sceneBoundingRect().intersects(rect):
-                return
-
         # Start new path
         self._points = [pos]
         self._smoothed_points = [pos]

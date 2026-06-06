@@ -370,17 +370,28 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         undo_stack.push(cmd)
 
     def delete_page(self, page_idx: int) -> None:
-        """Delete a page (undoable)."""
+        """Delete a page (non-undoable)."""
         if self._doc_manager.get_page_count() <= 1:
             return  # Can't delete last page
-        from commands.delete_page_command import DeletePageCommand
-        cmd = DeletePageCommand(
-            page_idx=page_idx,
-            scene=self._page_scene,
-            doc_manager=self._doc_manager,
-            sidebar=self._sidebar,
-        )
-        undo_stack.push(cmd)
+        
+        # Remove page directly from scene, document manager, and sidebar
+        self._page_scene.remove_page(page_idx, self._doc_manager)
+        self._doc_manager.remove_page(page_idx)
+        self._page_scene.relayout_after_delete(page_idx, self._doc_manager)
+        self._sidebar.remove_card(page_idx)
+        self._app_state.total_pages = self._doc_manager.get_page_count()
+        
+        # Navigate to safe target page
+        target_idx = max(0, page_idx - 1)
+        from PySide6.QtCore import QTimer
+        def _do_navigate():
+            self._app_state.current_page = target_idx
+            self._page_view.scroll_to_page(target_idx)
+        QTimer.singleShot(60, _do_navigate)
+        
+        # Clear undo stack since this destructive action cannot be undone
+        from core import undo_stack
+        undo_stack.clear()
 
     def clear_ui(self) -> None:
         """Instantly blanks out the viewer UI to hide previous documents during transitions."""

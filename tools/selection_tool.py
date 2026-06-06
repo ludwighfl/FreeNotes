@@ -120,13 +120,15 @@ class SelectionTool(BaseTool):
         if any(isinstance(i, (BoundingBoxHandle, ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
             return
 
-        # Find item under cursor
-        hit_item = next(
-            (i for i in items_at
-             if isinstance(i, sel_types)
-             and not isinstance(i, SelectionOverlayItem)),
-            None,
-        )
+        # Find item under cursor (prioritizing non-textbox items)
+        selectable_hits = [
+            i for i in items_at
+            if isinstance(i, sel_types)
+            and not isinstance(i, SelectionOverlayItem)
+        ]
+        from items.text_box_item import TextBoxItem
+        selectable_hits.sort(key=lambda i: 1 if isinstance(i, TextBoxItem) else 0)
+        hit_item = selectable_hits[0] if selectable_hits else None
 
         # Click on already-selected item → start drag
         if hit_item and hit_item in scene._selected_items:
