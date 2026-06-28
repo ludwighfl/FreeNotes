@@ -13,6 +13,7 @@ from PySide6.QtGui import QFont
 
 from ui.components.icon_factory import IconFactory
 from ui.popups.custom_dialogs import CustomMessageBox, CustomInputDialog
+from core.i18n import tr
 
 if TYPE_CHECKING:
     from ui.components.pdf_card import PdfCard
@@ -23,7 +24,7 @@ class ManagerActionBarMixin:
 
     def init_action_bar(self, header_layout: QHBoxLayout) -> None:
         """Initialize the multi-state header (Default vs Action Bar)."""
-        self._selection: set[PdfCard] = set()
+        self._selection: list[PdfCard] = []
         self._multi_select_mode = False
 
         # Stack to switch between normal header and action bar
@@ -76,15 +77,18 @@ class ManagerActionBarMixin:
         action_layout.addStretch()
 
         # Action Buttons
+        self._btn_merge = self._create_action_btn("merge", tr("dialog.merge.button"), self._on_action_merge)
         self._btn_rename = self._create_action_btn("pen", "Umbenennen", self._on_action_rename)
         self._btn_duplicate = self._create_action_btn("copy", "Duplizieren", self._on_action_duplicate)
         self._btn_export = self._create_action_btn("download", "Exportieren", self._on_action_export)
         self._btn_delete = self._create_action_btn("trash", "Löschen", self._on_action_delete)
 
+        action_layout.addWidget(self._btn_merge)
         action_layout.addWidget(self._btn_rename)
         action_layout.addWidget(self._btn_duplicate)
         action_layout.addWidget(self._btn_export)
         action_layout.addWidget(self._btn_delete)
+
 
         self._header_stack.addWidget(self._default_header)
         self._header_stack.addWidget(self._action_bar)
@@ -117,7 +121,7 @@ class ManagerActionBarMixin:
 
     def clear_selection(self) -> None:
         import shiboken6
-        for card in list(self._selection):
+        for card in self._selection:
             if shiboken6.isValid(card):
                 card.set_selected(False)
         self._selection.clear()
@@ -129,14 +133,14 @@ class ManagerActionBarMixin:
                 self._selection.remove(card)
                 card.set_selected(False)
             else:
-                self._selection.add(card)
+                self._selection.append(card)
                 card.set_selected(True)
         else:
             if card in self._selection:
                 self.clear_selection()
             else:
                 self.clear_selection()
-                self._selection.add(card)
+                self._selection.append(card)
                 card.set_selected(True)
             
         self._update_action_bar()
@@ -152,6 +156,8 @@ class ManagerActionBarMixin:
         
         # Rename is only viable for single selection
         self._btn_rename.setVisible(count == 1)
+        # Merge is only viable for multiple selection
+        self._btn_merge.setVisible(count >= 2)
 
     # --- Actions ---
 
@@ -159,7 +165,7 @@ class ManagerActionBarMixin:
         # Filter safely to ensure we don't access deleted objects
         import shiboken6
         docs = []
-        for card in list(self._selection):
+        for card in self._selection:
             if shiboken6.isValid(card):
                 docs.append(card.get_doc_data())
         return docs
@@ -190,6 +196,18 @@ class ManagerActionBarMixin:
         if reply == CustomMessageBox.StandardButton.Yes:
             for doc in docs:
                 self._on_delete(doc) # Existing delete handler
+
+    def _on_action_merge(self) -> None:
+        docs = self._get_selected_docs()
+        if len(docs) < 2: return
+        
+        from ui.popups.merge_pdfs_dialog import MergePdfsDialog
+        dialog = MergePdfsDialog(docs, self)
+        if dialog.exec():
+            ordered_docs, new_name = dialog.get_result()
+            self.clear_selection()
+            if ordered_docs and new_name:
+                self._on_merge(ordered_docs, new_name)
 
     def _on_action_duplicate(self) -> None:
         docs = self._get_selected_docs()

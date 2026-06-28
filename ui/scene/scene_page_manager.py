@@ -271,6 +271,9 @@ class ScenePageManagerMixin:
         if hasattr(self, '_tile_renderer'):
             self._tile_renderer.cancel_all()
 
+        # Store old rects for annotation repositioning
+        old_page_rects = list(self._page_rects)
+
         # Remove stale tile scene-items (cache keys already remapped by insert_page)
         if hasattr(self, '_tile_items'):
             for tile_item in self._tile_items.values():
@@ -305,7 +308,7 @@ class ScenePageManagerMixin:
         self._page_states.insert(at_index, "placeholder")
 
         # Recalculate Y-offsets for all pages and reposition
-        self._relayout_y_offsets(doc_manager)
+        self._relayout_y_offsets(doc_manager, old_page_rects)
 
     def relayout_after_delete(self, page_idx: int, doc_manager: DocumentManager) -> None:
         """Incremental relayout after a single page was deleted at *page_idx*.
@@ -318,6 +321,9 @@ class ScenePageManagerMixin:
         """
         if hasattr(self, '_tile_renderer'):
             self._tile_renderer.cancel_all()
+
+        # Store old rects for annotation repositioning
+        old_page_rects = list(self._page_rects)
 
         # Remove stale tile scene-items (cache keys already remapped by remove_page)
         if hasattr(self, '_tile_items'):
@@ -335,16 +341,13 @@ class ScenePageManagerMixin:
             del self._page_states[page_idx]
 
         # Recalculate Y-offsets for all pages and reposition
-        self._relayout_y_offsets(doc_manager)
+        self._relayout_y_offsets(doc_manager, old_page_rects)
 
-    def _relayout_y_offsets(self, doc_manager: DocumentManager) -> None:
+    def _relayout_y_offsets(self, doc_manager: DocumentManager, old_page_rects: list[QRectF]) -> None:
         """Recalculate Y-offsets for all pages and reposition items + annotations.
 
         Shared helper for relayout_after_insert / relayout_after_delete.
         """
-        # Store old rects for annotation repositioning
-        old_page_rects = list(self._page_rects)
-
         self._page_y_offsets.clear()
         self._rendered_set.clear()
 

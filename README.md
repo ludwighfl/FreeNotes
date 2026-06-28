@@ -78,6 +78,7 @@ freenotes/
 │   ├── thumbnail_worker.py  # QThread for background page rendering
 │   ├── tile_renderer.py     # Asynchronous tile-based rendering for zoom performance
 │   ├── tile_cache.py        # Memory management/caching for rendered PDF tiles
+│   ├── template_generator.py # PDF/Image note templates generation (dotted, grid, etc.)
 │   ├── i18n.py              # Internationalization and translation support
 │   ├── app_settings.py      # Application preferences and config
 │   ├── undo_stack.py        # Central history manager (Undo/Redo)
@@ -127,9 +128,11 @@ freenotes/
 │   │   ├── settings_view.py
 │   │   ├── splash_screen.py
 │   │   ├── viewer_window.py # Uses Mixins (viewer_tool_manager.py, viewer_file_io.py)
-│   │   └── settings_pages/  # Detail pages (display_page, language_page, library_page)
+│   │   └── settings_pages/  # Detail pages (app_page, display_page, language_page, library_page, pen_page)
 │   ├── scene/               # PDF graphics canvas and scene interaction
-│   │   ├── page_view.py
+│   │   ├── page_view.py     # Uses Mixins (page_view_navigation_mixin.py, page_view_gesture_mixin.py)
+│   │   ├── page_view_navigation_mixin.py
+│   │   ├── page_view_gesture_mixin.py
 │   │   ├── page_scene.py    # Uses Mixins (registry, clipboard, selection, manager, tiling, image_manager)
 │   │   ├── scene_selection.py
 │   │   ├── scene_clipboard.py
@@ -143,7 +146,10 @@ freenotes/
 │   │   ├── sidebar_widget.py
 │   │   ├── sidebar_context_menu.py
 │   │   ├── sidebar_render.py
-│   │   └── toolbar_widget.py
+│   │   ├── toolbar_widget.py
+│   │   ├── toolbar_color_mixin.py
+│   │   ├── toolbar_width_mixin.py
+│   │   └── color_chip_button.py
 │   ├── components/          # Reusable widgets
 │   │   ├── icon_factory.py
 │   │   ├── pdf_card.py
@@ -155,10 +161,15 @@ freenotes/
 │   │   ├── textbox_options_popup.py
 │   │   ├── three_dot_menu.py
 │   │   ├── new_note_dialog.py
-│   │   └── zip_export_dialog.py
+│   │   ├── zip_export_dialog.py
+│   │   ├── custom_dialogs.py  # Shared custom dialog base elements
+│   │   ├── glass_dialog.py    # Glassmorphic dialog window
+│   │   ├── glass_menu.py      # Glassmorphic context menu
+│   │   ├── glass_tooltip.py   # Glassmorphic floating tooltip
+│   │   └── merge_pdfs_dialog.py # Dialog to merge multiple PDFs
 │   └── animations/          # QPropertyAnimation ecosystem for smooth UI transitions
 │       ├── drag_reorder.py, fade.py, shadow.py, slide.py, stagger.py, thumbnail.py
-│       └── bounce.py, kinetic.py, pop_in.py, scroll.py
+│       └── bounce.py, kinetic.py, pop_in.py, scroll.py, fade_hover.py, shimmer.py
 ├── styles/                  # qss stylesheets
 │   ├── loader.py
 │   ├── base.qss, toolbar.qss, formatting_bar.qss
@@ -188,7 +199,9 @@ Large classes are decomposed into focused pure-Python mixins to keep file sizes 
 |-------|--------|
 | `TextBoxItem` | `TextBoxInputMixin`, `TextBoxFormattingMixin`, `TextBoxPseudoListMixin` |
 | `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin`, `SceneSelectionMixin`, `ScenePageManagerMixin`, `SceneTilingMixin`, `SceneImageManagerMixin` |
+| `ToolbarWidget` | `ToolbarModePopupsMixin`, `ToolbarColorMixin`, `ToolbarWidthMixin` |
 | `SidebarWidget` | `SidebarContextMenuMixin`, `SidebarRenderMixin` |
+| `PageView` | `PageViewNavigationMixin`, `PageViewGestureMixin` |
 | `ViewerWindow` | `ViewerFileIOMixin`, `ViewerToolManagerMixin` |
 | `ManagerView` | `ManagerGridMixin`, `ManagerSidebarMixin`, `ManagerActionBarMixin` |
 

@@ -203,6 +203,13 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         main_layout.addWidget(content, 1)
 
         # --- Connections ---
+        self._page_scene.page_jump_requested.connect(self._page_view.scroll_to_page)
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        self._page_scene.link_uri_clicked.connect(
+            lambda uri: QDesktopServices.openUrl(QUrl(uri))
+        )
+
         self._sidebar.page_clicked.connect(self._on_sidebar_page_clicked)
         self._page_view.visible_page_changed.connect(self._on_visible_page_changed)
         self._app_state.page_changed.connect(self._on_page_changed)

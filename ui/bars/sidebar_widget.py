@@ -81,13 +81,13 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
         self.setAcceptDrops(True)
 
         # Lazy load timer
+        self._last_sidebar_scroll_y = 0
+        self._sidebar_scroll_direction = 0
         self._lazy_timer = QTimer(self)
         self._lazy_timer.setInterval(100)
         self._lazy_timer.setSingleShot(True)
         self._lazy_timer.timeout.connect(self._load_visible_thumbnails)
-        self.verticalScrollBar().valueChanged.connect(
-            lambda: self._lazy_timer.start()
-        )
+        self.verticalScrollBar().valueChanged.connect(self._on_sidebar_scroll)
 
         # Listen for page changes
         self._app_state.page_changed.connect(self.set_active_page)
@@ -119,6 +119,22 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
             except RuntimeError:
                 pass
         self._zombie_workers.clear()
+
+    def _on_sidebar_scroll(self) -> None:
+        """Calculate sidebar scroll direction to optimize pre-rendering buffer."""
+        current_val = self.verticalScrollBar().value()
+        if not hasattr(self, '_last_sidebar_scroll_y'):
+            self._last_sidebar_scroll_y = current_val
+
+        direction = 0
+        if current_val > self._last_sidebar_scroll_y:
+            direction = 1  # scrolling down
+        elif current_val < self._last_sidebar_scroll_y:
+            direction = -1  # scrolling up
+
+        self._sidebar_scroll_direction = direction
+        self._last_sidebar_scroll_y = current_val
+        self._lazy_timer.start()
 
     def clear(self) -> None:
         """Instantly wipe all thumbnails (prevents flashing old data during transitions)."""

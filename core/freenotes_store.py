@@ -113,12 +113,13 @@ class FreenotesStore:
 
         structural_modified = False
         if page_map and isinstance(page_map, list) and doc_manager:
-            try:
-                doc_manager.apply_page_map(page_map)
-                scene.rebuild_after_reorder(doc_manager)
-                structural_modified = True
-            except Exception as e:
-                logger.warning("Failed to apply page map: %s", e)
+            if page_map != doc_manager.page_map:
+                try:
+                    doc_manager.apply_page_map(page_map)
+                    scene.rebuild_after_reorder(doc_manager)
+                    structural_modified = True
+                except Exception as e:
+                    logger.warning("Failed to apply page map: %s", e)
 
         # Clear existing annotations
         cls._clear_scene_annotations(scene)

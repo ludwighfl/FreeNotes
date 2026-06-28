@@ -316,6 +316,16 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
                 self._thumbnail_cache.invalidate(new_doc["pdf"])
             self.load_grid(app_state.current_folder)
 
+    def _on_merge(self, ordered_docs: list[dict], new_name: str) -> None:
+        from app.app_state import AppState
+        app_state = AppState()
+        lm = app_state.library_manager
+        if lm:
+            folder = app_state.current_folder
+            lm.merge_documents(ordered_docs, new_name, folder)
+            self._select_folder(folder)
+            self.load_sidebar()
+
     def _on_delete(self, doc: dict) -> None:
         from app.app_state import AppState
         lm = AppState().library_manager
@@ -354,6 +364,9 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
             
         if hasattr(self, "_settings_btn"):
             self._settings_btn.setIcon(IconFactory.create("settings", color="#cccccc", size=20))
+            
+        if hasattr(self, "_btn_merge"):
+            self._btn_merge.setIcon(IconFactory.create("merge", color="#fffffe", size=18))
 
 
 

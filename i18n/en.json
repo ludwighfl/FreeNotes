@@ -132,5 +132,12 @@
     "dialog.title.info": "Information",
     "dialog.title.warning": "Warning",
     "dialog.title.error": "Error",
-    "dialog.title.question": "Question"
+    "dialog.title.question": "Question",
+    "dialog.merge.title": "Merge PDFs",
+    "dialog.merge.instruction": "Adjust the order of PDFs:",
+    "dialog.merge.name_label": "New name for the merged PDF:",
+    "dialog.merge.default_name": "Merged",
+    "dialog.merge.button": "Merge",
+    "dialog.merge.up_tooltip": "Move up",
+    "dialog.merge.down_tooltip": "Move down"
 }

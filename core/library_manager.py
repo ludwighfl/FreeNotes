@@ -255,6 +255,237 @@ class LibraryManager:
             "modified": dup_pdf.stat().st_mtime if dup_pdf.exists() else 0.0,
             "folder": folder
         }
+
+    def merge_documents(self, docs: list[dict], new_name: str, folder: Path) -> dict:
+        """Merge multiple documents (PDFs and annotations) into a new document in the specified folder.
+
+        Args:
+            docs: List of document dicts in the desired order.
+            new_name: The name of the merged document.
+            folder: The destination folder.
+
+        Returns:
+            The document dict of the merged file.
+        """
+        import fitz
+        
+        safe_name = self._sanitize(new_name)
+        if not safe_name:
+            safe_name = "Zusammengeführt"
+            
+        dest_pdf = self._resolve_name_conflict(folder / f"{safe_name}.pdf")
+        merged_name = dest_pdf.stem
+        dest_fn = folder / f"{merged_name}.freenotes"
+        
+        # First, collect all page heights in logical coordinates (points * scale)
+        # for all source documents in their virtual order, so we can calculate
+        # both source and merged page Y-offsets.
+        source_y_offsets = {}  # doc_idx -> list of Y-offsets for its virtual pages
+        all_heights_logical = []
+        
+        for doc_idx, doc in enumerate(docs):
+            pdf_path = doc.get("pdf")
+            if not pdf_path or not pdf_path.exists():
+                continue
+            
+            doc_pdf = fitz.open(str(pdf_path))
+            old_count = doc_pdf.page_count
+            
+            page_map = []
+            fn_path = doc.get("freenotes")
+            if fn_path and fn_path.exists():
+                try:
+                    with open(fn_path, "r", encoding="utf-8") as f:
+                        fn_data = json.load(f)
+                    page_map = fn_data.get("page_map", [])
+                except Exception:
+                    pass
+            
+            offsets = []
+            y_offset = 20.0  # PAGE_GAP
+            scale = 150.0 / 72.0
+            
+            if page_map:
+                for orig_idx in page_map:
+                    offsets.append(y_offset)
+                    if orig_idx == -1:
+                        h_pt = 842.0
+                        if old_count > 0:
+                            h_pt = doc_pdf[0].rect.height
+                    elif 0 <= orig_idx < old_count:
+                        h_pt = doc_pdf[orig_idx].rect.height
+                    else:
+                        h_pt = 842.0
+                    h_logical = h_pt * scale
+                    all_heights_logical.append(h_logical)
+                    y_offset += h_logical + 20.0
+            else:
+                for p in range(old_count):
+                    offsets.append(y_offset)
+                    h_pt = doc_pdf[p].rect.height
+                    h_logical = h_pt * scale
+                    all_heights_logical.append(h_logical)
+                    y_offset += h_logical + 20.0
+            
+            source_y_offsets[doc_idx] = offsets
+            doc_pdf.close()
+
+        # Calculate merged document page Y-offsets
+        merged_y_offsets = []
+        y_offset = 20.0
+        for h_logical in all_heights_logical:
+            merged_y_offsets.append(y_offset)
+            y_offset += h_logical + 20.0
+            
+        merged_pdf = fitz.open()
+        current_page_offset = 0
+        merged_pages_data = {}
+        
+        for doc_idx, doc in enumerate(docs):
+            pdf_path = doc.get("pdf")
+            if not pdf_path or not pdf_path.exists():
+                continue
+            
+            doc_pdf = fitz.open(str(pdf_path))
+            old_count = doc_pdf.page_count
+            
+            page_map = []
+            pages_data = {}
+            fn_path = doc.get("freenotes")
+            if fn_path and fn_path.exists():
+                try:
+                    with open(fn_path, "r", encoding="utf-8") as f:
+                        fn_data = json.load(f)
+                    page_map = fn_data.get("page_map", [])
+                    pages_data = fn_data.get("pages", {})
+                except Exception as e:
+                    print(f"Failed to read freenotes of {pdf_path.name}: {e}")
+            
+            # 1. Merge PDF pages
+            if page_map:
+                for orig_idx in page_map:
+                    if orig_idx == -1:
+                        w, h = 595, 842
+                        if old_count > 0:
+                            p0 = doc_pdf[0]
+                            w, h = p0.rect.width, p0.rect.height
+                        merged_pdf.insert_page(-1, width=w, height=h)
+                    elif 0 <= orig_idx < old_count:
+                        merged_pdf.insert_pdf(doc_pdf, from_page=orig_idx, to_page=orig_idx)
+                    else:
+                        merged_pdf.insert_page(-1, width=595, height=842)
+                effective_page_count = len(page_map)
+            else:
+                merged_pdf.insert_pdf(doc_pdf)
+                effective_page_count = old_count
+
+            doc_pdf.close()
+            
+            # 2. Shift and merge annotation page numbers & coordinates
+            if pages_data:
+                for page_str, page_data in pages_data.items():
+                    try:
+                        old_page_idx = int(page_str)
+                        new_page_idx = current_page_offset + old_page_idx
+                        
+                        # Calculate Y-offset shift
+                        shift_y = 0.0
+                        if doc_idx in source_y_offsets and old_page_idx < len(source_y_offsets[doc_idx]):
+                            orig_y = source_y_offsets[doc_idx][old_page_idx]
+                            new_y = merged_y_offsets[new_page_idx]
+                            shift_y = new_y - orig_y
+                        
+                        adjusted_page_data = {
+                            "strokes": [],
+                            "highlights": [],
+                            "textboxes": [],
+                            "shapes": [],
+                            "images": [],
+                        }
+                        
+                        for stroke in page_data.get("strokes", []):
+                            s_copy = dict(stroke)
+                            s_copy["page_index"] = new_page_idx
+                            if "pos" in s_copy:
+                                px, py = s_copy["pos"]
+                                s_copy["pos"] = (px, py + shift_y)
+                            adjusted_page_data["strokes"].append(s_copy)
+                            
+                        for hl in page_data.get("highlights", []):
+                            hl_copy = dict(hl)
+                            hl_copy["page_index"] = new_page_idx
+                            if "pos" in hl_copy:
+                                px, py = hl_copy["pos"]
+                                hl_copy["pos"] = (px, py + shift_y)
+                            adjusted_page_data["highlights"].append(hl_copy)
+                            
+                        for tb in page_data.get("textboxes", []):
+                            tb_copy = dict(tb)
+                            tb_copy["page_index"] = new_page_idx
+                            if "pos" in tb_copy:
+                                px, py = tb_copy["pos"]
+                                tb_copy["pos"] = (px, py + shift_y)
+                            if "rect" in tb_copy:
+                                rx, ry, rw, rh = tb_copy["rect"]
+                                tb_copy["rect"] = (rx, ry + shift_y, rw, rh)
+                            adjusted_page_data["textboxes"].append(tb_copy)
+                            
+                        for sh in page_data.get("shapes", []):
+                            sh_copy = dict(sh)
+                            sh_copy["page_index"] = new_page_idx
+                            if "pos" in sh_copy:
+                                px, py = sh_copy["pos"]
+                                sh_copy["pos"] = (px, py + shift_y)
+                            if "rect" in sh_copy:
+                                rx, ry, rw, rh = sh_copy["rect"]
+                                sh_copy["rect"] = (rx, ry + shift_y, rw, rh)
+                            adjusted_page_data["shapes"].append(sh_copy)
+                            
+                        for img in page_data.get("images", []):
+                            img_copy = dict(img)
+                            img_copy["page_index"] = new_page_idx
+                            if "pos" in img_copy:
+                                px, py = img_copy["pos"]
+                                img_copy["pos"] = (px, py + shift_y)
+                            if "rect" in img_copy:
+                                rx, ry, rw, rh = img_copy["rect"]
+                                img_copy["rect"] = (rx, ry + shift_y, rw, rh)
+                            adjusted_page_data["images"].append(img_copy)
+                            
+                        # If page has any annotations, add it
+                        if any(adjusted_page_data.values()):
+                            merged_pages_data[str(new_page_idx)] = adjusted_page_data
+                    except Exception as e:
+                        print(f"Failed to shift page {page_str} annotations: {e}")
+                        
+            current_page_offset += effective_page_count
+            
+        # Save merged PDF
+        merged_pdf.save(str(dest_pdf), garbage=3, deflate=True)
+        merged_pdf.close()
+        
+        # Save merged freenotes JSON
+        freenotes_data = {
+            "version": 1,
+            "pdf_path": str(dest_pdf),
+            "pages": merged_pages_data,
+        }
+        with open(dest_fn, "w", encoding="utf-8") as f:
+            json.dump(freenotes_data, f, indent=2, ensure_ascii=False)
+            
+        # Return new doc dict
+        for d in self.get_documents(folder):
+            if d["name"] == merged_name:
+                return d
+                
+        return {
+            "pdf": dest_pdf,
+            "freenotes": dest_fn,
+            "name": merged_name,
+            "modified": dest_pdf.stat().st_mtime,
+            "folder": folder
+        }
+
         
     def move_document(self, doc: dict, target_folder: Path) -> dict:
         """Move a document to a different folder."""

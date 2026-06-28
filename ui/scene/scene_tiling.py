@@ -195,13 +195,21 @@ class SceneTilingMixin:
         import time
         start_time = time.perf_counter()
         
-        # Process tiles until 5ms have passed to guarantee 60fps scrolling
+        # Dynamic budget: increase if there are many tiles waiting (up to 12ms)
+        queue_len = len(self._ready_tiles_queue)
+        budget = 0.005
+        if queue_len > 12:
+            budget = 0.012
+        elif queue_len > 6:
+            budget = 0.008
+
+        # Process tiles until budget has passed to guarantee responsiveness
         while self._ready_tiles_queue:
             key = self._ready_tiles_queue.popleft()
             self._apply_tile(key)
             
-            # Break if we exceeded the 5ms budget
-            if (time.perf_counter() - start_time) > 0.005:
+            # Break if we exceeded the budget
+            if (time.perf_counter() - start_time) > budget:
                 break
 
         if not self._ready_tiles_queue:
@@ -266,7 +274,7 @@ class SceneTilingMixin:
             self._suppress_scene_changed = False
 
     def update_visible_pages(
-        self: 'PageScene', viewport_rect: QRectF, buffer: int = 2
+        self: 'PageScene', viewport_rect: QRectF, buffer: int = 2, scroll_direction: int = 0, max_mip_override: MipLevel | None = None
     ) -> None:
         """Request tiles for visible pages and manage tile lifecycle."""
         # Scrolling stopped - resume tile processing if paused
@@ -286,20 +294,38 @@ class SceneTilingMixin:
 
         n = len(self._page_rects)
 
-        # --- 1. Visible pages: request FULL + MEDIUM for visible tile area ---
+        # --- 1. Visible pages: request tiles up to the target mip level ---
         max_auto_mip = getattr(self, '_max_auto_mip_level', MipLevel.FULL)
+        target_mip = max_auto_mip
+        if max_mip_override is not None:
+            target_mip = min(max_auto_mip, max_mip_override)
+
         for i in range(vis_first, vis_last + 1):
             page_rect = self._page_rects[i]
             visible_tile_area = viewport_rect.intersected(page_rect)
             if visible_tile_area.isEmpty():
                 continue
-            if max_auto_mip >= MipLevel.FULL:
+            if target_mip >= MipLevel.FULL:
                 self._request_tiles_for_page(i, MipLevel.FULL, visible_tile_area, doc_path)
-            self._request_tiles_for_page(i, MipLevel.MEDIUM, visible_tile_area, doc_path)
+            if target_mip >= MipLevel.MEDIUM:
+                self._request_tiles_for_page(i, MipLevel.MEDIUM, visible_tile_area, doc_path)
+            if target_mip == MipLevel.THUMB:
+                self._request_tiles_for_page(i, MipLevel.THUMB, visible_tile_area, doc_path)
 
         # --- 2. Pre-render buffer pages: MEDIUM only, full page rect ---
-        pre_first = max(0, vis_first - buffer)
-        pre_last  = min(n - 1, vis_last + buffer)
+        # Determine buffers based on scroll direction (1 = down, -1 = up, 0 = static)
+        if scroll_direction > 0:
+            buffer_prev = 1
+            buffer_next = 4
+        elif scroll_direction < 0:
+            buffer_prev = 4
+            buffer_next = 1
+        else:
+            buffer_prev = buffer
+            buffer_next = buffer
+
+        pre_first = max(0, vis_first - buffer_prev)
+        pre_last  = min(n - 1, vis_last + buffer_next)
 
         for i in range(pre_first, vis_first):
             page_rect = self._page_rects[i]
@@ -313,8 +339,8 @@ class SceneTilingMixin:
         # Only request if not already cached — provides instant scroll preview
         # for pages far away. Uses priority 10 so it never blocks visible tiles.
         THUMB_LOOKAHEAD = 10  # pages beyond the buffer zone
-        thumb_first = max(0, vis_first - buffer - THUMB_LOOKAHEAD)
-        thumb_last  = min(n - 1, vis_last + buffer + THUMB_LOOKAHEAD)
+        thumb_first = max(0, vis_first - buffer_prev - THUMB_LOOKAHEAD)
+        thumb_last  = min(n - 1, vis_last + buffer_next + THUMB_LOOKAHEAD)
 
         for i in range(thumb_first, thumb_last + 1):
             page_rect = self._page_rects[i]
@@ -322,7 +348,8 @@ class SceneTilingMixin:
                 i, MipLevel.THUMB, page_rect, doc_path, priority=10)
 
         # --- 4. Evict FULL tiles for far-away pages ---
-        evict_threshold = buffer + 5
+        max_buffer = max(buffer_prev, buffer_next)
+        evict_threshold = max_buffer + 5
         keys_to_evict: list[TileKey] = [
             key for key in self._tile_items
             if key.mip_level == MipLevel.FULL
@@ -350,5 +377,5 @@ class SceneTilingMixin:
         self._pending_tiles = {
             k for k in self._pending_tiles
             if abs(k.page_index - vis_first) <= evict_threshold
-            or (k.mip_level == MipLevel.THUMB and abs(k.page_index - vis_first) <= buffer + THUMB_LOOKAHEAD)
+            or (k.mip_level == MipLevel.THUMB and abs(k.page_index - vis_first) <= max_buffer + THUMB_LOOKAHEAD)
         }

@@ -1,7 +1,9 @@
 """Toolbar widget – tool buttons, 10 customizable color chips, and pen width controls."""
 
-from PySide6.QtCore import Qt, QSize, Signal, QPoint, QTimer
-from PySide6.QtGui import QColor, QIcon
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, QSize, Signal, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -11,113 +13,30 @@ from PySide6.QtWidgets import (
 )
 
 from app.app_state import AppState
-from core.tool_style import ToolStyle
 from core import undo_stack
 from ui.components.icon_factory import IconFactory
-from ui.popups.color_picker_popup import ColorPickerPopup
-from ui.bars.toolbar_icons import make_color_icon, make_width_icon
+from ui.bars.toolbar_icons import make_width_icon
 from ui.bars.toolbar_mode_popups import ToolbarModePopupsMixin
+from ui.bars.color_chip_button import ColorChipButton
+from ui.bars.toolbar_color_mixin import ToolbarColorMixin
+from ui.bars.toolbar_width_mixin import ToolbarWidthMixin
 from core.i18n import tr
+from core.app_settings import AppSettings
 
 
-class ColorChipButton(QToolButton):
-    """Custom circular color chip button with custom paintEvent to bypass OS-specific rendering issues."""
-    def __init__(self, color: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.color_hex: str = color
-        self.setFixedSize(28, 28)
-        self.setCheckable(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.hovered: bool = False
-        self.pressed: bool = False
-
-    def enterEvent(self, event) -> None:
-        self.hovered = True
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event) -> None:
-        self.hovered = False
-        self.update()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.pressed = True
-            self.update()
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.pressed = False
-            self.update()
-        super().mouseReleaseEvent(event)
-
-    def paintEvent(self, event) -> None:
-        from PySide6.QtGui import QPainter, QPen, QFont
-        from core.app_settings import AppSettings
-        
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        
-        is_light = AppSettings.get_theme() == "light"
-        
-        # 1. Paint the outer hover / checked / pressed ring
-        # Adjust by 1px on each side to draw inside the 28x28 bounding box
-        outer_rect = self.rect().adjusted(1, 1, -1, -1)
-        
-        if self.isChecked():
-            # Checked outline (solid white/dark)
-            pen_color = QColor("#333333") if is_light else QColor("#ffffff")
-            painter.setPen(QPen(pen_color, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawEllipse(outer_rect)
-        elif self.hovered:
-            # Hover outline (semi-transparent white/dark)
-            pen_color = QColor(0, 0, 0, 64) if is_light else QColor(255, 255, 255, 115)
-            painter.setPen(QPen(pen_color, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawEllipse(outer_rect)
-            
-        # 2. Paint the inner color swatch circle
-        # Offset by 5px on all sides to make it a perfect 18x18 circle centered inside 28x28
-        inner_rect = self.rect().adjusted(5, 5, -5, -5)
-        
-        c = QColor(self.color_hex)
-        painter.setBrush(c)
-        
-        # Border around white swatch so it's visible on light backgrounds
-        if self.color_hex.lower() in ("#ffffff", "#fff"):
-            painter.setPen(QPen(QColor("#bbbbbb") if is_light else QColor("#555555"), 1))
-        else:
-            painter.setPen(Qt.PenStyle.NoPen)
-            
-        painter.drawEllipse(inner_rect)
-        
-        # 3. Draw a clean, antialiased checkmark ✓ in the center if checked
-        if self.isChecked():
-            luminance = 0.299 * c.redF() + 0.587 * c.greenF() + 0.114 * c.blueF()
-            check_color = QColor("#1a1a1a") if luminance > 0.6 else QColor("#ffffff")
-            painter.setPen(QPen(check_color, 2))
-            painter.setFont(QFont("Roboto", 9, QFont.Weight.Bold))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "✓")
-            
-        painter.end()
-
-
-class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
+class ToolbarWidget(
+    ToolbarModePopupsMixin,
+    ToolbarColorMixin,
+    ToolbarWidthMixin,
+    QWidget
+):
     """Horizontal toolbar with Lucide tool icons, 10 customizable color chips,
     and 5 pen width controls.
 
-    Color chips:
-    - Single-click selects the color for drawing.
-    - Double-click opens the color picker to customize that slot.
-
-    Emits tool_changed when a tool button is clicked, and style_changed
-    when a color or width changes.
-
-    Mode popup logic is in ToolbarModePopupsMixin.
+    Features are modularly split into mixins:
+    - ToolbarModePopupsMixin: Handles tool double-click mode selection popups.
+    - ToolbarColorMixin: Handles color chips, palette customization, and picker.
+    - ToolbarWidthMixin: Handles width buttons and tool style memory.
     """
 
     tool_changed = Signal(str)
@@ -159,7 +78,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         self._popup: ColorPickerPopup | None = None
         self._active_color_index: int = 0
         self._editing_chip_index: int = -1
-        from core.app_settings import AppSettings
         
         self._current_tool_name: str = AppSettings.get_active_tool()
         self._selection_mode: str = AppSettings.get_selection_mode()
@@ -195,7 +113,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             "shape": (0, 1),
         }
         loaded_memory = AppSettings.get_tool_memory()
-        # Convert list back to tuple since JSON saves as list
         self._tool_memory: dict[str, tuple[int, int]] = {
             k: tuple(loaded_memory.get(k, default_memory.get(k, (0, 0))))
             for k in default_memory.keys()
@@ -323,8 +240,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             self._shape_menu.addAction(action)
             self._shape_actions.append((action, shape_type))
 
-        # Removed setMenu and _on_shape_btn_clicked overrides.
-
         # Add shape button to tool button group
         shape_idx = len(self._tool_buttons)
         self._tool_group.addButton(self._shape_btn, shape_idx)
@@ -342,7 +257,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         # --- 10 Color chips (single-click = select, double-click = edit) ---
         self._color_group = QButtonGroup(self)
         self._color_group.setExclusive(True)
-        self._color_buttons: list[QToolButton] = []
+        self._color_buttons: list[ColorChipButton] = []
 
         for i, color in enumerate(self._chip_colors):
             btn = ColorChipButton(color, self)
@@ -399,10 +314,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
         # Install smooth background hover fade animations on primary toolbar buttons
         from ui.animations.fade_hover import BackgroundFadeHoverEffect
-        from core.app_settings import AppSettings
         
-        is_light = AppSettings.get_theme() == "light"
-        hover_color = QColor(0, 0, 0, 18) if is_light else QColor(255, 255, 255, 25)
+        hover_color = QColor(0, 0, 0, 18) if AppSettings.get_theme() == "light" else QColor(255, 255, 255, 25)
         
         self._hover_effects = []
         self._hover_effects.append(BackgroundFadeHoverEffect(self._undo_btn, hover_color, duration=150, border_radius=6))
@@ -415,12 +328,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
     def _on_theme_updated(self) -> None:
         """Dynamically refresh all static SVG icons and hover effect colors on theme switch."""
-        from ui.components.icon_factory import IconFactory
-        from core.app_settings import AppSettings
-        from PySide6.QtGui import QColor
-        from ui.animations.fade_hover import BackgroundFadeHoverEffect
+        hover_color = QColor(0, 0, 0, 18) if AppSettings.get_theme() == "light" else QColor(255, 255, 255, 25)
         
-        # 1. Update static icons (Undo / Redo / Tools)
         self._undo_btn.setIcon(IconFactory.create("undo", color="#cccccc"))
         self._redo_btn.setIcon(IconFactory.create("redo", color="#cccccc"))
         
@@ -428,8 +337,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             if i < len(self._tool_buttons):
                 self._tool_buttons[i].setIcon(IconFactory.create(tool_id))
                 
-        # 2. Update active shape icon and shapes menu actions
-        from app.app_state import AppState
         active_shape = AppState().active_shape_type
         icon_name = self._shape_icon_map.get(active_shape, "shape_rect")
         self._shape_btn.setIcon(IconFactory.create(icon_name))
@@ -439,18 +346,13 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 action_icon_name = self._shape_icon_map.get(st, "shape_rect")
                 action.setIcon(IconFactory.create(action_icon_name))
         
-        # 3. Refresh hover animation fade colors
         self._hover_effects.clear()
-        is_light = AppSettings.get_theme() == "light"
-        hover_color = QColor(0, 0, 0, 18) if is_light else QColor(255, 255, 255, 25)
-        
+        from ui.animations.fade_hover import BackgroundFadeHoverEffect
         self._hover_effects.append(BackgroundFadeHoverEffect(self._undo_btn, hover_color, duration=150, border_radius=6))
         self._hover_effects.append(BackgroundFadeHoverEffect(self._redo_btn, hover_color, duration=150, border_radius=6))
         for btn in self._tool_buttons:
             self._hover_effects.append(BackgroundFadeHoverEffect(btn, hover_color, duration=150, border_radius=6))
 
-        # 4. Refresh pen width dot icons
-        from ui.bars.toolbar_icons import make_width_icon
         if hasattr(self, "_width_buttons"):
             for i, (width, dot_r) in enumerate(zip(self.PEN_WIDTHS, self.WIDTH_DOT_RADII)):
                 if i < len(self._width_buttons):
@@ -459,16 +361,8 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
     def showEvent(self, event) -> None:
         """Reload settings from AppSettings when toolbar becomes visible."""
         super().showEvent(event)
-        from core.app_settings import AppSettings
         self._chip_colors = list(AppSettings.get_pen_colors())
         self._update_chip_icons()
-        
-        # Bring in default color/width if they were out of sync
-        # Though the active chip is managed by tool_memory, we just ensure colors are correct.
-
-    # ------------------------------------------------------------------
-    # Undo / Redo tooltip slots
-    # ------------------------------------------------------------------
 
     def _update_undo_tooltip(self, text: str) -> None:
         """Update undo tooltip safely (avoids lambda teardown crash)."""
@@ -478,140 +372,9 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         """Update redo tooltip safely (avoids lambda teardown crash)."""
         self._redo_btn.setToolTip(tr("toolbar.redo_action").format(text) if text else tr("toolbar.redo"))
 
-    # ------------------------------------------------------------------
-    # Double-click detection for color chips
-    # ------------------------------------------------------------------
-
-    def _on_chip_raw_click(self, chip_id: int) -> None:
-        """Handle raw chip click — detect single vs double click."""
-        if self._click_timer.isActive() and self._last_click_chip == chip_id:
-            # Double-click detected
-            self._click_timer.stop()
-            self._on_chip_double_clicked(chip_id)
-        else:
-            # Start single-click timer
-            self._last_click_chip = chip_id
-            self._click_timer.start()
-
-    def _on_single_click_confirmed(self) -> None:
-        """Timer expired — this was a genuine single click."""
-        chip_id = self._last_click_chip
-        if 0 <= chip_id < len(self._chip_colors):
-            self._active_color_index = chip_id
-            self._update_chip_icons()
-            color_hex = self._chip_colors[chip_id]
-            self._app_state.update_style(color=QColor(color_hex))
-            self.style_changed.emit(self._app_state.tool_style)
-
-    def _on_chip_double_clicked(self, chip_id: int) -> None:
-        """Double-click on chip — open picker to customize this slot."""
-        if 0 <= chip_id < len(self._chip_colors):
-            self._editing_chip_index = chip_id
-            self._active_color_index = chip_id
-            self._update_chip_icons()
-
-            if self._popup is None:
-                self._popup = ColorPickerPopup()
-                self._popup.color_selected.connect(self._on_picker_color_changed)
-
-            self._popup.set_color(QColor(self._chip_colors[chip_id]))
-            btn = self._color_buttons[chip_id]
-            global_pos = btn.mapToGlobal(QPoint(0, btn.height() + 4))
-            self._popup.show_at(global_pos)
-
-    def _on_picker_color_changed(self, color: QColor) -> None:
-        """Color picker emitted a new color — update the chip being edited."""
-        idx = self._editing_chip_index
-        if 0 <= idx < len(self._chip_colors):
-            self._chip_colors[idx] = color.name()
-            self._active_color_index = idx
-            self._update_chip_icons()
-            self._color_buttons[idx].setChecked(True)
-
-            self._app_state.update_style(color=color)
-            self.style_changed.emit(self._app_state.tool_style)
-            
-            from core.app_settings import AppSettings
-            AppSettings.set_pen_colors(self._chip_colors)
-
-    # ------------------------------------------------------------------
-    # Chip icon management
-    # ------------------------------------------------------------------
-
-    def _update_chip_icons(self) -> None:
-        """Refresh all chip icons, showing checkmark on the active one."""
-        for i, btn in enumerate(self._color_buttons):
-            btn.color_hex = self._chip_colors[i]
-            btn.setToolTip(
-                tr("toolbar.color_hint").format(self._chip_colors[i])
-            )
-            btn.update()
-
-    def select_matching_color(self, color: QColor) -> None:
-        """Select the chip whose color is closest to *color*.
-
-        Called when the cursor moves in a textbox to sync the toolbar
-        to the text color at cursor position.  Does NOT emit style_changed
-        to avoid feedback loops.
-        """
-        if not self._color_buttons:
-            return
-        target = color.name().lower()
-        # Exact match first
-        for i, c in enumerate(self._chip_colors):
-            if c.lower() == target:
-                if i != self._active_color_index:
-                    self._active_color_index = i
-                    self._color_buttons[i].setChecked(True)
-                    self._update_chip_icons()
-                return
-        # No exact match → don't change selection
-
-    # ------------------------------------------------------------------
-    # Width / tool slots
-    # ------------------------------------------------------------------
-
-    def _save_tool_memory(self) -> None:
-        """Save current color and width selection for the current tool."""
-        if self._current_tool_name in ("pen", "highlighter", "eraser", "text", "shape"):
-            width_id = self._width_group.checkedId()
-            if width_id < 0:
-                width_id = 0
-            self._tool_memory[self._current_tool_name] = (
-                self._active_color_index,
-                width_id,
-            )
-            from core.app_settings import AppSettings
-            AppSettings.set_tool_memory(self._tool_memory)
-
-    def _restore_tool_memory(self, tool_name: str) -> None:
-        """Restore saved color and width selection for the given tool."""
-        if tool_name not in self._tool_memory:
-            return
-
-        color_idx, width_idx = self._tool_memory[tool_name]
-
-        uses_color = tool_name in ("pen", "highlighter", "text", "shape")
-        uses_width = tool_name in ("pen", "highlighter", "eraser", "shape")
-
-        # Restore color chip
-        if uses_color and 0 <= color_idx < len(self._chip_colors):
-            self._active_color_index = color_idx
-            self._color_buttons[color_idx].setChecked(True)
-            self._update_chip_icons()
-            self._app_state.update_style(color=QColor(self._chip_colors[color_idx]))
-
-        # Restore width button
-        if uses_width and 0 <= width_idx < len(self._width_buttons):
-            self._width_buttons[width_idx].setChecked(True)
-            self._app_state.update_style(width=self._active_widths[width_idx])
-
-        self.style_changed.emit(self._app_state.tool_style)
-
     def _on_tool_button_clicked(self, button_id: int) -> None:
         # Shape button has its own index beyond TOOL_IDS
         if button_id >= len(self.TOOL_IDS):
-            # Shape button clicked via group
             if self._current_tool_name == "shape":
                 if (self._shape_click_timer.isActive()
                         and self._shape_pending_id == button_id):
@@ -655,10 +418,7 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
             # Normal tool switch
             self._save_tool_memory()
             self._current_tool_name = tool_id
-            
-            from core.app_settings import AppSettings
             AppSettings.set_active_tool(tool_id)
-            
             self.tool_changed.emit(tool_id)
 
     def _show_shape_menu(self) -> None:
@@ -670,43 +430,14 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
 
     def _on_shape_selected(self, shape_type) -> None:
         """Shape menu item selected — update icon + activate tool."""
-        from app.app_state import AppState
         AppState().active_shape_type = shape_type
         icon_name = self._shape_icon_map.get(shape_type, "shape_rect")
         self._shape_btn.setIcon(IconFactory.create(icon_name))
         self._shape_btn.setChecked(True)
         self._save_tool_memory()
         self._current_tool_name = "shape"
-        
-        from core.app_settings import AppSettings
         AppSettings.set_active_tool("shape")
-        
         self.tool_changed.emit("shape")
-
-    def _clear_color_selection(self) -> None:
-        """Visually uncheck all color chips without triggering exclusivity."""
-        self._color_group.setExclusive(False)
-        for btn in self._color_buttons:
-            btn.setChecked(False)
-        self._color_group.setExclusive(True)
-        self._active_color_index = -1
-        self._update_chip_icons()
-
-    def _clear_width_selection(self) -> None:
-        """Visually uncheck all width buttons without triggering exclusivity."""
-        self._width_group.setExclusive(False)
-        for btn in self._width_buttons:
-            btn.setChecked(False)
-        self._width_group.setExclusive(True)
-
-    def _on_width_clicked(self, width_id: int) -> None:
-        if 0 <= width_id < len(self._active_widths):
-            self._app_state.update_style(width=self._active_widths[width_id])
-            self.style_changed.emit(self._app_state.tool_style)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def set_active_tool(self, tool_id: str) -> None:
         """Programmatically set the active tool button."""
@@ -725,19 +456,10 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 self._color_buttons[i].setChecked(True)
                 self._update_chip_icons()
                 return
-
-        # No match — keep current selection
         self._update_chip_icons()
 
     def sync_selection_style(self, colors: set[str], widths: set[float]) -> None:
-        """Sync the toolbar state (checked chips/widths) to the current selection's colors and widths.
-        
-        If colors contains a single color, check the matching chip if exists, else uncheck all.
-        If colors contains multiple or zero colors, uncheck all chips.
-        If widths contains a single width, check the matching width button if exists, else uncheck all.
-        If widths contains multiple or zero widths, uncheck all width buttons.
-        """
-        # Block signals from group selections to avoid recursive style change triggers
+        """Sync the toolbar state (checked chips/widths) to the current selection's styles."""
         self._color_group.blockSignals(True)
         self._width_group.blockSignals(True)
         
@@ -758,7 +480,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 else:
                     self._clear_color_selection()
                 
-                # Update app state's style color
                 self._app_state.update_style(color=QColor(color_hex))
             else:
                 self._clear_color_selection()
@@ -777,7 +498,6 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
                 else:
                     self._clear_width_selection()
                 
-                # Update app state's style width
                 self._app_state.update_style(width=width_val)
             else:
                 self._clear_width_selection()
@@ -785,33 +505,3 @@ class ToolbarWidget(ToolbarModePopupsMixin, QWidget):
         finally:
             self._color_group.blockSignals(False)
             self._width_group.blockSignals(False)
-
-    def update_width_buttons(self, tool_name: str) -> None:
-        """Swap width value mapping and restore saved selections.
-
-        Args:
-            tool_name: 'pen', 'highlighter', 'eraser', 'text', 'hand', 'selection'.
-        """
-        uses_color = tool_name in ("pen", "highlighter", "text", "shape")
-        uses_width = tool_name in ("pen", "highlighter", "eraser", "shape")
-
-        if tool_name == "highlighter":
-            self._active_widths = self.HIGHLIGHTER_WIDTHS
-        elif tool_name == "eraser":
-            self._active_widths = self.ERASER_WIDTHS
-        else:
-            self._active_widths = self.PEN_WIDTHS
-
-        # Update eraser tooltip and color chip state
-        if tool_name == "eraser":
-            self._update_eraser_tooltip()
-            
-        # We NO LONGER clear color/width selection for Hand/Selection tools
-        # because the user might want to apply the active style to selected items.
-        if not uses_color and tool_name not in ("hand", "selection"):
-            self._clear_color_selection()
-        if not uses_width and tool_name not in ("hand", "selection"):
-            self._clear_width_selection()
-
-        # Restore saved color + width for this tool
-        self._restore_tool_memory(tool_name)

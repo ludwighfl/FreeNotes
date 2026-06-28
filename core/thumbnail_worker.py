@@ -76,7 +76,16 @@ class ThumbnailWorker(QThread):
                         zoom = 960.0 / max_dim
 
                     matrix = fitz.Matrix(zoom, zoom)
+                    import time
+                    start_t = time.perf_counter()
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
+                    render_duration = time.perf_counter() - start_t
+                    if render_duration > 0.050:
+                        try:
+                            page.clean_contents()
+                            pix = page.get_pixmap(matrix=matrix, alpha=False)
+                        except Exception:
+                            pass
 
                     img = QImage(
                         pix.samples,

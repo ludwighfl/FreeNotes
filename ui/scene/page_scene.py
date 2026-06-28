@@ -66,6 +66,8 @@ class PageScene(
     tool_switch_requested = Signal(str)
     selection_changed = Signal()
     item_page_changed = Signal(int, int) # (old_page, new_page)
+    page_jump_requested = Signal(int)
+    link_uri_clicked = Signal(str)
 
     def __init__(self, parent: object = None) -> None:
         super().__init__(parent)
@@ -376,7 +378,62 @@ class PageScene(
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        """Handle double clicks on items like text boxes in selection mode."""
+        """Handle double clicks on items like text boxes in selection mode, or navigate links."""
+        # Check for PDF link clicks (only active for Hand or Selection tools)
+        from tools.hand_tool import HandTool
+        from tools.selection_tool import SelectionTool
+        if isinstance(self._active_tool, (HandTool, SelectionTool)) and self._doc_manager and self._doc_manager.is_open:
+            scene_pos = event.scenePos()
+            clicked_page_idx = -1
+            local_pos = None
+            for i, rect in enumerate(self._page_rects):
+                if rect.contains(scene_pos):
+                    clicked_page_idx = i
+                    local_pos = scene_pos - rect.topLeft()
+                    break
+
+            if clicked_page_idx != -1 and local_pos is not None:
+                scale = self.RENDER_DPI / 72.0
+                pdf_x = local_pos.x() / scale
+                pdf_y = local_pos.y() / scale
+
+                links = self._doc_manager.get_page_links(clicked_page_idx)
+                for link in links:
+                    rect = link.get("from")
+                    if rect and rect.x0 <= pdf_x <= rect.x1 and rect.y0 <= pdf_y <= rect.y1:
+                        # Draw visual highlight overlay (blue semi-transparent overlay)
+                        x = rect.x0 * scale + self._page_rects[clicked_page_idx].x()
+                        y = rect.y0 * scale + self._page_rects[clicked_page_idx].y()
+                        w = (rect.x1 - rect.x0) * scale
+                        h = (rect.y1 - rect.y0) * scale
+
+                        from PySide6.QtWidgets import QGraphicsRectItem
+                        from PySide6.QtGui import QBrush, QColor
+
+                        highlight = QGraphicsRectItem(QRectF(x, y, w, h))
+                        highlight.setBrush(QBrush(QColor(0, 120, 215, 80)))  # Semi-transparent blue
+                        highlight.setPen(Qt.PenStyle.NoPen)
+                        highlight.setZValue(9999)
+                        self.addItem(highlight)
+
+                        # Remove highlight after 300 ms
+                        QTimer.singleShot(300, lambda item=highlight: self.removeItem(item) if item in self.items() else None)
+
+                        # Navigate / Action
+                        kind = link.get("kind")
+                        if kind == 1:  # LINK_GOTO
+                            target_page = link.get("page")
+                            if target_page is not None:
+                                self.page_jump_requested.emit(target_page)
+                                event.accept()
+                                return
+                        elif kind == 2:  # LINK_URI
+                            uri = link.get("uri")
+                            if uri:
+                                self.link_uri_clicked.emit(uri)
+                                event.accept()
+                                return
+
         super().mouseDoubleClickEvent(event)
         
         # Tools might override double click behavior

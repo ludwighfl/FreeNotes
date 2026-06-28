@@ -132,5 +132,12 @@
     "dialog.title.info": "Information",
     "dialog.title.warning": "Warnung",
     "dialog.title.error": "Fehler",
-    "dialog.title.question": "Frage"
+    "dialog.title.question": "Frage",
+    "dialog.merge.title": "PDFs fusionieren",
+    "dialog.merge.instruction": "Reihenfolge der PDFs anpassen:",
+    "dialog.merge.name_label": "Neuer Name für die fusionierte PDF:",
+    "dialog.merge.default_name": "Zusammengeführt",
+    "dialog.merge.button": "Fusionieren",
+    "dialog.merge.up_tooltip": "Nach oben verschieben",
+    "dialog.merge.down_tooltip": "Nach unten verschieben"
 }

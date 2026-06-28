@@ -1,33 +1,27 @@
 """Graphics view for PDF pages – zoom, pan, and scroll-to-page."""
 
-from PySide6.QtCore import (
-    Qt,
-    QTimer,
-    Signal,
-    QPointF,
-    QVariantAnimation,
-    QEasingCurve,
-    QEvent,
-)
-from PySide6.QtGui import QPainter, QPixmap, QTabletEvent
-from PySide6.QtWidgets import QGraphicsView, QGraphicsSceneMouseEvent
+from __future__ import annotations
 
-import gc
+from PySide6.QtCore import Qt, QTimer, Signal, QPointF
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import QGraphicsView
 
 from app.app_state import AppState
-from core.tile_cache import MipLevel
 from ui.scene.page_scene import PageScene
 from ui.animations.kinetic import KineticScroller
 from ui.animations.scroll import ScrollAnimation
 
+from ui.scene.page_view_navigation_mixin import PageViewNavigationMixin
+from ui.scene.page_view_gesture_mixin import PageViewGestureMixin
 
-class PageView(QGraphicsView):
+
+class PageView(PageViewNavigationMixin, PageViewGestureMixin, QGraphicsView):
     """QGraphicsView with zoom (Ctrl+Scroll), pan (Space+Drag / Middle-mouse),
     and smooth scroll-to-page support.
 
-    When the active tool is NOT HandTool, mouse events are forwarded to the
-    scene for tool processing. Space+Drag and Middle-mouse pan always work
-    regardless of the active tool.
+    Features are modularly split into mixins:
+    - PageViewNavigationMixin: Handles zoom, scroll-to-page, and visible page detection.
+    - PageViewGestureMixin: Handles touch, gestures, tablet, and panning events.
     """
 
     ZOOM_FACTOR: float = 1.15
@@ -35,6 +29,8 @@ class PageView(QGraphicsView):
     ZOOM_MAX: float = 5.0
 
     visible_page_changed = Signal(int)
+
+    _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
     def __init__(self, scene: PageScene, parent: object = None) -> None:
         super().__init__(scene, parent)
@@ -58,6 +54,7 @@ class PageView(QGraphicsView):
         self._target_zoom: float = 1.0
 
         # Smooth zoom animation
+        from PySide6.QtCore import QVariantAnimation, QEasingCurve
         self._zoom_anim = QVariantAnimation(self)
         self._zoom_anim.setDuration(250)
         self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -79,7 +76,8 @@ class PageView(QGraphicsView):
         self.setBackgroundBrush(Qt.GlobalColor.transparent)
         self.setAcceptDrops(True)
 
-        # Track scrolling to detect current visible page
+        # Track scrolling to detect current visible page and direction
+        self._last_scroll_y = 0
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
 
         # Debounced render timer for virtual page rendering
@@ -106,463 +104,12 @@ class PageView(QGraphicsView):
         scene = self.scene()
         if scene is not None and hasattr(scene, "set_eraser_cursor_visible"):
             scene.set_eraser_cursor_visible(True)
-        # Safely restore tool's cursor so it doesn't get lost
         self._restore_tool_cursor()
         super().enterEvent(event)
 
     # ------------------------------------------------------------------
-    # Zoom
-    # ------------------------------------------------------------------
-
-    def wheelEvent(self, event: object) -> None:
-        """Zoom in/out with Ctrl+Scroll (smooth)."""
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            angle = event.angleDelta().y()
-            if angle > 0:
-                factor = self.ZOOM_FACTOR
-            elif angle < 0:
-                factor = 1.0 / self.ZOOM_FACTOR
-            else:
-                return
-
-            # Update target zoom based on the relative factor
-            self._target_zoom = max(
-                self.ZOOM_MIN, min(self.ZOOM_MAX, self._target_zoom * factor)
-            )
-
-            # Start or update animation
-            self._zoom_anim.stop()
-            self._zoom_anim.setStartValue(self._current_zoom)
-            self._zoom_anim.setEndValue(self._target_zoom)
-            self._zoom_anim.start()
-            event.accept()
-        else:
-            super().wheelEvent(event)
-
-    def _on_zoom_anim_value_changed(self, value: float) -> None:
-        """Apply the intermediate zoom factor during animation."""
-        if self._current_zoom == 0:
-            return
-
-        factor = value / self._current_zoom
-        self.scale(factor, factor)
-        self._current_zoom = value
-
-        self._app_state.zoom_factor = value
-        self._update_mip_for_zoom()
-
-        # Trigger re-render after a short delay if it's the last frame
-        if value == self._target_zoom:
-            QTimer.singleShot(200, self._on_render_timer)
-
-    def zoom_to_fit(self) -> None:
-        """Fit the current page into the viewport."""
-        page_index = self._app_state.current_page
-        rect = self._page_scene.get_page_rect(page_index)
-        if rect.isEmpty():
-            return
-
-        self.resetTransform()
-        self._current_zoom = 1.0
-        self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
-
-        # Recalculate actual zoom factor from transform
-        transform = self.transform()
-        self._current_zoom = transform.m11()
-        self._target_zoom = self._current_zoom
-        self._app_state.zoom_factor = self._current_zoom
-        self._update_mip_for_zoom()
-
-    def set_zoom(self, zoom: float) -> None:
-        """Set the zoom to a specific level (no animation)."""
-        zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, zoom))
-        self.resetTransform()
-        self.scale(zoom, zoom)
-        self._current_zoom = zoom
-        self._target_zoom = zoom
-        self._app_state.zoom_factor = zoom
-        self._update_mip_for_zoom()
-        # Trigger re-render after zoom
-        QTimer.singleShot(200, self._on_render_timer)
-
-    # ------------------------------------------------------------------
-    # Pan (Space+Drag / Middle-mouse – always available)
-    # ------------------------------------------------------------------
-
-    def keyPressEvent(self, event: object) -> None:
-        """Track Space key for pan mode (unless a TextBox is being edited)."""
-        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            # If a TextBoxItem is being edited, let Space go to the text
-            if self._is_textbox_editing():
-                super().keyPressEvent(event)
-                return
-            self._space_pressed = True
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-        else:
-            super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event: object) -> None:
-        """Release Space key pan mode."""
-        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            if self._is_textbox_editing():
-                super().keyReleaseEvent(event)
-                return
-            self._space_pressed = False
-            if not self._panning:
-                self._restore_tool_cursor()
-        else:
-            super().keyReleaseEvent(event)
-
-    def _is_textbox_editing(self) -> bool:
-        """Check if any TextBoxItem in the scene is currently being edited."""
-        from items.text_box_item import TextBoxItem
-        focus_item = self._page_scene.focusItem()
-        return isinstance(focus_item, TextBoxItem) and focus_item._is_editing
-
-    def viewportEvent(self, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.TouchBegin:
-            if len(event.points()) >= 2:
-                self._gesture_active = True
-                if self._touch_active:
-                    self._touch_active = False
-                    touch_point = event.points()[0]
-                    scene_pos = self.mapToScene(touch_point.position().toPoint())
-                    mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
-                    mouse_event.setButton(Qt.MouseButton.LeftButton)
-                    mouse_event.setScenePos(scene_pos)
-                    self.scene().mouseReleaseEvent(mouse_event)
-                
-                p1 = event.points()[0].position()
-                p2 = event.points()[1].position()
-                import math
-                self._last_touch_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
-                self._last_touch_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
-                return True
-
-            self._touch_active = True
-            touch_point = event.points()[0]
-            scene_pos = self.mapToScene(touch_point.position().toPoint())
-            
-            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
-            mouse_event.setButton(Qt.MouseButton.LeftButton)
-            mouse_event.setButtons(Qt.MouseButton.LeftButton)
-            mouse_event.setScenePos(scene_pos)
-            self.scene().mousePressEvent(mouse_event)
-            return True
-            
-        elif event.type() == QEvent.Type.TouchUpdate:
-            if not self._gesture_active and len(event.points()) >= 2:
-                self._gesture_active = True
-                if self._touch_active:
-                    self._touch_active = False
-                    touch_point = event.points()[0]
-                    scene_pos = self.mapToScene(touch_point.position().toPoint())
-                    mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
-                    mouse_event.setButton(Qt.MouseButton.LeftButton)
-                    mouse_event.setScenePos(scene_pos)
-                    self.scene().mouseReleaseEvent(mouse_event)
-                
-                p1 = event.points()[0].position()
-                p2 = event.points()[1].position()
-                import math
-                self._last_touch_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
-                self._last_touch_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
-
-            if self._gesture_active:
-                if len(event.points()) < 2:
-                    self._gesture_active = False
-                    return True
-                
-                p1 = event.points()[0].position()
-                p2 = event.points()[1].position()
-                import math
-                new_distance = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
-                new_center = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
-                
-                # Pinch-Zoom
-                if self._last_touch_distance > 0:
-                    scale_factor = new_distance / self._last_touch_distance
-                    new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self._current_zoom * scale_factor))
-                    
-                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-                    self.scale(new_zoom / self._current_zoom, new_zoom / self._current_zoom)
-                    self._current_zoom = new_zoom
-                    self._target_zoom = new_zoom
-                    self._app_state.zoom_factor = new_zoom
-                    self._update_mip_for_zoom()
-                
-                # Two-Finger-Pan
-                delta = new_center - self._last_touch_center
-                h_bar = self.horizontalScrollBar()
-                v_bar = self.verticalScrollBar()
-                h_bar.setValue(h_bar.value() - int(delta.x()))
-                v_bar.setValue(v_bar.value() - int(delta.y()))
-                
-                self._last_touch_distance = new_distance
-                self._last_touch_center = new_center
-                return True
-
-            if self._touch_active:
-                touch_point = event.points()[0]
-                scene_pos = self.mapToScene(touch_point.position().toPoint())
-                
-                mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseMove)
-                mouse_event.setButtons(Qt.MouseButton.LeftButton)
-                mouse_event.setScenePos(scene_pos)
-                self.scene().mouseMoveEvent(mouse_event)
-                return True
-                
-        elif event.type() in (QEvent.Type.TouchEnd, QEvent.Type.TouchCancel):
-            was_gesture = self._gesture_active
-            self._gesture_active = False
-            
-            if self._touch_active:
-                self._touch_active = False
-                touch_point = event.points()[0]
-                scene_pos = self.mapToScene(touch_point.position().toPoint())
-                
-                mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
-                mouse_event.setButton(Qt.MouseButton.LeftButton)
-                mouse_event.setScenePos(scene_pos)
-                self.scene().mouseReleaseEvent(mouse_event)
-                
-            if was_gesture:
-                QTimer.singleShot(200, self._on_render_timer)
-                
-            return True
-            
-        return super().viewportEvent(event)
-
-    def tabletEvent(self, event: QTabletEvent) -> None:
-        if self._gesture_active:
-            event.accept()
-            return
-
-        scene_pos = self.mapToScene(event.position().toPoint())
-        
-        if event.type() == QEvent.Type.TabletPress:
-            self._touch_active = True
-            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
-            mouse_event.setButton(Qt.MouseButton.LeftButton)
-            mouse_event.setButtons(Qt.MouseButton.LeftButton)
-            mouse_event.setScenePos(scene_pos)
-            self.scene().mousePressEvent(mouse_event)
-            event.accept()
-            
-        elif event.type() == QEvent.Type.TabletMove:
-            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseMove)
-            mouse_event.setButtons(Qt.MouseButton.LeftButton)
-            mouse_event.setScenePos(scene_pos)
-            self.scene().mouseMoveEvent(mouse_event)
-            event.accept()
-            
-        elif event.type() == QEvent.Type.TabletRelease:
-            self._touch_active = False
-            mouse_event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMouseRelease)
-            mouse_event.setButton(Qt.MouseButton.LeftButton)
-            mouse_event.setScenePos(scene_pos)
-            self.scene().mouseReleaseEvent(mouse_event)
-            event.accept()
-        else:
-            super().tabletEvent(event)
-
-    def mousePressEvent(self, event: object) -> None:
-        """Handle pan (Space+Left / Middle), otherwise forward to scene."""
-        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
-            return
-
-        if (
-            self._space_pressed and event.button() == Qt.MouseButton.LeftButton
-        ) or event.button() == Qt.MouseButton.MiddleButton:
-            self._panning = True
-            self._pan_start_x = event.x()
-            self._pan_start_y = event.y()
-            self._kinetic_scroller.on_mouse_press(event.x(), event.y())
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-        else:
-            # Forward to scene for tool processing
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: object) -> None:
-        """Pan or forward to scene."""
-        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
-            return
-
-        if self._panning:
-            dx = event.x() - self._pan_start_x
-            dy = event.y() - self._pan_start_y
-            self._pan_start_x = event.x()
-            self._pan_start_y = event.y()
-            h_bar = self.horizontalScrollBar()
-            v_bar = self.verticalScrollBar()
-            h_bar.setValue(h_bar.value() - dx)
-            v_bar.setValue(v_bar.value() - dy)
-            self._kinetic_scroller.on_mouse_move(event.x(), event.y())
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: object) -> None:
-        """Stop panning or forward to scene."""
-        if hasattr(event, "source") and event.source() == Qt.MouseEventSource.MouseEventSynthesizedByQt and (self._touch_active or self._gesture_active):
-            return
-
-        if self._panning:
-            self._panning = False
-            self._kinetic_scroller.on_mouse_release()
-            if self._space_pressed:
-                self.setCursor(Qt.CursorShape.OpenHandCursor)
-            else:
-                self._restore_tool_cursor()
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-    def _restore_tool_cursor(self) -> None:
-        """Restore cursor based on the active tool."""
-        tool = self._page_scene.active_tool
-        if tool is not None:
-            # Set cursor directly instead of re-activating the tool
-            self.viewport().setCursor(tool.cursor)
-            self.setCursor(tool.cursor)
-        else:
-            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-
-    # ------------------------------------------------------------------
-    # Scroll to page
-    # ------------------------------------------------------------------
-
-    def scroll_to_page(self, page_index: int) -> None:
-        """Scroll the view so the top of the given page is at the top of the viewport.
-
-        Args:
-            page_index: Zero-based page index.
-        """
-        rect = self._page_scene.get_page_rect(page_index)
-        if rect.isEmpty():
-            return
-
-        self._app_state.current_page = page_index
-
-        # Calculate where the top of the rect is in the scene.
-        # We want scene_y = rect.top() - margin to be at the top of the viewport.
-        margin = 20
-        target_scene_y = rect.top() - margin
-        
-        # We need the viewport height in scene coordinates.
-        vp_height = self.viewport().height()
-        scale_y = self.transform().m22()
-        scene_vp_half = (vp_height / 2) / scale_y
-        
-        self._scroll_anim.scroll_to(
-            QPointF(rect.center().x(), target_scene_y + scene_vp_half)
-        )
-
-    # ------------------------------------------------------------------
-    # Visible page detection
-    # ------------------------------------------------------------------
-
-    def _on_scroll(self) -> None:
-        """Detect which page occupies the most space in the viewport."""
-        try:
-            viewport_rect = self.mapToScene(self.viewport().rect()).boundingRect()
-        except RuntimeError:
-            return
-
-        rects = self._page_scene._page_rects
-        if not rects:
-            return
-
-        best_index = 0
-        max_area = -1.0
-
-        # Optimize by binary searching the first visible page
-        offsets = self._page_scene._page_y_offsets
-        import bisect
-        idx = bisect.bisect_right(offsets, viewport_rect.top())
-        start_idx = max(0, idx - 1)
-        
-        for i in range(start_idx, len(rects)):
-            r = rects[i]
-            if r.top() > viewport_rect.bottom():
-                break  # past the viewport
-                
-            intersect = r.intersected(viewport_rect)
-            if not intersect.isEmpty():
-                area = intersect.width() * intersect.height()
-                if area > max_area:
-                    max_area = area
-                    best_index = i
-
-        try:
-            if max_area >= 0 and best_index != self._app_state.current_page:
-                # Suppress intermediate page updates during programmatic scroll animations
-                # to prevent the sidebar from "scrolling along" with every page passed.
-                if self._scroll_anim.is_running():
-                    return
-                self._app_state.current_page = best_index
-                self.visible_page_changed.emit(best_index)
-        except RuntimeError:
-            pass
-
-    # ------------------------------------------------------------------
-    # Virtual rendering triggers
-    # ------------------------------------------------------------------
-
-    def _on_scroll_changed(self) -> None:
-        """Start or restart the debounce timer on scroll.
-        
-        Using a trailing-edge debounce (always restarting the timer) ensures 
-        that rendering updates are suppressed during rapid manual scrolling 
-        and only fire once the movement slows down or stops.
-        """
-        if (self._scroll_anim.is_running() or 
-            self._zoom_anim.state() == QVariantAnimation.State.Running):
-            return
-
-        # Pause Python GC during rapid scroll events to avoid micro-stutters
-        gc.disable()
-
-        # Restart the timer. If the user scrolls faster than the interval (30ms),
-        # the renderer will remain suppressed until they pause.
-        self._render_timer.start()
-
-    def _on_render_timer(self) -> None:
-        """Inform scene which pages are visible for rendering."""
-        # Scrolling stopped - re-enable GC and do a quick generation 0 collection
-        gc.enable()
-        gc.collect(0)
-        
-        try:
-            vp_rect = self.mapToScene(
-                self.viewport().rect()).boundingRect()
-            scene = self.scene()
-            if scene and hasattr(scene, 'update_visible_pages'):
-                scene.update_visible_pages(vp_rect)
-        except RuntimeError:
-            pass
-
-    # ------------------------------------------------------------------
-    # Mip level selection
-    # ------------------------------------------------------------------
-
-    def _update_mip_for_zoom(self) -> None:
-        """Set the scene's current mip level based on the zoom factor."""
-        if self._current_zoom < 0.6:
-            mip = MipLevel.THUMB
-        elif self._current_zoom < 1.2:
-            mip = MipLevel.MEDIUM
-        else:
-            mip = MipLevel.FULL
-        self._page_scene._current_mip = mip
-
-    # ------------------------------------------------------------------
     # Drag & Drop for image files
     # ------------------------------------------------------------------
-
-    _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
     def dragEnterEvent(self, event) -> None:
         """Accept drag if it contains image files or image data."""
@@ -591,10 +138,8 @@ class PageView(QGraphicsView):
         mime = event.mimeData()
         drop_pos = self.mapToScene(event.position().toPoint())
 
-        # Determine target page
         page_idx = self._page_scene.get_page_index_at(drop_pos)
         if page_idx < 0:
-            # Drop outside any page — use current page
             page_idx = self._app_state.current_page
             page_rect = self._page_scene.get_page_rect(page_idx)
             if not page_rect.isEmpty():
@@ -612,7 +157,6 @@ class PageView(QGraphicsView):
                 try:
                     from items.image_item import ImageItem
                     item = ImageItem.from_image_file(file_path, drop_pos, page_idx)
-                    # Scale down large images to fit page width
                     page_rect = self._page_scene.get_page_rect(page_idx)
                     if not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
                         scale = (page_rect.width() * 0.8) / item._rect.width()
@@ -623,7 +167,6 @@ class PageView(QGraphicsView):
                     self._page_scene.addItem(item)
                     self._page_scene.add_item_to_registry(item)
                     items_created.append(item)
-                    # Offset next image slightly
                     drop_pos = QPointF(drop_pos.x() + 20, drop_pos.y() + 20)
                 except Exception as e:
                     logger.warning("Image drop failed: %s", e)
@@ -635,7 +178,6 @@ class PageView(QGraphicsView):
                 image = QImage(mime.imageData())
                 if not image.isNull():
                     item = ImageItem.from_qimage(image, drop_pos, page_idx)
-                    # Scale down large images
                     page_rect = self._page_scene.get_page_rect(page_idx)
                     if not page_rect.isEmpty() and item._rect.width() > page_rect.width() * 0.8:
                         scale = (page_rect.width() * 0.8) / item._rect.width()
@@ -650,18 +192,13 @@ class PageView(QGraphicsView):
                 logger.warning("Image clipboard drop failed: %s", e)
 
         if items_created:
-            # Push undo command
             from commands.paste_items_command import PasteItemsCommand
             from core import undo_stack
             cmd = PasteItemsCommand(items_created, self._page_scene)
             undo_stack.push(cmd)
 
-            # Select dropped items
             self._page_scene.set_selection(items_created)
-
-            # Auto-switch to hand tool
             self._page_scene.tool_switch_requested.emit("hand")
-
             event.acceptProposedAction()
         else:
             event.ignore()

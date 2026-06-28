@@ -370,6 +370,31 @@ class DocumentManager:
             self.page_map = list(range(self._document.page_count))
             self._structurally_modified = False
 
+    def get_page_links(self, page_index: int) -> list[dict]:
+        """Return list of links on a page, with link['from'] transformed to the rotated coordinate system.
+
+        Args:
+            page_index: Zero-based page index.
+
+        Returns:
+            List of dictionaries containing link properties.
+        """
+        with self._lock:
+            if self._document is None:
+                return []
+            if page_index < 0 or page_index >= self._document.page_count:
+                return []
+            try:
+                page = self._document.load_page(page_index)
+                links = page.get_links()
+                rot_matrix = page.rotation_matrix
+                for link in links:
+                    if "from" in link:
+                        link["from"] = link["from"] * rot_matrix
+                return links
+            except Exception:
+                return []
+
     def search_text(self, query: str) -> list[dict]:
         """Search for text across all pages.
 

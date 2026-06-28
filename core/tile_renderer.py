@@ -274,7 +274,22 @@ class TileRenderTask(QRunnable):
                     dl_cache.popitem(last=False)
                     
             dl = dl_cache[page_idx]
+            import time
+            start_t = time.perf_counter()
             pix = dl.get_pixmap(clip=clip, matrix=matrix, alpha=False)
+            render_duration = time.perf_counter() - start_t
+
+            if render_duration > 0.150 and page_idx not in getattr(doc, '_cleaned_pages', set()):
+                if not hasattr(doc, '_cleaned_pages'):
+                    doc._cleaned_pages = set()
+                try:
+                    page.clean_contents()
+                    dl_cache[page_idx] = page.get_displaylist(annots=False)
+                    dl = dl_cache[page_idx]
+                    pix = dl.get_pixmap(clip=clip, matrix=matrix, alpha=False)
+                    doc._cleaned_pages.add(page_idx)
+                except Exception:
+                    pass
 
             # fitz pixmap → QImage
             img = QImage(

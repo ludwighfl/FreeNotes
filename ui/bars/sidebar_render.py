@@ -27,24 +27,12 @@ class SidebarRenderMixin:
         Uses binary search on page Y-offsets to find affected pages in
         O(rects × log pages) instead of O(rects × pages).  All actual
         re-rendering is deferred to the existing debounced _lazy_timer.
-
-        A 200ms cooldown prevents re-processing during rapid-fire updates
-        (scroll, zoom, hover).  Small rects (< 100 px²) from cursor blinks
-        and handle hovers are skipped entirely.
         """
         if self._scene is None or not self._cards:
             return
         if getattr(self._scene, '_is_rendering_thumbnail', False):
             return
         if getattr(self._scene, '_suppress_scene_changed', False):
-            return
-
-        # Cooldown: skip if called too recently
-        now = time.monotonic()
-        if now - getattr(self, '_last_scene_changed_time', 0.0) < self._SCENE_CHANGED_COOLDOWN:
-            # Ensure a deferred check fires after the cooldown expires
-            if not self._lazy_timer.isActive():
-                self._lazy_timer.start()
             return
 
         page_rects = self._scene._page_rects
@@ -79,7 +67,6 @@ class SidebarRenderMixin:
                     dirty = True
 
         if dirty:
-            self._last_scene_changed_time = now
             self._lazy_timer.start()
 
     def invalidate_thumb(self: 'SidebarWidget', page_idx: int) -> None:
@@ -132,8 +119,23 @@ class SidebarRenderMixin:
             first_visible = 0
             last_visible = min(4, len(self._cards) - 1)
 
-        start = max(0, first_visible - buffer)
-        end = min(len(self._cards) - 1, last_visible + buffer)
+        # Determine buffers based on sidebar scroll direction (1 = down, -1 = up, 0 = static)
+        direction = getattr(self, '_sidebar_scroll_direction', 0)
+        # Reset scroll direction
+        self._sidebar_scroll_direction = 0
+
+        if direction > 0:
+            buffer_prev = 1
+            buffer_next = 4
+        elif direction < 0:
+            buffer_prev = 4
+            buffer_next = 1
+        else:
+            buffer_prev = buffer
+            buffer_next = buffer
+
+        start = max(0, first_visible - buffer_prev)
+        end = min(len(self._cards) - 1, last_visible + buffer_next)
 
         indices = [i for i in range(start, end + 1) 
                    if i not in self._loaded_pages and i not in self._queued_pages]
@@ -180,12 +182,20 @@ class SidebarRenderMixin:
         import time
         start_time = time.perf_counter()
         
+        # Dynamic budget: increase if there are many thumbnails waiting (up to 12ms)
+        queue_len = len(self._ready_thumbs_queue)
+        budget = 0.005
+        if queue_len > 8:
+            budget = 0.012
+        elif queue_len > 4:
+            budget = 0.008
+
         while self._ready_thumbs_queue:
             gen_id, idx, img = self._ready_thumbs_queue.popleft()
             self._apply_thumbnail(gen_id, idx, img)
             
-            # 5ms budget
-            if (time.perf_counter() - start_time) > 0.005:
+            # Break if we exceeded the budget
+            if (time.perf_counter() - start_time) > budget:
                 break
 
         if not self._ready_thumbs_queue:
