@@ -119,8 +119,15 @@ class TextTool(BaseTool):
         scene.clear_selection()
 
         style = AppState().tool_style
-        # Minimal initial rect: width 200, height 0 → auto-computed by TextBoxItem
-        initial_rect = QRectF(pos.x(), pos.y(), 200.0, 0.0)
+        page_rect = scene.get_page_rect(page_idx)
+        x = pos.x()
+        y = pos.y()
+        w = 200.0
+        if page_rect.isValid() and not page_rect.isEmpty():
+            x = max(page_rect.left(), min(x, page_rect.right() - 50.0))
+            y = max(page_rect.top(), min(y, page_rect.bottom() - 20.0))
+            w = min(200.0, max(50.0, page_rect.right() - x))
+        initial_rect = QRectF(x, y, w, 0.0)
         box = TextBoxItem(rect=initial_rect, style=style, page_index=page_idx)
         scene.addItem(box)
         scene.add_item_to_registry(box)

@@ -15,9 +15,10 @@ from PySide6.QtWidgets import (
 )
 
 from items.handle_item import HandlePosition
+from items.interactive_item import IRectResizable
 
 
-class ImageItem(QGraphicsItem):
+class ImageItem(QGraphicsItem, IRectResizable):
     """An image annotation item.
 
     Uses local coordinates: setPos(topLeft), _rect = QRectF(0, 0, w, h).
@@ -64,23 +65,7 @@ class ImageItem(QGraphicsItem):
         self.setAcceptHoverEvents(True)
         self.setZValue(2)
 
-        # --- Handles (created as children) ---
-        from items.image_handles import (
-            ImageResizeHandle, ImageMoveHandle,
-            ImageRotateHandle, ImageOptionsHandle,
-        )
-
-        self._handles: dict[HandlePosition, ImageResizeHandle] = {}
-        for pos in HandlePosition:
-            handle = ImageResizeHandle(pos, parent=self)
-            self._handles[pos] = handle
-
-        self._move_handle = ImageMoveHandle(parent=self)
-        self._rotate_handle = ImageRotateHandle(parent=self)
-        self._options_handle = ImageOptionsHandle(parent=self)
-
-        self._update_handle_positions()
-        self._set_handles_visible(False)
+        # Handles are managed centrally by SelectionBoxItem
 
     # ------------------------------------------------------------------
     # Helpers
@@ -151,17 +136,13 @@ class ImageItem(QGraphicsItem):
         self.update()
 
     def set_selected_custom(self, selected: bool) -> None:
-        """Show/hide handles + selection frame (called by scene)."""
+        """Show/hide selection frame (called by scene)."""
         self.prepareGeometryChange()
         self._is_selected = selected
         self._is_selected_custom = selected
         self._cached_br = None
-        self._set_handles_visible(selected)
-        if selected:
-            self.setZValue(100)
-            self._update_handle_positions()
-        else:
-            self.setZValue(2)
+        self._set_handles_visible(False)
+        self.setZValue(2)
         self.update()
 
     # ------------------------------------------------------------------
@@ -180,10 +161,72 @@ class ImageItem(QGraphicsItem):
     def set_rect(self, rect: QRectF) -> None:
         """Set the image rect from scene coordinates."""
         self.prepareGeometryChange()
+        w, h = rect.width(), rect.height()
         self.setPos(rect.topLeft())
-        self._rect = QRectF(0, 0, rect.width(), rect.height())
+        self._rect = QRectF(0, 0, w, h)
+        self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
         self._cached_br = None
         self._update_handle_positions()
+        self.update()
+
+    def capture_state(self) -> dict:
+        """Snapshot state for undo/redo."""
+        return {
+            "pos": QPointF(self.pos()),
+            "rect": self.get_rect(),
+            "rotation": self.rotation(),
+            "transform_origin": QPointF(self.transformOriginPoint()),
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Restore state from snapshot."""
+        self.prepareGeometryChange()
+        if "rotation" in state:
+            self.setRotation(state["rotation"])
+        if "transform_origin" in state:
+            self.setTransformOriginPoint(state["transform_origin"])
+        if "rect" in state:
+            self.set_rect(state["rect"])
+        self._cached_br = None
+        self.update()
+
+    def get_geometry_rect(self) -> QRectF:
+        return self.get_rect()
+
+    def set_geometry_rect(self, rect: QRectF) -> None:
+        self.set_rect(rect)
+
+    def get_rotation_angle(self) -> float:
+        return self.rotation()
+
+    def set_rotation_angle(self, angle: float) -> None:
+        self.setRotation(angle)
+
+    def get_transform_origin(self) -> QPointF:
+        return self.transformOriginPoint()
+
+    def set_transform_origin(self, origin: QPointF) -> None:
+        self.setTransformOriginPoint(origin)
+
+    def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
+        """Scale image geometry rect around a pivot point in scene space."""
+        old_w = self._rect.width()
+        old_h = self._rect.height()
+        new_w = max(self.MIN_SIZE, old_w * sx)
+        new_h = max(self.MIN_SIZE, old_h * sy)
+
+        origin_scene = self.mapToScene(self.transformOriginPoint())
+        new_origin_scene = QPointF(
+            pivot.x() + (origin_scene.x() - pivot.x()) * sx,
+            pivot.y() + (origin_scene.y() - pivot.y()) * sy,
+        )
+
+        self.prepareGeometryChange()
+        self._rect = QRectF(0, 0, new_w, new_h)
+        new_origin = QPointF(new_w / 2.0, new_h / 2.0)
+        self.setTransformOriginPoint(new_origin)
+        self.setPos(new_origin_scene - new_origin)
+        self._cached_br = None
         self.update()
 
     # ------------------------------------------------------------------
@@ -217,15 +260,11 @@ class ImageItem(QGraphicsItem):
             padded = self._rect.adjusted(-pad, -pad, pad, pad)
             self._options_handle.update_position(padded)
 
+    def _update_handle_positions(self) -> None:
+        pass
+
     def _set_handles_visible(self, visible: bool) -> None:
-        for handle in self._handles.values():
-            handle.setVisible(visible)
-        if hasattr(self, '_move_handle'):
-            self._move_handle.setVisible(visible)
-        if hasattr(self, '_rotate_handle'):
-            self._rotate_handle.setVisible(visible)
-        if hasattr(self, '_options_handle') and not visible:
-            self._options_handle.hide()
+        pass
 
     # ------------------------------------------------------------------
     # Resize via handles
@@ -335,27 +374,37 @@ class ImageItem(QGraphicsItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+        scene = self.scene()
+        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
+            page_rect = scene.get_page_rect(self._page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                p_path = QPainterPath()
+                p_path.addRect(page_rect)
+                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
 
         # Draw the image scaled to the rect
         painter.drawPixmap(self._rect.toRect(), self._pixmap)
 
-        # Selection frame (dashed blue border)
+        # Live selection preview: blue tint over the image pixels
+        if getattr(self, "_is_preview_highlight", False):
+            painter.save()
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
+            painter.fillRect(self._rect, QColor(59, 123, 245, 80))
+            painter.restore()
+
+        # Selection frame — only when not managed by SelectionBoxItem overlay
         hide_ui = getattr(self.scene(), "_is_rendering_thumbnail", False)
-        if (self._is_selected or self._is_selected_custom) and not hide_ui:
+        if self._is_selected and not self._is_selected_custom and not hide_ui:
             self._paint_selection(painter)
 
-    def _paint_selection(self, painter: QPainter) -> None:
-        """Blue dashed selection frame."""
-        painter.save()
-        pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
-        pen.setDashPattern([6, 4])
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setOpacity(1.0)
-        pad = 3.0
-        painter.drawRect(self._rect.adjusted(-pad, -pad, pad, pad))
         painter.restore()
+
+    def _paint_selection(self, painter: QPainter) -> None:
+        """Selection frames are managed centrally by SelectionBoxItem."""
+        pass
 
     # ------------------------------------------------------------------
     # Hover / mouse
@@ -397,6 +446,8 @@ class ImageItem(QGraphicsItem):
 
             if self._native_dragging:
                 self.setPos(self._click_box_pos + delta)
+                if self.scene() is not None and hasattr(self.scene(), "_update_selection_overlay"):
+                    self.scene()._update_selection_overlay()
             event.accept()
             return
 
@@ -407,11 +458,11 @@ class ImageItem(QGraphicsItem):
             if getattr(self, "_native_dragging", False):
                 # Drag ended -> push undo command
                 if self.pos() != self._click_box_pos:
-                    from commands.move_image_command import MoveImageCommand
+                    from commands.transform_items_command import TransformItemsCommand
                     from core.undo_stack import get_stack
-                    cmd = MoveImageCommand(
-                        self, self._click_box_pos, self.pos(), self.scene(),
-                    )
+                    before = {self: {"pos": QPointF(self._click_box_pos), "rect": self.get_rect(), "rotation": self.rotation(), "transform_origin": QPointF(self.transformOriginPoint())}}
+                    after = {self: self.capture_state()}
+                    cmd = TransformItemsCommand(before, after, self.scene(), "Verschieben")
                     get_stack().push(cmd)
             else:
                 pass

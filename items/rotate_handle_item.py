@@ -189,12 +189,12 @@ class RotateHandleItem(QGraphicsItem):
         box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
         final = box.rotation()
         if abs(final - self._start_rotation) > 0.01:
-            from commands.rotate_textbox_command import RotateTextBoxCommand
+            from commands.transform_items_command import TransformItemsCommand
             from core.undo_stack import get_stack
 
-            cmd = RotateTextBoxCommand(
-                box, self._start_rotation, final, box.scene(),
-            )
+            before = {box: {"pos": QPointF(box.pos()), "rect": box.get_rect(), "rotation": self._start_rotation, "transform_origin": QPointF(box.transformOriginPoint())}}
+            after = {box: box.capture_state()}
+            cmd = TransformItemsCommand(before, after, box.scene(), "Rotieren")
             get_stack().push(cmd)
         event.accept()
 

@@ -174,12 +174,12 @@ class MoveHandleItem(QGraphicsItem):
             # Drag ended → undo command
             box: TextBoxItem = self.parentItem()  # type: ignore[assignment]
             if box.pos() != self._drag_start_box_pos:
-                from commands.move_textbox_command import MoveTextBoxCommand
+                from commands.transform_items_command import TransformItemsCommand
                 from core.undo_stack import get_stack
 
-                cmd = MoveTextBoxCommand(
-                    box, self._drag_start_box_pos, box.pos(), box.scene(),
-                )
+                before = {box: {"pos": QPointF(self._drag_start_box_pos), "rect": box.get_rect(), "rotation": box.rotation(), "transform_origin": QPointF(box.transformOriginPoint())}}
+                after = {box: box.capture_state()}
+                cmd = TransformItemsCommand(before, after, box.scene(), "Verschieben")
                 get_stack().push(cmd)
 
         self._dragging = False

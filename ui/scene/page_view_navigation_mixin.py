@@ -39,7 +39,7 @@ class PageViewNavigationMixin:
             self._zoom_anim.start()
             event.accept()
         else:
-            super(QGraphicsView, self).wheelEvent(event)
+            super().wheelEvent(event)
 
     def _on_zoom_anim_value_changed(self: 'PageView', value: float) -> None:
         """Apply the intermediate zoom factor during animation."""

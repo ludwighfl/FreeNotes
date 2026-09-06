@@ -11,9 +11,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from core.tool_style import ToolStyle
+from items.interactive_item import IPathScalable
 
 
-class StrokeItem(QGraphicsItem):
+class StrokeItem(QGraphicsItem, IPathScalable):
     """A single drawn stroke rendered as a QPainterPath.
 
     The stroke is always drawn above PDF pages (ZValue=10) and uses
@@ -76,11 +77,26 @@ class StrokeItem(QGraphicsItem):
         widget: QWidget | None = None,
     ) -> None:
         """Paint the stroke path with antialiasing and round caps/joins."""
-        if self._path.isEmpty():
-            return
-
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setOpacity(self._style.opacity)
+
+        scene = self.scene()
+        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
+            page_rect = scene.get_page_rect(self._page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                p_path = QPainterPath()
+                p_path.addRect(page_rect)
+                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
+
+        # Live selection preview glow
+        if getattr(self, "_is_preview_highlight", False):
+            from PySide6.QtGui import QColor
+            glow_pen = QPen(QColor(59, 123, 245, 140), max(4.0, self._style.width + 4.0))
+            glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            glow_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.strokePath(self._path, glow_pen)
 
         if self._outline_mode:
             # After pixel-erase: path IS the filled outline, just fill it
@@ -95,17 +111,7 @@ class StrokeItem(QGraphicsItem):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.strokePath(self._path, pen)
 
-        # Selection frame
-        hide_ui = getattr(self.scene(), "_is_rendering_thumbnail", False)
-        if self._is_selected and not hide_ui:
-            painter.save()
-            sel_pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
-            sel_pen.setDashPattern([6, 4])
-            painter.setPen(sel_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setOpacity(1.0)
-            painter.drawRect(self.boundingRect().adjusted(1, 1, -1, -1))
-            painter.restore()
+        painter.restore()
 
     @property
     def page_index(self) -> int:
@@ -202,6 +208,37 @@ class StrokeItem(QGraphicsItem):
         self._is_selected = selected
         self.update()
 
+    def set_selected_custom(self, selected: bool) -> None:
+        """Alias for set_selected to satisfy IInteractiveItem."""
+        self.set_selected(selected)
+
+    def get_rotation_angle(self) -> float:
+        return self.rotation()
+
+    def set_rotation_angle(self, angle: float) -> None:
+        self.setRotation(angle)
+
+    def get_transform_origin(self) -> QPointF:
+        return self.transformOriginPoint()
+
+    def set_transform_origin(self, origin: QPointF) -> None:
+        self.setTransformOriginPoint(origin)
+
+    def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
+        """Scale stroke around a pivot point."""
+        old_br = self.mapToScene(self.boundingRect()).boundingRect()
+        if old_br.width() < 0.01 or old_br.height() < 0.01:
+            return
+        new_left = pivot.x() + (old_br.left() - pivot.x()) * sx
+        new_right = pivot.x() + (old_br.right() - pivot.x()) * sx
+        new_top = pivot.y() + (old_br.top() - pivot.y()) * sy
+        new_bottom = pivot.y() + (old_br.bottom() - pivot.y()) * sy
+        new_br = QRectF(
+            QPointF(min(new_left, new_right), min(new_top, new_bottom)),
+            QPointF(max(new_left, new_right), max(new_top, new_bottom)),
+        )
+        self.apply_bounding_box_resize(new_br)
+
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         from app.app_state import AppState
         if AppState().active_tool_name in {"selection", "hand"}:
@@ -240,6 +277,28 @@ class StrokeItem(QGraphicsItem):
 
         self.prepareGeometryChange()
         self._path = new_path_local
+        self._cached_br = None
+        self.update()
+
+    def capture_state(self) -> dict:
+        """Snapshot state for undo/redo."""
+        return {
+            "pos": QPointF(self.pos()),
+            "path": QPainterPath(self._path),
+            "outline_mode": self._outline_mode,
+            "rotation": self.rotation(),
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Restore state from snapshot."""
+        self.prepareGeometryChange()
+        self.setPos(state["pos"])
+        if "rotation" in state:
+            self.setRotation(state["rotation"])
+        path_copy = QPainterPath()
+        path_copy.addPath(state["path"])
+        self._path = path_copy
+        self._outline_mode = state.get("outline_mode", False)
         self._cached_br = None
         self.update()
 

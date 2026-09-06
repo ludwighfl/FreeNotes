@@ -18,12 +18,14 @@ if TYPE_CHECKING:
 
 
 class HandlePosition(Enum):
-    """Positions for resize handles (6 total, no top/bottom center)."""
+    """Positions for resize handles (8 total)."""
     TOP_LEFT = "tl"
+    TOP_CENTER = "tc"
     TOP_RIGHT = "tr"
     MID_LEFT = "ml"
     MID_RIGHT = "mr"
     BOT_LEFT = "bl"
+    BOT_CENTER = "bc"
     BOT_RIGHT = "br"
 
 
@@ -43,6 +45,8 @@ _CURSOR_MAP = {
     HandlePosition.BOT_LEFT: Qt.CursorShape.SizeBDiagCursor,
     HandlePosition.MID_LEFT: Qt.CursorShape.SizeHorCursor,
     HandlePosition.MID_RIGHT: Qt.CursorShape.SizeHorCursor,
+    HandlePosition.TOP_CENTER: Qt.CursorShape.SizeVerCursor,
+    HandlePosition.BOT_CENTER: Qt.CursorShape.SizeVerCursor,
 }
 
 

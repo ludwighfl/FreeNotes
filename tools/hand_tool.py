@@ -66,13 +66,12 @@ class HandTool(BaseTool):
         items_at = scene.items(QRectF(pos.x() - 3, pos.y() - 3, 6, 6))
         
         # Check if we clicked on a control handle. If so, let Qt's default dispatch handle it.
-        from items.bounding_box_handle_manager import BoundingBoxHandle
         from items.handle_item import ResizeHandleItem
         from items.rotate_handle_item import RotateHandleItem
         from items.options_handle_item import OptionsHandleItem
         from items.move_handle_item import MoveHandleItem
 
-        if any(isinstance(i, (BoundingBoxHandle, ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
+        if any(isinstance(i, (ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
             return
 
         hit_item = next(
@@ -101,6 +100,11 @@ class HandTool(BaseTool):
             self._drag_item_positions = {
                 item: item.pos()
                 for item in scene._selected_items
+            }
+            self._drag_before_state = {
+                item: item.capture_state()
+                for item in scene._selected_items
+                if hasattr(item, "capture_state")
             }
             return
 
@@ -148,20 +152,35 @@ class HandTool(BaseTool):
                 
         elif self._mode == "dragging":
             # Finish drag with undo command
-            from commands.move_items_command import MoveItemsCommand
+            from commands.transform_items_command import TransformItemsCommand
             from core import undo_stack
-            
-            moves = {}
-            for item, start_pos in self._drag_item_positions.items():
-                if item.pos() != start_pos:
-                    moves[item] = (start_pos, QPointF(item.pos()))
-            if moves:
-                cmd = MoveItemsCommand(moves, scene)
+
+            before = getattr(self, "_drag_before_state", {})
+            after = {
+                item: item.capture_state()
+                for item in scene._selected_items
+                if hasattr(item, "capture_state")
+            }
+
+            has_changed = False
+            for item, b_state in before.items():
+                if after.get(item) != b_state:
+                    has_changed = True
+                    break
+
+            if has_changed:
+                cmd = TransformItemsCommand(
+                    items_before=before,
+                    items_after=after,
+                    scene=scene,
+                    text="Verschieben",
+                )
                 undo_stack.push(cmd)
-            
+
             self._mode = "idle"
             self._drag_start_scene_pos = None
             self._drag_item_positions = {}
+            self._drag_before_state = {}
 
     def on_double_click(self, event: QGraphicsSceneMouseEvent, scene: PageScene) -> None:
         from items.text_box_item import TextBoxItem

@@ -602,6 +602,37 @@ def _register_builtins() -> None:
         '<path d="m20 22-5-5"/>',
     )
 
+    # Scissors - Lucide "Scissors"
+    IconFactory.register(
+        "scissors",
+        '<circle cx="6" cy="6" r="3"/>'
+        '<circle cx="6" cy="18" r="3"/>'
+        '<line x1="20" y1="4" x2="8.12" y2="15.88"/>'
+        '<line x1="14.47" y1="14.47" x2="20" y2="20"/>'
+        '<line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+    )
+
+    # RotateCw - Lucide "RotateCw"
+    IconFactory.register(
+        "rotate_cw",
+        '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>'
+        '<path d="M21 3v5h-5"/>',
+    )
+
+    # RotateCcw - Lucide "RotateCcw"
+    IconFactory.register(
+        "rotate_ccw",
+        '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>'
+        '<path d="M3 3v5h5"/>',
+    )
+
+    # Edit - Lucide "Edit3"
+    IconFactory.register(
+        "edit",
+        '<path d="M12 20h9"/>'
+        '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+    )
+
 
 
 # Run registration at module import time

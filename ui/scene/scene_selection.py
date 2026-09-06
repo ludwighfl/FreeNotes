@@ -65,26 +65,17 @@ class SceneSelectionMixin:
         return list(self._selected_items)
 
     def _select_item(self, item) -> None:
-        """Mark *item* as selected (visual feedback) if it is the ONLY selected item.
-        If there are multiple selected items, individual markers are hidden.
-        """
-        if len(self._selected_items) >= 2:
-            return  # Will be hidden by _on_selection_changed
-
-        if isinstance(item, TextBoxItem):
+        """Mark item as selected."""
+        if hasattr(item, "set_selected_custom"):
             item.set_selected_custom(True)
-        elif isinstance(item, (ShapeItem, ImageItem)):
-            item.set_selected_custom(True)
-        elif isinstance(item, (StrokeItem, HighlightItem)):
+        elif hasattr(item, "set_selected"):
             item.set_selected(True)
 
     def _deselect_item(self, item) -> None:
-        """Remove selection visual from *item*."""
-        if isinstance(item, TextBoxItem):
+        """Remove selection visual from item."""
+        if hasattr(item, "set_selected_custom"):
             item.set_selected_custom(False)
-        elif isinstance(item, (ShapeItem, ImageItem)):
-            item.set_selected_custom(False)
-        elif isinstance(item, (StrokeItem, HighlightItem)):
+        elif hasattr(item, "set_selected"):
             item.set_selected(False)
 
     def _ensure_overlay(self) -> SelectionOverlayItem:
@@ -98,50 +89,48 @@ class SceneSelectionMixin:
         return self._selection_overlay
 
     def _update_selection_overlay(self) -> None:
-        """Refresh the multi-selection overlay bounding box."""
-        self._ensure_overlay().update_from_items(
-            list(self._selected_items), self)
-        self._bbox_handle_manager.reposition()
+        """Refresh the selection overlay bounding box."""
+        items = list(self._selected_items)
+        if items:
+            self._ensure_overlay().attach(items, self)
+        else:
+            self._ensure_overlay().setVisible(False)
 
     def _on_selection_changed(self) -> None:
-        """React to selection changes: update individual visuals and bounding box resize handles."""
+        """React to selection changes: update individual visual frames and selection overlay."""
         items = list(self._selected_items)
-        count = len(items)
-
-        # 1. Update individual item visuals based on selection count
-        if count >= 2:
-            # Hide individual borders/handles, the Overlay will show the combined box
+        overlay = self._ensure_overlay()
+        if items:
             for item in items:
-                if isinstance(item, TextBoxItem):
-                    item.set_selected_custom(False)
-                elif isinstance(item, (ShapeItem, ImageItem)):
-                    item.set_selected_custom(False)
-                elif isinstance(item, (StrokeItem, HighlightItem)):
-                    item.set_selected(False)
-        elif count == 1:
-            # Show individual border/handles for the single selected item
-            item = items[0]
-            if isinstance(item, TextBoxItem):
-                item.set_selected_custom(True)
-            elif isinstance(item, (ShapeItem, ImageItem)):
-                item.set_selected_custom(True)
-            elif isinstance(item, (StrokeItem, HighlightItem)):
-                item.set_selected(True)
+                self._select_item(item)
+            overlay.attach(items, self)
+        else:
+            overlay.setVisible(False)
 
-        # 2. Attach or detach the common bounding box resize handles
-        if count == 0:
-            self._bbox_handle_manager.detach()
-        elif count == 1:
-            # ShapeItem has its own handle system
-            if isinstance(items[0], (StrokeItem, HighlightItem)):
-                self._bbox_handle_manager.attach_to(items[0])
-            else:
-                self._bbox_handle_manager.detach()
-        elif count >= 2:
-            # Only allow resizing of multiple items if NO TextBoxItem is selected
-            has_textbox = any(isinstance(i, TextBoxItem) for i in items)
-            if not has_textbox:
-                overlay = self._ensure_overlay()
-                self._bbox_handle_manager.attach_to(overlay)
-            else:
-                self._bbox_handle_manager.detach()
+    def rotate_selected_90(self, delta_angle: float = 90.0) -> None:
+        """Rotate selected items by 90 degrees (+90 or -90) with full undo/redo support and overlay AABB update."""
+        if not self._selected_items:
+            return
+
+        from items.interactive_item import IInteractiveItem
+        managed = [i for i in self._selected_items if isinstance(i, IInteractiveItem)]
+        if not managed:
+            return
+
+        from commands.transform_items_command import TransformItemsCommand
+        from core.undo_stack import get_stack
+
+        before_state = {item: item.capture_state() for item in managed if hasattr(item, "capture_state")}
+
+        overlay = self._ensure_overlay()
+        overlay.apply_group_rotation(delta_angle)
+
+        after_state = {item: item.capture_state() for item in managed if hasattr(item, "capture_state")}
+
+        cmd = TransformItemsCommand(
+            items_before=before_state,
+            items_after=after_state,
+            scene=self,
+            text=f"Um {int(delta_angle)}° drehen",
+        )
+        get_stack().push(cmd)

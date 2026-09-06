@@ -20,24 +20,24 @@ class PageViewGestureMixin:
         """Track Space key for pan mode (unless a TextBox is being edited)."""
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             if self._is_textbox_editing():
-                super(QGraphicsView, self).keyPressEvent(event)
+                super().keyPressEvent(event)
                 return
             self._space_pressed = True
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
-            super(QGraphicsView, self).keyPressEvent(event)
+            super().keyPressEvent(event)
 
     def keyReleaseEvent(self: 'PageView', event) -> None:
         """Release Space key pan mode."""
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             if self._is_textbox_editing():
-                super(QGraphicsView, self).keyReleaseEvent(event)
+                super().keyReleaseEvent(event)
                 return
             self._space_pressed = False
             if not self._panning:
                 self._restore_tool_cursor()
         else:
-            super(QGraphicsView, self).keyReleaseEvent(event)
+            super().keyReleaseEvent(event)
 
     def _is_textbox_editing(self: 'PageView') -> bool:
         """Check if any TextBoxItem in the scene is currently being edited."""
@@ -152,7 +152,7 @@ class PageViewGestureMixin:
                 
             return True
             
-        return super(QGraphicsView, self).viewportEvent(event)
+        return super().viewportEvent(event)
 
     def tabletEvent(self: 'PageView', event: QTabletEvent) -> None:
         if self._gesture_active:
@@ -185,7 +185,7 @@ class PageViewGestureMixin:
             self.scene().mouseReleaseEvent(mouse_event)
             event.accept()
         else:
-            super(QGraphicsView, self).tabletEvent(event)
+            super().tabletEvent(event)
 
     def mousePressEvent(self: 'PageView', event) -> None:
         """Handle pan (Space+Left / Middle), otherwise forward to scene."""
@@ -202,7 +202,7 @@ class PageViewGestureMixin:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
         else:
-            super(QGraphicsView, self).mousePressEvent(event)
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self: 'PageView', event) -> None:
         """Pan or forward to scene."""
@@ -221,7 +221,7 @@ class PageViewGestureMixin:
             self._kinetic_scroller.on_mouse_move(event.x(), event.y())
             event.accept()
         else:
-            super(QGraphicsView, self).mouseMoveEvent(event)
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self: 'PageView', event) -> None:
         """Stop panning or forward to scene."""
@@ -237,7 +237,7 @@ class PageViewGestureMixin:
                 self._restore_tool_cursor()
             event.accept()
         else:
-            super(QGraphicsView, self).mouseReleaseEvent(event)
+            super().mouseReleaseEvent(event)
 
     def _restore_tool_cursor(self: 'PageView') -> None:
         """Restore cursor based on the active tool."""

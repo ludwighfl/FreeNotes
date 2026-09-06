@@ -20,7 +20,6 @@ from items.stroke_item import StrokeItem
 from items.highlight_item import HighlightItem
 from items.text_box_item import TextBoxItem
 from items.selection_overlay_item import SelectionOverlayItem
-from items.bounding_box_handle_manager import BoundingBoxHandleManager
 
 from ui.scene.scene_registry import SceneRegistryMixin
 from ui.scene.scene_clipboard import SceneClipboardMixin
@@ -93,8 +92,13 @@ class PageScene(
         self.addItem(self._selection_overlay)
         self._selection_overlay.setVisible(False)
 
-        # Bounding box resize handles
-        self._bbox_handle_manager = BoundingBoxHandleManager(self)
+        # Selection overlay handles all single & multi-selection bounding boxes
+        class DummyBBoxHandleManager:
+            def attach_to(self, item) -> None: pass
+            def detach(self) -> None: pass
+            def reposition(self) -> None: pass
+
+        self._bbox_handle_manager = DummyBBoxHandleManager()
         self.selection_changed.connect(self._on_selection_changed)
 
         # Shared placeholder pixmap (tiny, gets stretched by item size)

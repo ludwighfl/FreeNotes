@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
 
 from core.shape_style import ShapeStyle, ShapeType
 from items.handle_item import HandlePosition
+from items.interactive_item import IRectResizable, ILinearItem
 
 
-class ShapeItem(QGraphicsItem):
+class ShapeItem(QGraphicsItem, IRectResizable, ILinearItem):
     """A geometric shape annotation supporting 6 shape types.
 
     Uses local coordinates: setPos(topLeft), _rect = QRectF(0, 0, w, h).
@@ -55,23 +56,7 @@ class ShapeItem(QGraphicsItem):
         self.setAcceptHoverEvents(True)
         self.setZValue(10)
 
-        # --- Handles (created as children) ---
-        from items.shape_handles import (
-            ShapeResizeHandle, ShapeMoveHandle,
-            ShapeRotateHandle, ShapeOptionsHandle,
-        )
-
-        self._handles: dict[HandlePosition, ShapeResizeHandle] = {}
-        for pos in HandlePosition:
-            handle = ShapeResizeHandle(pos, parent=self)
-            self._handles[pos] = handle
-
-        self._move_handle = ShapeMoveHandle(parent=self)
-        self._rotate_handle = ShapeRotateHandle(parent=self)
-        self._options_handle = ShapeOptionsHandle(parent=self)
-
-        self._update_handle_positions()
-        self._set_handles_visible(False)
+        # Handles are managed centrally by SelectionBoxItem
 
     # ------------------------------------------------------------------
     # Properties
@@ -98,17 +83,13 @@ class ShapeItem(QGraphicsItem):
         self.update()
 
     def set_selected_custom(self, selected: bool) -> None:
-        """Show/hide handles + selection frame (called by scene)."""
+        """Show/hide selection frame (called by scene)."""
         self.prepareGeometryChange()
         self._is_selected = selected
         self._is_selected_custom = selected
         self._cached_br = None
-        self._set_handles_visible(selected)
-        if selected:
-            self.setZValue(100)
-            self._update_handle_positions()
-        else:
-            self.setZValue(10)
+        self._set_handles_visible(False)
+        self.setZValue(10)
         self.update()
 
     def get_line_dir(self) -> int:
@@ -147,11 +128,123 @@ class ShapeItem(QGraphicsItem):
     def set_rect(self, rect: QRectF) -> None:
         """Set the shape rect from scene coordinates."""
         self.prepareGeometryChange()
+        w, h = rect.width(), rect.height()
         self.setPos(rect.topLeft())
-        self._rect = QRectF(0, 0, rect.width(), rect.height())
+        self._rect = QRectF(0, 0, w, h)
+        self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
         self._cached_br = None
         self._update_handle_positions()
         self.update()
+
+    def capture_state(self) -> dict:
+        """Snapshot state for undo/redo."""
+        is_linear = self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)
+        state = {
+            "pos": QPointF(self.pos()),
+            "rect": self.get_rect(),
+            "rotation": self.rotation(),
+            "transform_origin": QPointF(self.transformOriginPoint()),
+            "is_linear": is_linear,
+        }
+        if is_linear:
+            state["line_dir"] = getattr(self, "_line_dir", 0)
+        return state
+
+    def restore_state(self, state: dict) -> None:
+        """Restore state from snapshot."""
+        self.prepareGeometryChange()
+        if "line_dir" in state:
+            self._line_dir = state["line_dir"]
+        if "transform_origin" in state:
+            self.setTransformOriginPoint(state["transform_origin"])
+        if "rotation" in state:
+            self.setRotation(state["rotation"])
+        if "rect" in state:
+            self.set_rect(state["rect"])
+        self._cached_br = None
+        self.update()
+
+    def get_geometry_rect(self) -> QRectF:
+        return self.get_rect()
+
+    def set_geometry_rect(self, rect: QRectF) -> None:
+        self.set_rect(rect)
+
+    def is_linear(self) -> bool:
+        """Only lines and arrows are truly linear."""
+        return self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)
+
+    def get_start_point(self) -> QPointF:
+        p1, _ = self._get_line_points()
+        return self.mapToScene(p1)
+
+    def set_start_point(self, pt: QPointF) -> None:
+        self._set_line_endpoints(pt, self.get_end_point())
+
+    def get_end_point(self) -> QPointF:
+        _, p2 = self._get_line_points()
+        return self.mapToScene(p2)
+
+    def set_end_point(self, pt: QPointF) -> None:
+        self._set_line_endpoints(self.get_start_point(), pt)
+
+    def _set_line_endpoints(self, p1: QPointF, p2: QPointF) -> None:
+        """Set linear shape endpoints from scene coordinates."""
+        sx, sy = p1.x(), p1.y()
+        ex, ey = p2.x(), p2.y()
+        new_scene_rect = QRectF(
+            QPointF(min(sx, ex), min(sy, ey)),
+            QPointF(max(sx, ex), max(sy, ey))
+        )
+        if ex >= sx and ey >= sy:
+            ld = 0
+        elif ex < sx and ey < sy:
+            ld = 1
+        elif ex < sx and ey >= sy:
+            ld = 2
+        else:
+            ld = 3
+        self._line_dir = ld
+        self.set_rect(new_scene_rect)
+
+    def get_rotation_angle(self) -> float:
+        return self.rotation()
+
+    def set_rotation_angle(self, angle: float) -> None:
+        self.setRotation(angle)
+
+    def get_transform_origin(self) -> QPointF:
+        return self.transformOriginPoint()
+
+    def set_transform_origin(self, origin: QPointF) -> None:
+        self.setTransformOriginPoint(origin)
+
+    def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
+        """Scale shape geometry around a pivot point in scene space."""
+        if self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW):
+            p1, p2 = self.get_start_point(), self.get_end_point()
+            new_p1 = QPointF(pivot.x() + (p1.x() - pivot.x()) * sx, pivot.y() + (p1.y() - pivot.y()) * sy)
+            new_p2 = QPointF(pivot.x() + (p2.x() - pivot.x()) * sx, pivot.y() + (p2.y() - pivot.y()) * sy)
+            self._set_line_endpoints(new_p1, new_p2)
+        else:
+            old_w = self._rect.width()
+            old_h = self._rect.height()
+            new_w = max(self.MIN_SIZE, old_w * sx)
+            new_h = max(self.MIN_SIZE, old_h * sy)
+
+            origin_scene = self.mapToScene(self.transformOriginPoint())
+            new_origin_scene = QPointF(
+                pivot.x() + (origin_scene.x() - pivot.x()) * sx,
+                pivot.y() + (origin_scene.y() - pivot.y()) * sy,
+            )
+
+            self.prepareGeometryChange()
+            self._rect = QRectF(0, 0, new_w, new_h)
+            new_origin = QPointF(new_w / 2.0, new_h / 2.0)
+            self.setTransformOriginPoint(new_origin)
+            self.setPos(new_origin_scene - new_origin)
+            self._cached_br = None
+            self.update()
 
     # ------------------------------------------------------------------
     # Handle management
@@ -208,22 +301,11 @@ class ShapeItem(QGraphicsItem):
             else:
                 self._options_handle.update_position(self._rect)
 
+    def _update_handle_positions(self) -> None:
+        pass
+
     def _set_handles_visible(self, visible: bool) -> None:
-        is_linear = self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)
-        
-        for pos, handle in self._handles.items():
-            if is_linear and pos not in (HandlePosition.TOP_LEFT, HandlePosition.BOT_RIGHT):
-                handle.setVisible(False)
-            else:
-                handle.setVisible(visible)
-                
-        # Move/Rotate are hidden entirely for linear items for cleaner UI
-        if hasattr(self, '_move_handle'):
-            self._move_handle.setVisible(visible and not is_linear)
-        if hasattr(self, '_rotate_handle'):
-            self._rotate_handle.setVisible(visible and not is_linear)
-        if hasattr(self, '_options_handle') and not visible:
-            self._options_handle.hide()
+        pass
 
     # ------------------------------------------------------------------
     # Resize via handles (duck-typed interface for ResizeHandleItem)
@@ -431,11 +513,20 @@ class ShapeItem(QGraphicsItem):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         r = self._rect
         st = self._style
 
         hide_ui = getattr(self.scene(), "_is_rendering_thumbnail", False)
+
+        scene = self.scene()
+        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
+            page_rect = scene.get_page_rect(self._page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                p_path = QPainterPath()
+                p_path.addRect(page_rect)
+                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
 
         # Pen
         pen = QPen(st.stroke_color, st.stroke_width)
@@ -453,6 +544,45 @@ class ShapeItem(QGraphicsItem):
             painter.setBrush(QBrush(st.fill_color))
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        # Live selection preview glow — draw along the actual shape contour
+        is_preview = getattr(self, "_is_preview_highlight", False)
+        if is_preview:
+            painter.save()
+            glow_pen = QPen(QColor(59, 123, 245, 160), max(3.5, st.stroke_width + 4.0))
+            glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            glow_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(glow_pen)
+            glow_fill = QBrush(QColor(59, 123, 245, 30))
+            match st.shape_type:
+                case ShapeType.RECT:
+                    painter.setBrush(glow_fill)
+                    painter.drawRect(r)
+                case ShapeType.ROUNDED_RECT:
+                    painter.setBrush(glow_fill)
+                    painter.drawRoundedRect(r, st.corner_radius, st.corner_radius)
+                case ShapeType.ELLIPSE:
+                    painter.setBrush(glow_fill)
+                    painter.drawEllipse(r)
+                case ShapeType.LINE:
+                    p1, p2 = self._get_line_points()
+                    painter.drawLine(p1, p2)
+                case ShapeType.ARROW:
+                    p1, p2 = self._get_line_points()
+                    painter.drawLine(p1, p2)
+                case ShapeType.TRIANGLE:
+                    top = QPointF(r.center().x(), r.top())
+                    bot_l = QPointF(r.left(), r.bottom())
+                    bot_r = QPointF(r.right(), r.bottom())
+                    painter.setBrush(glow_fill)
+                    painter.drawPolygon(QPolygonF([top, bot_l, bot_r]))
+            painter.restore()
+            # Restore the normal pen/brush after preview
+            painter.setPen(pen)
+            if st.fill_color.alpha() > 0:
+                painter.setBrush(QBrush(st.fill_color))
+            else:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
 
         # Draw shape
         match st.shape_type:
@@ -477,9 +607,11 @@ class ShapeItem(QGraphicsItem):
             case ShapeType.TRIANGLE:
                 self._paint_triangle(painter, r)
 
-        # Selection frame (dashed blue border)
-        if (self._is_selected or self._is_selected_custom) and not hide_ui:
+        # Selection frame — only when not managed by SelectionBoxItem overlay
+        if self._is_selected and not self._is_selected_custom and not hide_ui:
             self._paint_selection(painter)
+
+        painter.restore()
 
     def _paint_arrow(
         self, painter: QPainter, r: QRectF, st: ShapeStyle
@@ -522,28 +654,8 @@ class ShapeItem(QGraphicsItem):
         painter.drawPolygon(triangle)
 
     def _paint_selection(self, painter: QPainter) -> None:
-        """Blue dashed selection frame or line path."""
-        painter.save()
-        
-        is_linear = self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)
-        
-        if is_linear:
-            pen = QPen(QColor("#3B7BF5"), self._style.stroke_width + 4.0, Qt.PenStyle.SolidLine)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(pen)
-            painter.setOpacity(0.3)
-            p1, p2 = self._get_line_points()
-            painter.drawLine(p1, p2)
-        else:
-            pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
-            pen.setDashPattern([6, 4])
-            painter.setPen(pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setOpacity(1.0)
-            pad = self._style.stroke_width / 2.0 + 3.0
-            painter.drawRect(self._rect.adjusted(-pad, -pad, pad, pad))
-            
-        painter.restore()
+        """Selection frames are managed centrally by SelectionBoxItem."""
+        pass
 
     # ------------------------------------------------------------------
     # Hover / mouse
@@ -585,6 +697,8 @@ class ShapeItem(QGraphicsItem):
             
             if self._native_dragging:
                 self.setPos(self._click_box_pos + delta)
+                if self.scene() is not None and hasattr(self.scene(), "_update_selection_overlay"):
+                    self.scene()._update_selection_overlay()
             event.accept()
             return
             
@@ -595,11 +709,11 @@ class ShapeItem(QGraphicsItem):
             if getattr(self, "_native_dragging", False):
                 # Drag ended -> push undo command
                 if self.pos() != self._click_box_pos:
-                    from commands.move_shape_command import MoveShapeCommand
+                    from commands.transform_items_command import TransformItemsCommand
                     from core.undo_stack import get_stack
-                    cmd = MoveShapeCommand(
-                        self, self._click_box_pos, self.pos(), self.scene(),
-                    )
+                    before = {self: {"pos": QPointF(self._click_box_pos), "rect": self.get_rect(), "rotation": self.rotation(), "transform_origin": QPointF(self.transformOriginPoint())}}
+                    after = {self: self.capture_state()}
+                    cmd = TransformItemsCommand(before, after, self.scene(), "Verschieben")
                     get_stack().push(cmd)
             else:
                 # Just a click -> could show options or toggle selection

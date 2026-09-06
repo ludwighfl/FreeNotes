@@ -56,13 +56,12 @@ class ShapeTool(BaseTool):
         items_at = scene.items(QRectF(pos.x() - 3, pos.y() - 3, 6, 6))
         
         # Check if we clicked on a control handle. If so, let Qt's default dispatch handle it.
-        from items.bounding_box_handle_manager import BoundingBoxHandle
         from items.handle_item import ResizeHandleItem
         from items.rotate_handle_item import RotateHandleItem
         from items.options_handle_item import OptionsHandleItem
         from items.move_handle_item import MoveHandleItem
 
-        if any(isinstance(i, (BoundingBoxHandle, ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
+        if any(isinstance(i, (ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
             return
 
         hit = next(
@@ -108,6 +107,13 @@ class ShapeTool(BaseTool):
         if not self._drawing or not self._preview_item:
             return
         pos = event.scenePos()
+        if self._preview_item.page_index >= 0:
+            page_rect = scene.get_page_rect(self._preview_item.page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                pos = QPointF(
+                    max(page_rect.left(), min(pos.x(), page_rect.right())),
+                    max(page_rect.top(), min(pos.y(), page_rect.bottom())),
+                )
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         rect, constrained_end = self._build_rect(self._start_pos, pos, shift)
         self._preview_item.set_rect(rect)
@@ -121,6 +127,13 @@ class ShapeTool(BaseTool):
 
         self._drawing = False
         pos = event.scenePos()
+        if self._preview_item.page_index >= 0:
+            page_rect = scene.get_page_rect(self._preview_item.page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                pos = QPointF(
+                    max(page_rect.left(), min(pos.x(), page_rect.right())),
+                    max(page_rect.top(), min(pos.y(), page_rect.bottom())),
+                )
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         rect, constrained_end = self._build_rect(self._start_pos, pos, shift)
         line_dir = self._calc_line_dir(self._start_pos, constrained_end)

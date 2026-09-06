@@ -81,15 +81,20 @@ class HighlighterTool(BaseTool):
             return
             
         pos = event.scenePos()
+        x = pos.x()
+        if self._current_page_index >= 0:
+            page_rect = scene.get_page_rect(self._current_page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                x = max(page_rect.left(), min(x, page_rect.right()))
         
         # Throttle visual updates
         if self._last_drawn_x is not None:
-            if abs(pos.x() - self._last_drawn_x) < 2.0:
+            if abs(x - self._last_drawn_x) < 2.0:
                 return
-        self._last_drawn_x = pos.x()
+        self._last_drawn_x = x
         
         old_rect = self._current_path.boundingRect()
-        self._current_path.lineTo(pos.x(), self._fixed_y)
+        self._current_path.lineTo(x, self._fixed_y)
         new_rect = self._current_path.boundingRect()
         
         # Force a targeted scene redraw to paint the overlay path

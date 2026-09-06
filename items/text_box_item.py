@@ -32,12 +32,13 @@ from items.handle_item import ResizeHandleItem, HandlePosition
 from items.text_box_input import TextBoxInputMixin
 from items.text_box_formatting import TextBoxFormattingMixin
 from items.text_box_pseudo_lists import TextBoxPseudoListMixin
+from items.interactive_item import IRectResizable
 
 if TYPE_CHECKING:
     from ui.scene.page_scene import PageScene
 
 
-class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMixin, QGraphicsObject):
+class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMixin, QGraphicsObject, IRectResizable):
     """An inline-editable text annotation rendered via QTextDocument.
 
     Uses local coordinates: setPos(topLeft), _rect = QRectF(0, 0, w, h).
@@ -136,26 +137,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self.setZValue(6)
         self.setAcceptHoverEvents(True)
 
-        # --- 6 Resize handles (corners + left/right edges) ---
-        self._handles: dict[HandlePosition, ResizeHandleItem] = {}
-        for pos in HandlePosition:
-            handle = ResizeHandleItem(pos, parent=self)
-            self._handles[pos] = handle
-
-        # --- Move handle (top-center pill) ---
-        from items.move_handle_item import MoveHandleItem
-        self._move_handle = MoveHandleItem(parent=self)
-
-        # --- Rotate handle (bottom-center circle) ---
-        from items.rotate_handle_item import RotateHandleItem
-        self._rotate_handle = RotateHandleItem(parent=self)
-
-        # --- Options handle (Copy/Cut/Delete bar) ---
-        from items.options_handle_item import OptionsHandleItem
-        self._options_handle = OptionsHandleItem(parent=self)
-
-        self._update_handle_positions()
-        self._set_handles_visible(False)
+        # Handles are managed centrally by SelectionBoxItem
 
     # ==================================================================
     # QGraphicsItem interface
@@ -179,21 +161,24 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         
+        # Live selection preview: render text with blue tint overlay
         hide_ui = getattr(self.scene(), "_is_rendering_thumbnail", False)
 
-        # Border – dashed blue when selected/editing
-        if (self._is_selected_custom or self._is_editing) and not hide_ui:
-            pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
-            pen.setDashPattern([6, 4])
-            painter.setPen(pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-        else:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(self._rect)
+        # Border painting managed centrally by SelectionBoxItem
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
         # Text rendering
         painter.save()
+
+        scene = self.scene()
+        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
+            page_rect = scene.get_page_rect(self._page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                p_path = QPainterPath()
+                p_path.addRect(page_rect)
+                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
+
         painter.translate(self._rect.topLeft() + QPointF(self.PADDING, self.PADDING))
         text_clip = QRectF(
             0,
@@ -201,7 +186,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
             self._rect.width() - self.PADDING * 2,
             self._rect.height() - self.PADDING * 2,
         )
-        painter.setClipRect(text_clip)
+        painter.setClipRect(text_clip, Qt.ClipOperation.IntersectClip)
 
         ctx = QAbstractTextDocumentLayout.PaintContext()
         palette = QPalette()
@@ -227,6 +212,24 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
             ctx.selections = []
 
         self._document.documentLayout().draw(painter, ctx)
+
+        # Live selection preview: re-draw all text glyphs in blue
+        if getattr(self, "_is_preview_highlight", False):
+            ctx2 = QAbstractTextDocumentLayout.PaintContext()
+            ctx2.palette = ctx.palette
+            ctx2.cursorPosition = -1
+            # Force blue foreground on ALL text via a full-document selection
+            sel_all = QAbstractTextDocumentLayout.Selection()
+            cur = QTextCursor(self._document)
+            cur.movePosition(QTextCursor.MoveOperation.Start)
+            cur.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+            sel_all.cursor = cur
+            fmt = QTextCharFormat()
+            fmt.setForeground(QColor(59, 123, 245))
+            sel_all.format = fmt
+            ctx2.selections = [sel_all]
+            self._document.documentLayout().draw(painter, ctx2)
+
         painter.restore()
 
     # ==================================================================
@@ -250,21 +253,11 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
             self._move_handle.update_position(self._rect)
         if hasattr(self, '_rotate_handle'):
             self._rotate_handle.update_position(self._rect)
-        if hasattr(self, '_options_handle') and self._options_handle.isVisible():
-            self._options_handle.update_position(self._rect)
+    def _update_handle_positions(self) -> None:
+        pass
 
     def _set_handles_visible(self, visible: bool) -> None:
-        from shiboken6 import isValid  # noqa: E402
-        for handle in self._handles.values():
-            if isValid(handle):
-                handle.setVisible(visible)
-        if hasattr(self, '_move_handle') and isValid(self._move_handle):
-            self._move_handle.setVisible(visible)
-        if hasattr(self, '_rotate_handle') and isValid(self._rotate_handle):
-            self._rotate_handle.setVisible(visible)
-        # Options handle is toggled separately via right-click; hide when handles hide
-        if hasattr(self, '_options_handle') and not visible and isValid(self._options_handle):
-            self._options_handle.hide()
+        pass
 
     # ==================================================================
     # Resize via handles
@@ -326,12 +319,145 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         )
 
     def set_rect(self, rect: QRectF) -> None:
-        """Set the box rect from scene coordinates."""
+        """Set the box rect from scene coordinates, expanding height if needed to prevent clipping."""
         self.prepareGeometryChange()
+        w, h = rect.width(), rect.height()
         self.setPos(rect.topLeft())
-        self._rect = QRectF(0, 0, rect.width(), rect.height())
-        self._document.setTextWidth(self._rect.width() - self.PADDING * 2)
+        self._document.setTextWidth(max(1.0, w - self.PADDING * 2))
+
+        # Guarantee height is at least large enough to fit document content with padding
+        min_doc_h = self._document.size().height() + self.PADDING * 2
+        h = max(h, min_doc_h, self.MIN_HEIGHT)
+
+        self._rect = QRectF(0, 0, w, h)
+        self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
         self._update_handle_positions()
+        self.update()
+
+    def capture_state(self) -> dict:
+        """Snapshot state for undo/redo."""
+        return {
+            "pos": QPointF(self.pos()),
+            "rect": self.get_rect(),
+            "rotation": self.rotation(),
+            "transform_origin": QPointF(self.transformOriginPoint()),
+            "html": self._document.toHtml(),
+            "font_size": self._style.font_size,
+        }
+
+    def restore_state(self, state: dict) -> None:
+        """Restore state from snapshot."""
+        self.prepareGeometryChange()
+        if "rotation" in state:
+            self.setRotation(state["rotation"])
+        if "transform_origin" in state:
+            self.setTransformOriginPoint(state["transform_origin"])
+        if "html" in state:
+            self._document.setHtml(state["html"])
+        if "font_size" in state:
+            self._style.font_size = state["font_size"]
+        if "rect" in state:
+            self.set_rect(state["rect"])
+        self.update()
+
+    def apply_font_scale(self, scale_factor: float) -> None:
+        """Scale all font sizes across the document proportionally with fine float precision."""
+        if scale_factor <= 0.0 or abs(scale_factor - 1.0) < 0.0001:
+            return
+
+        default_font = self._document.defaultFont()
+        old_pt = default_font.pointSizeF()
+        if old_pt <= 0:
+            old_pt = float(default_font.pointSize())
+        new_default_pt = max(1.0, round(old_pt * scale_factor, 2))
+        default_font.setPointSizeF(new_default_pt)
+        default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        default_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+        self._document.setDefaultFont(default_font)
+        self._style.font_size = new_default_pt
+
+        cursor = QTextCursor(self._document)
+        cursor.beginEditBlock()
+
+        block = self._document.begin()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                if fragment.isValid():
+                    fmt = fragment.charFormat()
+                    current_pt = fmt.fontPointSize()
+                    if current_pt > 0:
+                        fmt.setFontPointSize(max(1.0, round(current_pt * scale_factor, 2)))
+                    else:
+                        fmt.setFontPointSize(new_default_pt)
+
+                    pos = fragment.position()
+                    length = fragment.length()
+                    cursor.setPosition(pos)
+                    cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setCharFormat(fmt)
+                it += 1
+            block = block.next()
+
+        cursor.endEditBlock()
+
+        # Re-verify text box height fits scaled document layout
+        self._document.setTextWidth(max(1.0, self._rect.width() - self.PADDING * 2))
+        min_doc_h = self._document.size().height() + self.PADDING * 2
+        if self._rect.height() < min_doc_h:
+            self.prepareGeometryChange()
+            self._rect.setHeight(min_doc_h)
+            self.setTransformOriginPoint(QPointF(self._rect.width() / 2.0, min_doc_h / 2.0))
+
+        self.update()
+
+    def get_geometry_rect(self) -> QRectF:
+        return self.get_rect()
+
+    def set_geometry_rect(self, rect: QRectF) -> None:
+        self.set_rect(rect)
+
+    def get_rotation_angle(self) -> float:
+        return self.rotation()
+
+    def set_rotation_angle(self, angle: float) -> None:
+        self.setRotation(angle)
+
+    def get_transform_origin(self) -> QPointF:
+        return self.transformOriginPoint()
+
+    def set_transform_origin(self, origin: QPointF) -> None:
+        self.setTransformOriginPoint(origin)
+
+    def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
+        """Scale text box geometry rect and font size around a pivot point in scene space."""
+        old_w = self._rect.width()
+        old_h = self._rect.height()
+
+        scale_factor = sy if sy > 0 else sx
+        self.apply_font_scale(scale_factor)
+
+        # Usable text wrapping width scales 1:1 with font size (sx) + 3.0px safety buffer against subpixel glyph rounding
+        old_text_w = max(1.0, old_w - self.PADDING * 2)
+        new_text_w = max(1.0, old_text_w * sx + 3.0)
+        new_w = max(self.MIN_WIDTH, new_text_w + self.PADDING * 2)
+
+        self._document.setTextWidth(new_text_w)
+        min_doc_h = self._document.size().height() + self.PADDING * 2
+        new_h = max(old_h * sy, min_doc_h, self.MIN_HEIGHT)
+
+        origin_scene = self.mapToScene(self.transformOriginPoint())
+        new_origin_scene = QPointF(
+            pivot.x() + (origin_scene.x() - pivot.x()) * sx,
+            pivot.y() + (origin_scene.y() - pivot.y()) * sy,
+        )
+
+        self.prepareGeometryChange()
+        self._rect = QRectF(0, 0, new_w, new_h)
+        new_origin = QPointF(new_w / 2.0, new_h / 2.0)
+        self.setTransformOriginPoint(new_origin)
+        self.setPos(new_origin_scene - new_origin)
         self.update()
 
 
@@ -379,10 +505,11 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self.prepareGeometryChange()
         self._is_editing = True
         self._is_selected_custom = True
-        self._set_handles_visible(True)
         self._blink_timer.start()
         self._cursor_visible = True
         self.setFocus(Qt.FocusReason.MouseFocusReason)
+        if self.scene() is not None and hasattr(self.scene(), "_update_selection_overlay"):
+            self.scene()._update_selection_overlay()
         self.update()
         self.editing_started.emit()
 
@@ -402,6 +529,8 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         pos = self._cursor.position()
         self._cursor.clearSelection()
         self._cursor.setPosition(pos, QTextCursor.MoveMode.MoveAnchor)
+        if self.scene() is not None and hasattr(self.scene(), "_update_selection_overlay"):
+            self.scene()._update_selection_overlay()
         self.update()
         self.cursor_moved.emit()
 
@@ -429,11 +558,9 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     def set_selected_custom(self, selected: bool) -> None:
         self.prepareGeometryChange()
         self._is_selected_custom = selected
-        self._set_handles_visible(selected)
-        if selected:
-            self.setZValue(100)
-        else:
-            self.setZValue(6)
+        self._set_handles_visible(False)
+        self.setZValue(6)
+        if not selected:
             self.stop_editing()
             # Ensure cursor selection is cleared
             pos = self._cursor.position()

@@ -89,6 +89,13 @@ class PenTool(BaseTool):
             return
 
         pos = event.scenePos()
+        if self._current_page_index >= 0:
+            page_rect = scene.get_page_rect(self._current_page_index)
+            if page_rect.isValid() and not page_rect.isEmpty():
+                pos = QPointF(
+                    max(page_rect.left(), min(pos.x(), page_rect.right())),
+                    max(page_rect.top(), min(pos.y(), page_rect.bottom())),
+                )
         self._points.append(pos)
         
         # Track old bounds to calculate update rect
