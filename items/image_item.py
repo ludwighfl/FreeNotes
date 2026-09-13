@@ -377,14 +377,6 @@ class ImageItem(QGraphicsItem, IRectResizable):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
-        scene = self.scene()
-        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
-            page_rect = scene.get_page_rect(self._page_index)
-            if page_rect.isValid() and not page_rect.isEmpty():
-                p_path = QPainterPath()
-                p_path.addRect(page_rect)
-                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
-
         # Draw the image scaled to the rect
         painter.drawPixmap(self._rect.toRect(), self._pixmap)
 

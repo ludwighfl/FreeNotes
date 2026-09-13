@@ -71,8 +71,14 @@ class HandTool(BaseTool):
         from items.options_handle_item import OptionsHandleItem
         from items.move_handle_item import MoveHandleItem
 
+        from items.selection_overlay_item import SelectionBoxItem
+
         if any(isinstance(i, (ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
             return
+
+        for i in items_at:
+            if isinstance(i, SelectionBoxItem) and (i.is_in_rotation_zone(pos) or i.is_in_move_zone(pos)):
+                return
 
         hit_item = next(
             (i for i in items_at

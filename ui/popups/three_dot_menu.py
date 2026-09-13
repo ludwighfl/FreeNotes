@@ -54,3 +54,13 @@ class ThreeDotMenu(QToolButton):
         self._action_export.triggered.connect(self.export_requested)
         self._action_export_as.triggered.connect(self.export_as_requested)
         self._action_clear.triggered.connect(self.clear_annotations_requested)
+
+        from app.app_state import AppState
+        AppState().language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        self.setToolTip(tr("menu.tooltip"))
+        self._action_load.setText(tr("menu.open"))
+        self._action_export.setText(tr("menu.export_pdf"))
+        self._action_export_as.setText(tr("menu.export_pdf_as"))
+        self._action_clear.setText(tr("menu.clear_annotations"))

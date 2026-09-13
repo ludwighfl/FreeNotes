@@ -179,8 +179,8 @@ class SceneTilingMixin:
 
     def _process_tile_queue(self: 'PageScene') -> None:
         """Time-sliced processing of ready tiles to prevent UI stutter."""
-        # Pause processing during active scroll or animations
         views = self.views()
+        is_scrolling = False
         if views:
             view = views[0]
             is_scrolling = (
@@ -189,19 +189,21 @@ class SceneTilingMixin:
                 (hasattr(view, '_panning') and view._panning) or
                 (hasattr(view, '_kinetic_scroller') and view._kinetic_scroller._anim_timer.isActive())
             )
-            if is_scrolling:
-                return
 
         import time
         start_time = time.perf_counter()
         
-        # Dynamic budget: increase if there are many tiles waiting (up to 12ms)
+        # Dynamic budget: small micro-budget during active scrolling (3ms) to keep 60+ FPS,
+        # larger budget when resting (up to 12ms).
         queue_len = len(self._ready_tiles_queue)
-        budget = 0.005
-        if queue_len > 12:
+        if is_scrolling:
+            budget = 0.003
+        elif queue_len > 12:
             budget = 0.012
         elif queue_len > 6:
             budget = 0.008
+        else:
+            budget = 0.005
 
         # Process tiles until budget has passed to guarantee responsiveness
         while self._ready_tiles_queue:

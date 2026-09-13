@@ -69,6 +69,9 @@ freenotes/
 ├── app/                     # Controller / Glue logic
 │   ├── app_state.py         # Global reactive state (Signals, Current Document, Current Folder)
 │   └── app_controller.py    # Main lifecycle, initialization, signals manager
+├── docs/                    # Architectural documentation and refactoring specs
+│   ├── current_selection_state.md
+│   └── refactoring_plan.md
 ├── core/                    # Core logic and file operations
 │   ├── document_manager.py  # fitz/PyMuPDF PDF loading/rendering
 │   ├── freenotes_store.py   # JSON loading/saving of annotations
@@ -93,15 +96,17 @@ freenotes/
 │   ├── stroke_item.py       # Hand-drawn ink
 │   ├── highlight_item.py    # Transparent marker
 │   ├── text_box_item.py     # Text with mixins (Input, Formatting, PseudoLists)
+│   ├── text_box_input.py    # Input event handling mixin for text box
+│   ├── text_box_formatting.py # Text formatting and font scaling mixin
+│   ├── text_box_pseudo_lists.py # Pseudo-list handling mixin
 │   ├── shape_item.py        # Geometric shapes (Ellipse, Rect, Triangles)
 │   ├── image_item.py        # Inserted rasterized images
-│   ├── selection_overlay_item.py # Multi-selection grouped bounding box
-│   ├── handle_item.py       # Bounding box resize dots
-│   ├── rotate_handle_item.py# Rotation anchor dot
-│   ├── shape_handles.py     # Handle configurations for shapes
-│   ├── image_handles.py     # Handle configurations for image objects
-│   ├── search_highlight_item.py # Visual highlights for text search results
-│   └── move_handle_item.py  # Pan controls
+│   ├── interactive_item.py  # Unified interaction capability interfaces (IInteractiveItem, IRectResizable, ILinearItem, IPathScalable)
+│   ├── selection_overlay_item.py # Unified selection box & transformation overlay (inherits SelectionTransformMixin)
+│   ├── selection_transform_mixin.py # Transformation math, scaling, rotation, undo transaction mixin
+│   ├── selection_handles.py # Concrete selection handles (Resize, Rotate, Move, Options)
+│   ├── handle_item.py       # Base handle definitions
+│   └── search_highlight_item.py # Visual highlights for text search results
 ├── tools/                   # Interaction Handlers
 │   ├── base_tool.py         # Tool Interface
 │   ├── pen_tool.py          # Draws StrokeItems
@@ -113,14 +118,15 @@ freenotes/
 │   ├── hand_tool.py         # Canvas panning
 │   └── tool_context_menu.py # Context menus for selections
 ├── commands/                # Command Pattern (Undo/Redo functionality)
+│   ├── transform_items_command.py # Unified transformation command (move, resize, rotate via capture/restore_state)
 │   ├── add_item_command.py, remove_item_command.py, clear_annotations_command.py
-│   ├── create_shape_command.py, move_shape_command.py, rotate_shape_command.py, resize_shape_command.py
-│   ├── move_image_command.py, resize_image_command.py, rotate_image_command.py
+│   ├── create_shape_command.py, change_shape_style_command.py
+│   ├── add_textbox_command.py, cut_textbox_command.py, remove_textbox_command.py
+│   ├── move_textbox_command.py, resize_textbox_command.py, rotate_textbox_command.py
 │   ├── edit_text_command.py, format_text_command.py
-│   ├── rename_document_command.py
-│   ├── move_items_command.py, resize_items_command.py
-│   ├── modify_stroke_command.py
-│   └── reorder_pages_command.py, delete_page_command.py, add_page_command.py
+│   ├── modify_stroke_command.py, change_stroke_style_command.py
+│   ├── delete_items_command.py, paste_items_command.py, rotate_items_command.py
+│   └── reorder_pages_command.py, delete_page_command.py, add_page_command.py, rename_document_command.py
 ├── ui/                      # UI components, logically grouped
 │   ├── windows/             # Top-Level Shells
 │   │   ├── main_window.py
@@ -158,9 +164,11 @@ freenotes/
 │   │   └── sidebar_item.py
 │   ├── popups/              # Floating menus and dialogs
 │   │   ├── color_picker_popup.py
+│   │   ├── color_wheel_widget.py
 │   │   ├── textbox_options_popup.py
 │   │   ├── three_dot_menu.py
 │   │   ├── new_note_dialog.py
+│   │   ├── export_progress_dialog.py # Animated modal for PDF export progress
 │   │   ├── zip_export_dialog.py
 │   │   ├── custom_dialogs.py  # Shared custom dialog base elements
 │   │   ├── glass_dialog.py    # Glassmorphic dialog window
@@ -198,6 +206,7 @@ Large classes are decomposed into focused pure-Python mixins to keep file sizes 
 | Class | Mixins |
 |-------|--------|
 | `TextBoxItem` | `TextBoxInputMixin`, `TextBoxFormattingMixin`, `TextBoxPseudoListMixin` |
+| `SelectionBoxItem` | `SelectionTransformMixin` |
 | `PageScene` | `SceneRegistryMixin`, `SceneClipboardMixin`, `SceneSelectionMixin`, `ScenePageManagerMixin`, `SceneTilingMixin`, `SceneImageManagerMixin` |
 | `ToolbarWidget` | `ToolbarModePopupsMixin`, `ToolbarColorMixin`, `ToolbarWidthMixin` |
 | `SidebarWidget` | `SidebarContextMenuMixin`, `SidebarRenderMixin` |

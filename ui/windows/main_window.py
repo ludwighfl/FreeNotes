@@ -94,17 +94,23 @@ class MainWindow(QMainWindow):
         self._viewer_window.back_requested.connect(self.show_manager)
         self._settings_view.back_requested.connect(self.show_manager)
 
-        # Keyboard shortcuts
-        undo_sc = QShortcut(QKeySequence.StandardKey.Undo, self)
-        undo_sc.activated.connect(self._handle_undo)
-        redo_y = QShortcut(QKeySequence("Ctrl+Y"), self)
-        redo_y.activated.connect(self._handle_redo)
-        redo_z = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
-        redo_z.activated.connect(self._handle_redo)
+        # Keyboard shortcuts (ApplicationShortcut ensures they fire globally across all views/popups)
+        self._undo_sc = QShortcut(QKeySequence.StandardKey.Undo, self)
+        self._undo_sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._undo_sc.activated.connect(self._handle_undo)
+
+        self._redo_y = QShortcut(QKeySequence("Ctrl+Y"), self)
+        self._redo_y.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._redo_y.activated.connect(self._handle_redo)
+
+        self._redo_z = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
+        self._redo_z.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._redo_z.activated.connect(self._handle_redo)
 
         self.setAcceptDrops(True)
         
         AppState().theme_updated.connect(self._update_title_bar_theme)
+        AppState().language_changed.connect(self._load_settings_pages)
         self._update_title_bar_theme()
 
         QTimer.singleShot(0, self._perform_startup_loading)

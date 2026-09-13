@@ -90,6 +90,7 @@ class SidebarContextMenuMixin:
         if overlay is not None:
             overlay.close()
             overlay.deleteLater()
+        self.setFocus()
 
     # ------------------------------------------------------------------
     # Dimming overlay

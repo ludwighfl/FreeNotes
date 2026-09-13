@@ -88,7 +88,6 @@ class ShapeItem(QGraphicsItem, IRectResizable, ILinearItem):
         self._is_selected = selected
         self._is_selected_custom = selected
         self._cached_br = None
-        self._set_handles_visible(False)
         self.setZValue(10)
         self.update()
 
@@ -133,7 +132,6 @@ class ShapeItem(QGraphicsItem, IRectResizable, ILinearItem):
         self._rect = QRectF(0, 0, w, h)
         self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
         self._cached_br = None
-        self._update_handle_positions()
         self.update()
 
     def capture_state(self) -> dict:
@@ -247,211 +245,6 @@ class ShapeItem(QGraphicsItem, IRectResizable, ILinearItem):
             self.update()
 
     # ------------------------------------------------------------------
-    # Handle management
-    # ------------------------------------------------------------------
-
-    def _update_handle_positions(self) -> None:
-        r = self._rect
-        
-        is_linear = self._style.shape_type in (ShapeType.LINE, ShapeType.ARROW)
-        
-        if is_linear:
-            p1, p2 = self._get_line_points()
-            # For linear, use TL and BR as the generic endpoints arbitrarily
-            positions = {
-                HandlePosition.TOP_LEFT: p1,
-                HandlePosition.BOT_RIGHT: p2,
-            }
-        else:
-            # Offset handles outward to sit on the dashed selection border
-            pad = self._style.stroke_width / 2.0 + 3.0
-            positions = {
-                HandlePosition.TOP_LEFT: QPointF(r.left() - pad, r.top() - pad),
-                HandlePosition.TOP_RIGHT: QPointF(r.right() + pad, r.top() - pad),
-                HandlePosition.MID_LEFT: QPointF(r.left() - pad, r.center().y()),
-                HandlePosition.MID_RIGHT: QPointF(r.right() + pad, r.center().y()),
-                HandlePosition.BOT_LEFT: QPointF(r.left() - pad, r.bottom() + pad),
-                HandlePosition.BOT_RIGHT: QPointF(r.right() + pad, r.bottom() + pad),
-            }
-            
-        for pos, point in positions.items():
-            if pos in self._handles:
-                self._handles[pos].setPos(point)
-                self._handles[pos].set_is_endpoint(is_linear)
-                
-        if hasattr(self, '_move_handle'):
-            if not is_linear:
-                pad = self._style.stroke_width / 2.0 + 3.0
-                padded = self._rect.adjusted(-pad, -pad, pad, pad)
-                self._move_handle.update_position(padded)
-            else:
-                self._move_handle.update_position(self._rect)
-        if hasattr(self, '_rotate_handle'):
-            if not is_linear:
-                pad = self._style.stroke_width / 2.0 + 3.0
-                padded = self._rect.adjusted(-pad, -pad, pad, pad)
-                self._rotate_handle.update_position(padded)
-            else:
-                self._rotate_handle.update_position(self._rect)
-        if hasattr(self, '_options_handle') and self._options_handle.isVisible():
-            if not is_linear:
-                pad = self._style.stroke_width / 2.0 + 3.0
-                padded = self._rect.adjusted(-pad, -pad, pad, pad)
-                self._options_handle.update_position(padded)
-            else:
-                self._options_handle.update_position(self._rect)
-
-    def _update_handle_positions(self) -> None:
-        pass
-
-    def _set_handles_visible(self, visible: bool) -> None:
-        pass
-
-    # ------------------------------------------------------------------
-    # Resize via handles (duck-typed interface for ResizeHandleItem)
-    # ------------------------------------------------------------------
-
-    def apply_handle_drag(
-        self,
-        handle_pos: HandlePosition,
-        start_rect: QRectF,
-        delta: QPointF,
-        start_line_dir: int = 0,
-    ) -> None:
-        """Apply a handle drag to resize/reposition the shape.
-
-        start_rect is in scene coordinates (from get_rect()).
-        """
-        self.prepareGeometryChange()
-        self._cached_br = None
-        new_rect = QRectF(start_rect)
-        
-        from PySide6.QtGui import QGuiApplication
-        shift = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
-
-        match handle_pos:
-            case HandlePosition.TOP_LEFT:
-                new_rect.setTopLeft(start_rect.topLeft() + delta)
-            case HandlePosition.TOP_RIGHT:
-                new_rect.setTopRight(start_rect.topRight() + delta)
-            case HandlePosition.MID_LEFT:
-                new_rect.setLeft(start_rect.left() + delta.x())
-            case HandlePosition.MID_RIGHT:
-                new_rect.setRight(start_rect.right() + delta.x())
-            case HandlePosition.BOT_LEFT:
-                new_rect.setBottomLeft(start_rect.bottomLeft() + delta)
-            case HandlePosition.BOT_RIGHT:
-                new_rect.setBottomRight(start_rect.bottomRight() + delta)
-
-        # Enforce minimum size (except lines/arrows which can be 1D)
-        if self._style.shape_type not in (ShapeType.LINE, ShapeType.ARROW):
-            # Proportional scaling (Shift)
-            if shift and handle_pos in (HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT, HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT):
-                orig_w = max(self.MIN_SIZE, start_rect.width())
-                orig_h = max(self.MIN_SIZE, start_rect.height())
-                aspect = orig_w / orig_h
-                w = new_rect.width()
-                h = new_rect.height()
-                
-                # Check which axis drove the change more, or arbitrarily pick one
-                # Usually we pick the larger relative change
-                if w < self.MIN_SIZE: w = self.MIN_SIZE
-                if h < self.MIN_SIZE: h = self.MIN_SIZE
-                
-                # Force aspect
-                # e.g., if we scaled height more, adjust width
-                if abs(w - orig_w) > abs(h - orig_h):
-                    h = w / aspect
-                else:
-                    w = h * aspect
-                    
-                # Apply constrained dimensions based on anchor
-                if handle_pos == HandlePosition.TOP_LEFT:
-                    new_rect.setTopLeft(QPointF(start_rect.right() - w, start_rect.bottom() - h))
-                elif handle_pos == HandlePosition.TOP_RIGHT:
-                    new_rect.setTopRight(QPointF(start_rect.left() + w, start_rect.bottom() - h))
-                elif handle_pos == HandlePosition.BOT_LEFT:
-                    new_rect.setBottomLeft(QPointF(start_rect.right() - w, start_rect.top() + h))
-                elif handle_pos == HandlePosition.BOT_RIGHT:
-                    new_rect.setBottomRight(QPointF(start_rect.left() + w, start_rect.top() + h))
-
-            new_rect = new_rect.normalized()
-            if new_rect.width() < self.MIN_SIZE:
-                new_rect.setWidth(self.MIN_SIZE)
-            if new_rect.height() < self.MIN_SIZE:
-                new_rect.setHeight(self.MIN_SIZE)
-                
-            self.set_rect(new_rect)
-        else:
-            # Linear constraint update based on endpoints
-            # Find ORIGINAL scene endpoints from the start of the drag
-            if start_line_dir == 0:
-                p1, p2 = start_rect.topLeft(), start_rect.bottomRight()
-            elif start_line_dir == 1:
-                p1, p2 = start_rect.bottomRight(), start_rect.topLeft()
-            elif start_line_dir == 2:
-                p1, p2 = start_rect.topRight(), start_rect.bottomLeft()
-            else:
-                p1, p2 = start_rect.bottomLeft(), start_rect.topRight()
-                
-            # Find which points moved
-            if handle_pos == HandlePosition.TOP_LEFT:
-                p1 = p1 + delta
-            elif handle_pos == HandlePosition.BOT_RIGHT:
-                p2 = p2 + delta
-                
-            if shift:
-                # Snap angle to 45 degree increments
-                dx = p2.x() - p1.x()
-                dy = p2.y() - p1.y()
-                length = math.hypot(dx, dy)
-                if length > 0:
-                    angle = math.degrees(math.atan2(dy, dx))
-                    snapped = round(angle / 45.0) * 45.0
-                    rad = math.radians(snapped)
-                    dx = math.cos(rad) * length
-                    dy = math.sin(rad) * length
-                    
-                # Reconstruct points
-                if handle_pos == HandlePosition.TOP_LEFT:
-                    p1 = QPointF(p2.x() - dx, p2.y() - dy)
-                elif handle_pos == HandlePosition.BOT_RIGHT:
-                    p2 = QPointF(p1.x() + dx, p1.y() + dy)
-                
-            # Find new extents
-            sx, sy = p1.x(), p1.y()
-            ex, ey = p2.x(), p2.y()
-            
-            new_scene_rect = QRectF(
-                QPointF(min(sx, ex), min(sy, ey)), 
-                QPointF(max(sx, ex), max(sy, ey))
-            )
-            
-            if ex >= sx and ey >= sy:
-                ld = 0
-            elif ex < sx and ey < sy:
-                ld = 1
-            elif ex < sx and ey >= sy:
-                ld = 2
-            else:
-                ld = 3
-                
-            self._line_dir = ld
-            self.set_rect(new_scene_rect)
-
-    # ------------------------------------------------------------------
-    # Options popup
-    # ------------------------------------------------------------------
-
-    def show_options_popup(self) -> None:
-        """Toggle the inline options bar (Copy / Cut / Delete)."""
-        if self._options_handle.isVisible():
-            self._options_handle.hide()
-        else:
-            self._options_handle.update_position(self._rect)
-            self._options_handle.show()
-
-    # ------------------------------------------------------------------
     # Geometry
     # ------------------------------------------------------------------
 
@@ -519,14 +312,6 @@ class ShapeItem(QGraphicsItem, IRectResizable, ILinearItem):
         st = self._style
 
         hide_ui = getattr(self.scene(), "_is_rendering_thumbnail", False)
-
-        scene = self.scene()
-        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
-            page_rect = scene.get_page_rect(self._page_index)
-            if page_rect.isValid() and not page_rect.isEmpty():
-                p_path = QPainterPath()
-                p_path.addRect(page_rect)
-                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
 
         # Pen
         pen = QPen(st.stroke_color, st.stroke_width)

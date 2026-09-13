@@ -16,7 +16,7 @@ class DocumentManager:
     fitz is imported ONLY in this file and in PdfRenderer (same core package).
     """
 
-    CACHE_MAX_SIZE: int = 50
+    CACHE_MAX_SIZE: int = 6
 
     def __init__(self) -> None:
         self._document: fitz.Document | None = None
@@ -241,6 +241,7 @@ class DocumentManager:
         with self._lock:
             if self._document is None or not page_bytes:
                 return
+            self._structurally_modified = True
             temp = fitz.open("pdf", page_bytes)
             self._document.insert_pdf(
                 temp, from_page=0, to_page=0, start_at=at_index)

@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from core.tool_style import ToolStyle
 from core import undo_stack
-from items.handle_item import ResizeHandleItem, HandlePosition
 from items.text_box_input import TextBoxInputMixin
 from items.text_box_formatting import TextBoxFormattingMixin
 from items.text_box_pseudo_lists import TextBoxPseudoListMixin
@@ -42,7 +41,7 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     """An inline-editable text annotation rendered via QTextDocument.
 
     Uses local coordinates: setPos(topLeft), _rect = QRectF(0, 0, w, h).
-    8 HandleItem children provide resize functionality.
+    Bounding box and handles are centrally managed by SelectionBoxItem.
     ZValue = 15 (above strokes, below eraser cursor).
 
     Functionality is split across mixins:
@@ -50,11 +49,10 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         TextBoxFormattingMixin – character and block formatting
     """
 
-    MIN_WIDTH: float = 60.0
+    MIN_WIDTH: float = 24.0
     MIN_HEIGHT: float = 24.0
     DEFAULT_WIDTH: float = 200.0
     PADDING: float = 8.0
-    HANDLE_POSITIONS: list[HandlePosition] = list(HandlePosition)
 
     # Tools that are allowed to interact with TextBoxItems
     INTERACTIVE_TOOLS: frozenset[str] = frozenset({"text"})
@@ -78,7 +76,11 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
 
         # --- QTextDocument ---
         self._document = QTextDocument()
-        font = QFont(style.font_family, max(style.font_size, 1))
+        font = QFont(style.font_family or "Roboto")
+        font_sz = float(style.font_size) if style.font_size and style.font_size > 0 else 14.0
+        font.setPointSizeF(font_sz)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setBold(style.bold)
         font.setItalic(style.italic)
         font.setUnderline(style.underline)
@@ -129,6 +131,9 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         # --- List immutability check ---
         self.cursor_moved.connect(self._enforce_list_immutability)
 
+        # --- Auto-resize on any text content change ---
+        self._document.contentsChanged.connect(self._auto_resize)
+
         # --- Flags ---
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
@@ -170,14 +175,6 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
 
         # Text rendering
         painter.save()
-
-        scene = self.scene()
-        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
-            page_rect = scene.get_page_rect(self._page_index)
-            if page_rect.isValid() and not page_rect.isEmpty():
-                p_path = QPainterPath()
-                p_path.addRect(page_rect)
-                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
 
         painter.translate(self._rect.topLeft() + QPointF(self.PADDING, self.PADDING))
         text_clip = QRectF(
@@ -233,79 +230,6 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         painter.restore()
 
     # ==================================================================
-    # Handle management
-    # ==================================================================
-
-    def _update_handle_positions(self) -> None:
-        r = self._rect
-        positions = {
-            HandlePosition.TOP_LEFT: QPointF(r.left(), r.top()),
-            HandlePosition.TOP_RIGHT: QPointF(r.right(), r.top()),
-            HandlePosition.MID_LEFT: QPointF(r.left(), r.center().y()),
-            HandlePosition.MID_RIGHT: QPointF(r.right(), r.center().y()),
-            HandlePosition.BOT_LEFT: QPointF(r.left(), r.bottom()),
-            HandlePosition.BOT_RIGHT: QPointF(r.right(), r.bottom()),
-        }
-        for pos, point in positions.items():
-            if pos in self._handles:
-                self._handles[pos].setPos(point)
-        if hasattr(self, '_move_handle'):
-            self._move_handle.update_position(self._rect)
-        if hasattr(self, '_rotate_handle'):
-            self._rotate_handle.update_position(self._rect)
-    def _update_handle_positions(self) -> None:
-        pass
-
-    def _set_handles_visible(self, visible: bool) -> None:
-        pass
-
-    # ==================================================================
-    # Resize via handles
-    # ==================================================================
-
-    def apply_handle_drag(
-        self,
-        handle_pos: HandlePosition,
-        start_rect: QRectF,
-        delta: QPointF,
-    ) -> None:
-        """Apply a handle drag to resize/reposition the box.
-
-        start_rect is in scene coordinates (from get_rect()).
-        """
-        new_rect = QRectF(start_rect)
-
-        match handle_pos:
-            case HandlePosition.TOP_LEFT:
-                new_rect.setTopLeft(start_rect.topLeft() + delta)
-            case HandlePosition.TOP_RIGHT:
-                new_rect.setTopRight(start_rect.topRight() + delta)
-            case HandlePosition.MID_LEFT:
-                new_rect.setLeft(start_rect.left() + delta.x())
-            case HandlePosition.MID_RIGHT:
-                new_rect.setRight(start_rect.right() + delta.x())
-            case HandlePosition.BOT_LEFT:
-                new_rect.setBottomLeft(start_rect.bottomLeft() + delta)
-            case HandlePosition.BOT_RIGHT:
-                new_rect.setBottomRight(start_rect.bottomRight() + delta)
-
-        new_rect = new_rect.normalized()
-
-        # Enforce minimum size
-        if new_rect.width() < self.MIN_WIDTH:
-            new_rect.setWidth(self.MIN_WIDTH)
-        if new_rect.height() < self.MIN_HEIGHT:
-            new_rect.setHeight(self.MIN_HEIGHT)
-
-        self.set_rect(new_rect)
-
-        # After manual resize: lock new minimum
-        self._min_size = QSizeF(
-            max(self._rect.width(), self.MIN_WIDTH),
-            max(self._rect.height(), self.MIN_HEIGHT),
-        )
-
-    # ==================================================================
     # Rect accessors (scene coordinates)
     # ==================================================================
 
@@ -318,20 +242,25 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
             self._rect.height(),
         )
 
+    def get_min_width(self) -> float:
+        """Return minimum width required so at least one full character can be displayed without clipping."""
+        fm = QFontMetricsF(self._document.defaultFont())
+        char_w = max(fm.horizontalAdvance("W"), fm.averageCharWidth() * 1.5, 8.0)
+        return max(self.MIN_WIDTH, char_w + self.PADDING * 2 + 4.0)
+
     def set_rect(self, rect: QRectF) -> None:
-        """Set the box rect from scene coordinates, expanding height if needed to prevent clipping."""
+        """Set the box rect from scene coordinates, adapting height to fit the text content."""
         self.prepareGeometryChange()
-        w, h = rect.width(), rect.height()
+        w = max(rect.width(), self.get_min_width())
         self.setPos(rect.topLeft())
         self._document.setTextWidth(max(1.0, w - self.PADDING * 2))
 
-        # Guarantee height is at least large enough to fit document content with padding
+        # Guarantee height adapts to fit document content with padding
         min_doc_h = self._document.size().height() + self.PADDING * 2
-        h = max(h, min_doc_h, self.MIN_HEIGHT)
+        h = max(rect.height(), min_doc_h, self.MIN_HEIGHT)
 
         self._rect = QRectF(0, 0, w, h)
         self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
-        self._update_handle_positions()
         self.update()
 
     def capture_state(self) -> dict:
@@ -347,70 +276,32 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
 
     def restore_state(self, state: dict) -> None:
         """Restore state from snapshot."""
-        self.prepareGeometryChange()
-        if "rotation" in state:
-            self.setRotation(state["rotation"])
-        if "transform_origin" in state:
-            self.setTransformOriginPoint(state["transform_origin"])
-        if "html" in state:
-            self._document.setHtml(state["html"])
-        if "font_size" in state:
-            self._style.font_size = state["font_size"]
-        if "rect" in state:
-            self.set_rect(state["rect"])
-        self.update()
-
-    def apply_font_scale(self, scale_factor: float) -> None:
-        """Scale all font sizes across the document proportionally with fine float precision."""
-        if scale_factor <= 0.0 or abs(scale_factor - 1.0) < 0.0001:
-            return
-
-        default_font = self._document.defaultFont()
-        old_pt = default_font.pointSizeF()
-        if old_pt <= 0:
-            old_pt = float(default_font.pointSize())
-        new_default_pt = max(1.0, round(old_pt * scale_factor, 2))
-        default_font.setPointSizeF(new_default_pt)
-        default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        default_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
-        self._document.setDefaultFont(default_font)
-        self._style.font_size = new_default_pt
-
-        cursor = QTextCursor(self._document)
-        cursor.beginEditBlock()
-
-        block = self._document.begin()
-        while block.isValid():
-            it = block.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                if fragment.isValid():
-                    fmt = fragment.charFormat()
-                    current_pt = fmt.fontPointSize()
-                    if current_pt > 0:
-                        fmt.setFontPointSize(max(1.0, round(current_pt * scale_factor, 2)))
-                    else:
-                        fmt.setFontPointSize(new_default_pt)
-
-                    pos = fragment.position()
-                    length = fragment.length()
-                    cursor.setPosition(pos)
-                    cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
-                    cursor.setCharFormat(fmt)
-                it += 1
-            block = block.next()
-
-        cursor.endEditBlock()
-
-        # Re-verify text box height fits scaled document layout
-        self._document.setTextWidth(max(1.0, self._rect.width() - self.PADDING * 2))
-        min_doc_h = self._document.size().height() + self.PADDING * 2
-        if self._rect.height() < min_doc_h:
+        self._document.blockSignals(True)
+        try:
             self.prepareGeometryChange()
-            self._rect.setHeight(min_doc_h)
-            self.setTransformOriginPoint(QPointF(self._rect.width() / 2.0, min_doc_h / 2.0))
-
-        self.update()
+            if "rotation" in state:
+                self.setRotation(state["rotation"])
+            if "transform_origin" in state:
+                self.setTransformOriginPoint(state["transform_origin"])
+            if "html" in state:
+                self._document.setHtml(state["html"])
+            if "font_size" in state:
+                self._style.font_size = state["font_size"]
+                default_font = self._document.defaultFont()
+                default_font.setPointSizeF(state["font_size"])
+                default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+                default_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+                self._document.setDefaultFont(default_font)
+            if "rect" in state:
+                r = state["rect"]
+                w, h = r.width(), r.height()
+                self.setPos(r.topLeft())
+                self._document.setTextWidth(max(1.0, w - self.PADDING * 2))
+                self._rect = QRectF(0, 0, w, h)
+                self.setTransformOriginPoint(QPointF(w / 2.0, h / 2.0))
+            self.update()
+        finally:
+            self._document.blockSignals(False)
 
     def get_geometry_rect(self) -> QRectF:
         return self.get_rect()
@@ -432,33 +323,37 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
 
     def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
         """Scale text box geometry rect and font size around a pivot point in scene space."""
-        old_w = self._rect.width()
-        old_h = self._rect.height()
+        self._document.blockSignals(True)
+        try:
+            old_w = self._rect.width()
+            old_h = self._rect.height()
 
-        scale_factor = sy if sy > 0 else sx
-        self.apply_font_scale(scale_factor)
+            scale_factor = sy if sy > 0 else sx
+            self.apply_font_scale(scale_factor)
 
-        # Usable text wrapping width scales 1:1 with font size (sx) + 3.0px safety buffer against subpixel glyph rounding
-        old_text_w = max(1.0, old_w - self.PADDING * 2)
-        new_text_w = max(1.0, old_text_w * sx + 3.0)
-        new_w = max(self.MIN_WIDTH, new_text_w + self.PADDING * 2)
+            # Usable text wrapping width scales 1:1 with font size (sx) + 3.0px safety buffer against subpixel glyph rounding
+            old_text_w = max(1.0, old_w - self.PADDING * 2)
+            new_text_w = max(1.0, old_text_w * sx + 3.0)
+            new_w = max(self.MIN_WIDTH, new_text_w + self.PADDING * 2)
 
-        self._document.setTextWidth(new_text_w)
-        min_doc_h = self._document.size().height() + self.PADDING * 2
-        new_h = max(old_h * sy, min_doc_h, self.MIN_HEIGHT)
+            self._document.setTextWidth(new_text_w)
+            min_doc_h = self._document.size().height() + self.PADDING * 2
+            new_h = max(old_h * sy, min_doc_h, self.MIN_HEIGHT)
 
-        origin_scene = self.mapToScene(self.transformOriginPoint())
-        new_origin_scene = QPointF(
-            pivot.x() + (origin_scene.x() - pivot.x()) * sx,
-            pivot.y() + (origin_scene.y() - pivot.y()) * sy,
-        )
+            origin_scene = self.mapToScene(self.transformOriginPoint())
+            new_origin_scene = QPointF(
+                pivot.x() + (origin_scene.x() - pivot.x()) * sx,
+                pivot.y() + (origin_scene.y() - pivot.y()) * sy,
+            )
 
-        self.prepareGeometryChange()
-        self._rect = QRectF(0, 0, new_w, new_h)
-        new_origin = QPointF(new_w / 2.0, new_h / 2.0)
-        self.setTransformOriginPoint(new_origin)
-        self.setPos(new_origin_scene - new_origin)
-        self.update()
+            self.prepareGeometryChange()
+            self._rect = QRectF(0, 0, new_w, new_h)
+            new_origin = QPointF(new_w / 2.0, new_h / 2.0)
+            self.setTransformOriginPoint(new_origin)
+            self.setPos(new_origin_scene - new_origin)
+            self.update()
+        finally:
+            self._document.blockSignals(False)
 
 
     # ==================================================================
@@ -534,14 +429,6 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         self.update()
         self.cursor_moved.emit()
 
-    def show_options_popup(self) -> None:
-        """Toggle the options handle (Copy, Cut, Delete) for this box."""
-        if self._options_handle.isVisible():
-            self._options_handle.hide()
-        else:
-            self._options_handle.update_position(self._rect)
-            self._options_handle.show()
-
     def clone(self) -> TextBoxItem:
         """Create an identical copy of this TextBox (slightly offset)."""
         new_box = TextBoxItem(
@@ -558,7 +445,6 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
     def set_selected_custom(self, selected: bool) -> None:
         self.prepareGeometryChange()
         self._is_selected_custom = selected
-        self._set_handles_visible(False)
         self.setZValue(6)
         if not selected:
             self.stop_editing()
@@ -588,23 +474,27 @@ class TextBoxItem(TextBoxInputMixin, TextBoxFormattingMixin, TextBoxPseudoListMi
         """Recalculate height after text modification while respecting current width."""
         # Force text to wrap at current visual width
         current_width = self._rect.width()
-        new_text_width = current_width - self.PADDING * 2
+        new_text_width = max(1.0, current_width - self.PADDING * 2)
         if abs(self._document.textWidth() - new_text_width) > 0.5:
             self._document.setTextWidth(new_text_width)
 
-        # Height at this width
-        natural_height = self._document.size().height() + self.PADDING * 2
-        natural_height = max(natural_height, self._min_size.height())
+        # Height at this width (must accommodate all document content + padding)
+        doc_height = self._document.size().height()
+        min_h = getattr(self, "_min_size", QSizeF(0, self.MIN_HEIGHT)).height()
+        natural_height = max(doc_height + self.PADDING * 2, min_h, self.MIN_HEIGHT)
 
         # Only update if actually changed (performance)
         height_changed = abs(natural_height - self._rect.height()) > 0.5
 
         if height_changed:
             self.prepareGeometryChange()
-
             self._rect.setHeight(natural_height)
-            self._update_handle_positions()
+            self.setTransformOriginPoint(QPointF(self._rect.width() / 2.0, natural_height / 2.0))
             self.update()
+
+            # Update selection overlay so bounding box and handles expand in real time!
+            if self.scene() is not None and hasattr(self.scene(), "_update_selection_overlay"):
+                self.scene()._update_selection_overlay()
 
     def _on_cursor_moved(self) -> None:
         """Update display and emit signal after cursor navigation."""

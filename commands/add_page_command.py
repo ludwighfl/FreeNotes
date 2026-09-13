@@ -71,6 +71,7 @@ class AddPageCommand(QUndoCommand):
         scene.relayout_after_delete(self._insert_at, doc_mgr)
         sidebar.remove_card(self._insert_at)
         AppState().total_pages = doc_mgr.get_page_count()
+        self._navigate_to_page(max(0, self._insert_at - 1))
 
     def redo(self) -> None:
         scene = self._scene_ref()
@@ -147,8 +148,8 @@ class AddPageCommand(QUndoCommand):
         AppState().total_pages = doc_mgr.get_page_count()
         self._navigate_to_page()
 
-    def _navigate_to_page(self) -> None:
-        """Scroll the viewer and sidebar to the newly inserted page."""
+    def _navigate_to_page(self, target_idx: int | None = None) -> None:
+        """Scroll the viewer and sidebar to the newly inserted page or target."""
         from PySide6.QtCore import QTimer
 
         sidebar = self._sidebar_ref()
@@ -160,11 +161,12 @@ class AddPageCommand(QUndoCommand):
         page_view = getattr(viewer, '_page_view', None)
         if page_view is None:
             return
-        idx = self._insert_at
+        idx = self._insert_at if target_idx is None else target_idx
 
         def _do_navigate():
             AppState().current_page = idx
             page_view.scroll_to_page(idx)
+            sidebar.set_active_page(idx)
 
         # Deferred so rebuild has fully completed
         QTimer.singleShot(60, _do_navigate)

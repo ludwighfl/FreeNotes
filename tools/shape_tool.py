@@ -55,14 +55,19 @@ class ShapeTool(BaseTool):
         from items.selection_overlay_item import SelectionOverlayItem
         items_at = scene.items(QRectF(pos.x() - 3, pos.y() - 3, 6, 6))
         
-        # Check if we clicked on a control handle. If so, let Qt's default dispatch handle it.
+        # Check if we clicked on a control handle or selection overlay. If so, let Qt's default dispatch handle it.
         from items.handle_item import ResizeHandleItem
         from items.rotate_handle_item import RotateHandleItem
         from items.options_handle_item import OptionsHandleItem
         from items.move_handle_item import MoveHandleItem
+        from items.selection_overlay_item import SelectionBoxItem
 
         if any(isinstance(i, (ResizeHandleItem, RotateHandleItem, OptionsHandleItem, MoveHandleItem)) for i in items_at):
             return
+
+        for i in items_at:
+            if isinstance(i, SelectionBoxItem) and (i.is_in_rotation_zone(pos) or i.is_in_move_zone(pos)):
+                return
 
         hit = next(
             (i for i in items_at

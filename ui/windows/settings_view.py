@@ -52,10 +52,10 @@ class SettingsView(QWidget):
         back_btn.clicked.connect(self.back_requested)
         header_layout.addWidget(back_btn)
 
-        title = QLabel(tr("settings.title"))
-        title.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
-        title.setObjectName("settingsTitleLabel")
-        header_layout.addWidget(title)
+        self._title_label = QLabel(tr("settings.title"))
+        self._title_label.setFont(QFont("Roboto", 15, QFont.Weight.Bold))
+        self._title_label.setObjectName("settingsTitleLabel")
+        header_layout.addWidget(self._title_label)
         header_layout.addStretch()
         
         self._sidebar_icon_names = {
@@ -68,6 +68,7 @@ class SettingsView(QWidget):
         
         from app.app_state import AppState
         AppState().theme_updated.connect(self._on_theme_updated)
+        AppState().language_changed.connect(self._on_language_changed)
         main_layout.addWidget(header)
 
         # Horizontal separator
@@ -212,4 +213,20 @@ class SettingsView(QWidget):
                 btn.setIcon(
                     IconFactory.create(icon_name, color="#cccccc", size=16)
                 )
+
+    def _on_language_changed(self) -> None:
+        """Update translated texts in SettingsView when language changes."""
+        self._title_label.setText(tr("settings.title"))
+        self._back_btn.setToolTip(tr("settings.back"))
+
+        tab_labels = {
+            "display": tr("settings.tabs.display"),
+            "pen": tr("settings.tabs.pen"),
+            "language": tr("settings.tabs.language"),
+            "library": tr("settings.tabs.library"),
+            "app": tr("settings.tabs.app"),
+        }
+        for key, btn in self._sidebar_btns.items():
+            if key in tab_labels:
+                btn.setText(f"  {tab_labels[key]}")
 

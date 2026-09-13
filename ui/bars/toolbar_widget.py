@@ -325,6 +325,37 @@ class ToolbarWidget(
             self._hover_effects.append(BackgroundFadeHoverEffect(btn, hover_color, duration=150, border_radius=6))
 
         self._app_state.theme_updated.connect(self._on_theme_updated)
+        self._app_state.language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self) -> None:
+        """Dynamically refresh tooltips and menu action labels on language switch."""
+        from core.shape_style import ShapeType
+        self._undo_btn.setToolTip(tr("toolbar.undo"))
+        self._redo_btn.setToolTip(tr("toolbar.redo"))
+
+        for i, tooltip in enumerate(self.TOOL_TOOLTIPS):
+            if i < len(self._tool_buttons):
+                self._tool_buttons[i].setToolTip(tr(tooltip))
+
+        if hasattr(self, "_shape_btn"):
+            self._shape_btn.setToolTip(tr("toolbar.shapes_hint"))
+
+        shape_names = {
+            ShapeType.RECT: tr("toolbar.shape_rect"),
+            ShapeType.ROUNDED_RECT: tr("toolbar.shape_rounded_rect"),
+            ShapeType.ELLIPSE: tr("toolbar.shape_ellipse"),
+            ShapeType.LINE: tr("toolbar.shape_line"),
+            ShapeType.ARROW: tr("toolbar.shape_arrow"),
+            ShapeType.TRIANGLE: tr("toolbar.shape_triangle"),
+        }
+        if hasattr(self, "_shape_actions"):
+            for action, st in self._shape_actions:
+                if st in shape_names:
+                    action.setText(shape_names[st])
+
+        if hasattr(self, "_color_buttons"):
+            for btn, color in zip(self._color_buttons, self._chip_colors):
+                btn.setToolTip(tr("toolbar.color_hint").format(color))
 
     def _on_theme_updated(self) -> None:
         """Dynamically refresh all static SVG icons and hover effect colors on theme switch."""

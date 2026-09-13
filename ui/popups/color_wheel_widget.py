@@ -103,10 +103,10 @@ class ColorWheelWidget(QWidget):
         """Position of the hue handle on the ring."""
         center = self._center()
         mid_radius = (self._outer_radius() + self._inner_radius()) / 2.0
-        angle_rad = math.radians(90 - self._hue)
+        angle_rad = math.radians(self._hue)
         return QPointF(
-            center.x() + mid_radius * math.cos(angle_rad),
-            center.y() - mid_radius * math.sin(angle_rad),
+            center.x() - mid_radius * math.sin(angle_rad),
+            center.y() - mid_radius * math.cos(angle_rad),
         )
 
     # ------------------------------------------------------------------
@@ -216,9 +216,8 @@ class ColorWheelWidget(QWidget):
         """Compute hue from mouse position angle relative to center."""
         center = self._center()
         dx = pos.x() - center.x()
-        dy = center.y() - pos.y()  # Y inverted for math convention
-        angle_deg = math.degrees(math.atan2(dy, dx))
-        self._hue = int(90 - angle_deg) % 360
+        dy = pos.y() - center.y()
+        self._hue = int(round(math.degrees(math.atan2(-dx, -dy)))) % 360
         self.update()
         self.color_changed.emit(self.current_color)
 

@@ -205,3 +205,52 @@ class TextBoxFormattingMixin:
 
     def get_current_block_format(self) -> QTextBlockFormat:
         return self._cursor.blockFormat()
+
+    def apply_font_scale(self, scale_factor: float) -> None:
+        """Scale all font sizes across the document proportionally with fine float precision."""
+        if scale_factor <= 0.0 or abs(scale_factor - 1.0) < 0.0001:
+            return
+
+        self._document.blockSignals(True)
+        try:
+            default_font = self._document.defaultFont()
+            old_pt = default_font.pointSizeF()
+            if old_pt <= 0:
+                old_pt = float(default_font.pointSize())
+            new_default_pt = max(1.0, round(old_pt * scale_factor, 3))
+            default_font.setPointSizeF(new_default_pt)
+            default_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+            default_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+            self._document.setDefaultFont(default_font)
+            self._style.font_size = new_default_pt
+
+            from PySide6.QtGui import QTextCursor
+            cursor = QTextCursor(self._document)
+            cursor.beginEditBlock()
+
+            block = self._document.begin()
+            while block.isValid():
+                it = block.begin()
+                while not it.atEnd():
+                    fragment = it.fragment()
+                    if fragment.isValid():
+                        fmt = fragment.charFormat()
+                        current_pt = fmt.fontPointSize()
+                        if current_pt > 0:
+                            fmt.setFontPointSize(max(1.0, round(current_pt * scale_factor, 3)))
+                        else:
+                            fmt.setFontPointSize(new_default_pt)
+
+                        pos = fragment.position()
+                        length = fragment.length()
+                        cursor.setPosition(pos)
+                        cursor.setPosition(pos + length, QTextCursor.MoveMode.KeepAnchor)
+                        cursor.setCharFormat(fmt)
+                    it += 1
+                block = block.next()
+
+            cursor.endEditBlock()
+            self.update()
+        finally:
+            self._document.blockSignals(False)
+

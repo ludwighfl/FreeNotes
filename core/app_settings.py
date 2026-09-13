@@ -165,6 +165,10 @@ class AppSettings:
     @classmethod
     def set_language(cls, code: str) -> None:
         cls._get().setValue("language", code)
+        from core.i18n import init_i18n
+        init_i18n()
+        from app.app_state import AppState
+        AppState().language_changed.emit()
 
     # ------------------------------------------------------------------
     # Per-PDF zoom

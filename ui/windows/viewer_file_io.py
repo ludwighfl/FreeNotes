@@ -298,29 +298,34 @@ class ViewerFileIOMixin:
 
     def _on_export_as(self) -> None:
         """Slot for Export As action from ThreeDotMenu."""
+        from PySide6.QtCore import QStandardPaths
         pdf_path = self._app_state.current_pdf_path
         if not pdf_path:
             CustomMessageBox.warning(self, tr("viewer.no_pdf_title"), tr("viewer.no_pdf_msg"))  # type: ignore
             return
-        default_name = os.path.splitext(str(pdf_path))[0] + ".pdf"
+        desktop_dir = (
+            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+            or os.path.join(os.path.expanduser("~"), "Desktop")
+        )
+        base_name = os.path.splitext(os.path.basename(str(pdf_path)))[0]
+        default_name = f"{base_name}.pdf"
+        default_path = os.path.join(desktop_dir, default_name)
         target, _ = QFileDialog.getSaveFileName(
-            self, tr("viewer.export_pdf_as"), default_name, "PDF (*.pdf)",  # type: ignore
+            self, tr("viewer.export_pdf_as"), default_path, "PDF (*.pdf)",  # type: ignore
         )
         if not target:
             return
         self._run_export(str(pdf_path), target)
 
     def _run_export(self, source: str, target: str) -> None:
-        """Execute the export operation with a progress dialog."""
-        progress = QProgressDialog(
-            tr("viewer.export_progress"), tr("settings.library.cancel"), 0, 100, self,  # type: ignore
-        )
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(300)
-        progress.show()
+        """Execute the export operation with a frosted-glass progress & completion dialog."""
+        from ui.popups.export_progress_dialog import ExportProgressDialog
+        dialog = ExportProgressDialog(target_path=target, parent=self)
+        dialog.show()
+        QApplication.processEvents()
 
         def on_progress(pct: int) -> None:
-            progress.setValue(pct)
+            dialog.set_progress(pct)
             QApplication.processEvents()
 
         try:
@@ -330,16 +335,9 @@ class ViewerFileIOMixin:
                 target_pdf=target,
                 progress_callback=on_progress,
             )
-            progress.close()
-            CustomMessageBox.information(
-                self, tr("settings.library.export_success"),  # type: ignore
-                tr("settings.library.pdf_saved").format(target),
-            )
+            dialog.set_success()
         except Exception as e:
-            progress.close()
-            CustomMessageBox.critical(
-                self, tr("settings.library.export_failed"), str(e),  # type: ignore
-            )
+            dialog.set_error(str(e))
 
     def _update_title(self) -> None:
         """Update the header title based on current state."""

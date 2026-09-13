@@ -346,19 +346,27 @@ class FreenotesStore:
 
     @classmethod
     def _deserialize_textbox(cls, d: dict, page_idx: int) -> TextBoxItem:
-        rx, ry, rw, rh = d["rect"]
+        rect_data = d.get("rect", [0, 0, 200, 40])
+        rx, ry, rw, rh = rect_data
+        font_size = d.get("font_size", 14)
+        if font_size is None or not isinstance(font_size, (int, float)) or font_size <= 0:
+            font_size = 14.0
         style = ToolStyle(
             color=QColor(d.get("style_color", "#000000")),
             font_family=d.get("font_family", "Roboto"),
-            font_size=d.get("font_size", 14),
+            font_size=float(font_size),
         )
         item = TextBoxItem(
             rect=QRectF(rx, ry, rw, rh),
             style=style,
             page_index=d.get("page_index", page_idx),
         )
-        item._document.setHtml(d["html"])
-        item.setRotation(d.get("rotation", 0.0))
+        if "html" in d and d["html"]:
+            item._document.setHtml(d["html"])
+        if "pos" in d and d["pos"] is not None:
+            item.setPos(QPointF(*d["pos"]))
+        if "rotation" in d:
+            item.setRotation(float(d.get("rotation", 0.0)))
         return item
 
     # ------------------------------------------------------------------

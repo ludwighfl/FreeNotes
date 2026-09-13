@@ -34,13 +34,14 @@ class LanguagePage(QWidget):
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        layout.addWidget(self._make_title(tr("settings.tabs.language")))
+        self._title_label = self._make_title(tr("settings.tabs.language"))
+        layout.addWidget(self._title_label)
         layout.addSpacing(16)
 
-        desc = QLabel(tr("settings.language.desc"))
-        desc.setObjectName("settingsLabel")
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
+        self._desc_label = QLabel(tr("settings.language.desc"))
+        self._desc_label.setObjectName("settingsLabel")
+        self._desc_label.setWordWrap(True)
+        layout.addWidget(self._desc_label)
         layout.addSpacing(20)
 
         from core.app_settings import AppSettings
@@ -67,24 +68,14 @@ class LanguagePage(QWidget):
             layout.addSpacing(8)
             self._lang_btns[code] = btn
 
-        layout.addSpacing(16)
-
-        # Info hint with Lucide icon
-        hint_row = QHBoxLayout()
-        hint_row.setSpacing(6)
-        hint_icon = QLabel()
-        hint_icon.setPixmap(
-            IconFactory.create_pixmap(
-                "info", color="#5577cc", size=14))
-        hint_icon.setFixedSize(14, 14)
-        hint_icon.setObjectName("settingsHintIcon")
-        hint_row.addWidget(hint_icon)
-        hint_text = QLabel(tr("settings.language.restart_hint"))
-        hint_text.setObjectName("settingsHintText")
-        hint_text.setWordWrap(True)
-        hint_row.addWidget(hint_text, 1)
-        layout.addLayout(hint_row)
         layout.addStretch()
+
+        from app.app_state import AppState
+        AppState().language_changed.connect(self._on_language_changed)
+
+    def _on_language_changed(self) -> None:
+        self._title_label.setText(tr("settings.tabs.language"))
+        self._desc_label.setText(tr("settings.language.desc"))
 
     # ------------------------------------------------------------------
 

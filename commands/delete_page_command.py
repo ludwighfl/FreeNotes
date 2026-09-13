@@ -103,6 +103,7 @@ class DeletePageCommand(QUndoCommand):
         def _do_navigate():
             AppState().current_page = target_idx
             page_view.scroll_to_page(target_idx)
+            sidebar.set_active_page(target_idx)
 
         # Deferred so rebuild has fully completed
         QTimer.singleShot(60, _do_navigate)

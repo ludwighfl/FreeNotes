@@ -72,6 +72,7 @@ class TextTool(BaseTool):
         from items.move_handle_item import MoveHandleItem
         from items.rotate_handle_item import RotateHandleItem
         from items.options_handle_item import OptionsHandleItem
+        from items.selection_overlay_item import SelectionBoxItem
         for item in items_at:
             if isinstance(item, (ResizeHandleItem, MoveHandleItem, RotateHandleItem, OptionsHandleItem)):
                 # Still track the parent box as current
@@ -81,6 +82,9 @@ class TextTool(BaseTool):
                         self._current_box.set_selected_custom(False)
                     self._current_box = parent
                 return  # let super().mousePressEvent deliver to handle
+            if isinstance(item, SelectionBoxItem):
+                if item.is_in_rotation_zone(pos) or item.is_in_move_zone(pos):
+                    return  # let super().mousePressEvent deliver to SelectionBoxItem!
 
         existing_box: TextBoxItem | None = None
         for item in items_at:

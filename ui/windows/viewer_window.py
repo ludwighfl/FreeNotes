@@ -298,7 +298,8 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         from PySide6.QtGui import QIntValidator
         if total > 0:
             self._page_input.setValidator(QIntValidator(1, total, self))
-        self._page_input.setText("1")
+        curr = self._app_state.current_page
+        self._page_input.setText(str(curr + 1))
 
     def _on_page_input_entered(self) -> None:
         text = self._page_input.text().strip()
@@ -377,28 +378,20 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         undo_stack.push(cmd)
 
     def delete_page(self, page_idx: int) -> None:
-        """Delete a page (non-undoable)."""
+        """Delete a page (undoable via DeletePageCommand)."""
         if self._doc_manager.get_page_count() <= 1:
             return  # Can't delete last page
         
-        # Remove page directly from scene, document manager, and sidebar
-        self._page_scene.remove_page(page_idx, self._doc_manager)
-        self._doc_manager.remove_page(page_idx)
-        self._page_scene.relayout_after_delete(page_idx, self._doc_manager)
-        self._sidebar.remove_card(page_idx)
-        self._app_state.total_pages = self._doc_manager.get_page_count()
-        
-        # Navigate to safe target page
-        target_idx = max(0, page_idx - 1)
-        from PySide6.QtCore import QTimer
-        def _do_navigate():
-            self._app_state.current_page = target_idx
-            self._page_view.scroll_to_page(target_idx)
-        QTimer.singleShot(60, _do_navigate)
-        
-        # Clear undo stack since this destructive action cannot be undone
+        from commands.delete_page_command import DeletePageCommand
         from core import undo_stack
-        undo_stack.clear()
+
+        cmd = DeletePageCommand(
+            page_idx=page_idx,
+            scene=self._page_scene,
+            doc_manager=self._doc_manager,
+            sidebar=self._sidebar,
+        )
+        undo_stack.push(cmd)
 
     def clear_ui(self) -> None:
         """Instantly blanks out the viewer UI to hide previous documents during transitions."""
@@ -561,11 +554,36 @@ class ViewerWindow(ViewerFileIOMixin, ViewerToolManagerMixin, QWidget):
         self._search_bar.update_count(0, 0)
 
     def keyPressEvent(self, event) -> None:
-        """Handle Escape to close search bar."""
+        """Handle Escape to close search bar, and forward Undo/Redo."""
         if event.key() == Qt.Key.Key_Escape:
             if hasattr(self, '_search_bar') and self._search_bar.isVisible():
                 self._search_bar._on_close()
                 return
+
+        # Undo (Ctrl+Z / Strg+Z)
+        if (
+            event.matches(QKeySequence.StandardKey.Undo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Z)
+        ):
+            from core import undo_stack
+            undo_stack.undo()
+            event.accept()
+            return
+
+        # Redo (Ctrl+Y / Ctrl+Shift+Z)
+        if (
+            event.matches(QKeySequence.StandardKey.Redo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Y)
+            or (
+                event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+                and event.key() == Qt.Key.Key_Z
+            )
+        ):
+            from core import undo_stack
+            undo_stack.redo()
+            event.accept()
+            return
+
         super().keyPressEvent(event)
 
     def _on_title_rename_requested(self, new_name: str) -> None:

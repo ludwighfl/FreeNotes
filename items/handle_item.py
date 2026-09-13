@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QBrush, QColor, QPen, QPainterPath
+from PySide6.QtGui import QBrush, QColor, QPen, QPainterPath, QPainter
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
@@ -106,7 +106,6 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def _apply_default_style(self) -> None:
         if self._is_endpoint:
-            # Solid white for linear item handles, matching corner handles
             self.setBrush(QBrush(QColor("#ffffff")))
             self.setPen(QPen(QColor("#3B7BF5"), 2.0))
         else:
@@ -119,19 +118,18 @@ class ResizeHandleItem(QGraphicsEllipseItem):
 
     def hoverEnterEvent(self, event) -> None:
         self._hovered = True
-        if self._is_endpoint:
-            # Soft blue hover effect, matching corner handles
-            self.setBrush(QBrush(QColor("#ddeeff")))
-        else:
-            self.setBrush(QBrush(QColor("#ddeeff")))
+        self.setBrush(QBrush(QColor("#edf4ff")))
+        self.setPen(QPen(QColor("#2563EB"), 2.0 if self._is_endpoint else 1.8))
         self.update()
-        event.accept()
+        if event is not None:
+            event.accept()
 
     def hoverLeaveEvent(self, event) -> None:
         self._hovered = False
         self._apply_default_style()
         self.update()
-        event.accept()
+        if event is not None:
+            event.accept()
 
     # ==================================================================
     # Drag-to-resize
@@ -194,8 +192,8 @@ class ResizeHandleItem(QGraphicsEllipseItem):
         event.accept()
 
     def boundingRect(self) -> QRectF:
-        """Expand bounds to ensure the 1.5px pen and antialiasing don't leave ghosts."""
-        return super().boundingRect().adjusted(-2, -2, 2, 2)
+        """Expand bounds to ensure shadow, pen, and antialiasing don't clip."""
+        return super().boundingRect().adjusted(-4, -4, 4, 4)
 
     def shape(self) -> QPainterPath:
         """Expand hit area for easier clicking."""
@@ -210,7 +208,23 @@ class ResizeHandleItem(QGraphicsEllipseItem):
         parent = self.parentItem()
         if parent and getattr(parent, "_handles_dragged", False):
             return
-        super().paint(painter, option, widget)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        r = self.rect().width() / 2.0
+
+        # 1. Soft drop shadow for contrast against any document background
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(0, 0, 0, 40)))
+        painter.drawEllipse(QPointF(0, 1.2), r + 0.3, r + 0.3)
+
+        # 2. Main handle circle
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawEllipse(QPointF(0, 0), r, r)
+
+        painter.restore()
 
     # ==================================================================
     # Property

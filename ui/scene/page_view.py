@@ -60,10 +60,14 @@ class PageView(PageViewNavigationMixin, PageViewGestureMixin, QGraphicsView):
         self._zoom_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._zoom_anim.valueChanged.connect(self._on_zoom_anim_value_changed)
 
-        # Render hints
+        # Render hints & optimization flags
         self.setRenderHints(
             QPainter.RenderHint.Antialiasing
             | QPainter.RenderHint.SmoothPixmapTransform
+        )
+        self.setOptimizationFlags(
+            QGraphicsView.OptimizationFlag.DontSavePainterState
+            | QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing
         )
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)

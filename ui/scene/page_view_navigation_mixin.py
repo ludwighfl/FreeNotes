@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import time
 from PySide6.QtCore import Qt, QTimer, QPointF, QVariantAnimation
 from PySide6.QtWidgets import QGraphicsView
@@ -167,14 +166,10 @@ class PageViewNavigationMixin:
         self._last_scroll_time = current_time
         self._last_scroll_val_velocity = current_val
 
-        gc.disable()
         self._render_timer.start()
 
     def _on_render_timer(self: 'PageView') -> None:
         """Inform scene which pages are visible for rendering."""
-        gc.enable()
-        gc.collect(0)
-        
         try:
             vp_rect = self.mapToScene(
                 self.viewport().rect()).boundingRect()

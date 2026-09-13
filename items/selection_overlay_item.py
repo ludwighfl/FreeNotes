@@ -6,7 +6,14 @@ import math
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QPainter, QPen, QColor, QBrush, QPainterPath, QTransform
+from PySide6.QtGui import (
+    QPainter,
+    QPen,
+    QColor,
+    QBrush,
+    QPainterPath,
+    QPainterPathStroker,
+)
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
@@ -15,17 +22,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from items.handle_item import ResizeHandleItem, HandlePosition
-from items.rotate_handle_item import RotateHandleItem
-from items.move_handle_item import MoveHandleItem
-from items.options_handle_item import OptionsHandleItem
+from items.handle_item import HandlePosition
 from items.interactive_item import (
     IInteractiveItem,
     IRectResizable,
     ILinearItem,
-    IPathScalable,
 )
-from commands.transform_items_command import TransformItemsCommand
+from items.selection_handles import (
+    get_rotation_cursor,
+    SelectionResizeHandle,
+    SelectionRotateHandle,
+    SelectionMoveHandle,
+    SelectionOptionsHandle,
+)
+from items.selection_transform_mixin import SelectionTransformMixin
 
 if TYPE_CHECKING:
     from ui.scene.page_scene import PageScene
@@ -41,143 +51,7 @@ _STANDARD_HANDLE_POSITIONS = {
 }
 
 
-class SelectionResizeHandle(ResizeHandleItem):
-    """Resize/Endpoint handle for SelectionBoxItem."""
-
-    def __init__(self, position: HandlePosition, parent: QGraphicsItem) -> None:
-        super().__init__(position, parent)
-
-    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() != Qt.MouseButton.LeftButton:
-            event.ignore()
-            return
-        self._dragging = True
-        self._drag_start_pos = event.scenePos()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        self._drag_start_rect = QRectF(overlay._bounding_rect)
-        overlay._on_handle_press()
-        self.update()
-        event.accept()
-
-    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging or self._drag_start_pos is None or self._drag_start_rect is None:
-            return
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-        overlay._on_resize_handle_drag(
-            self._position, self._drag_start_rect,
-            self._drag_start_pos, event.scenePos(), shift,
-        )
-        self.update()
-        event.accept()
-
-    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging:
-            return
-        self._dragging = False
-        self.update()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        overlay._on_handle_release("Skalieren")
-        event.accept()
-
-
-class SelectionRotateHandle(RotateHandleItem):
-    """Rotate handle for SelectionBoxItem."""
-
-    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() != Qt.MouseButton.LeftButton:
-            event.ignore()
-            return
-        self._dragging = True
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-
-        center = overlay._bounding_rect.center()
-        overlay._ensure_transform_origin_at_center()
-
-        self._rotation_center = overlay.mapToScene(center)
-        self._start_angle = self._angle_to(event.scenePos())
-        self._last_angle = 0.0
-        overlay._on_handle_press()
-        self.update()
-        event.accept()
-
-    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging:
-            return
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        delta_angle = self._angle_to(event.scenePos()) - self._start_angle
-        raw_target_angle = overlay._drag_start_overlay_rotation + delta_angle
-
-        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-            target_angle = round(raw_target_angle / 45.0) * 45.0
-            total_angle = target_angle - overlay._drag_start_overlay_rotation
-        else:
-            total_angle = delta_angle
-
-        overlay._apply_rotation_from_start(total_angle)
-        self.update()
-        event.accept()
-
-    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging:
-            return
-        self._dragging = False
-        self.update()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        overlay._on_handle_release("Rotieren")
-        event.accept()
-
-
-class SelectionMoveHandle(MoveHandleItem):
-    """Move handle pill for SelectionBoxItem."""
-
-    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() != Qt.MouseButton.LeftButton:
-            event.ignore()
-            return
-        self._dragging = True
-        self._drag_start_scene_pos = event.scenePos()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        overlay._on_handle_press()
-        self.update()
-        event.accept()
-
-    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging or self._drag_start_scene_pos is None:
-            return
-        delta = event.scenePos() - self._drag_start_scene_pos
-        self._drag_start_scene_pos = event.scenePos()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        overlay.apply_group_move(delta)
-        self.update()
-        event.accept()
-
-    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if not self._dragging:
-            return
-        self._dragging = False
-        self.update()
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        overlay._on_handle_release("Verschieben")
-        event.accept()
-
-
-class SelectionOptionsHandle(OptionsHandleItem):
-    """Options handle bar for SelectionBoxItem."""
-
-    def _execute_action(self, index: int) -> None:
-        overlay: SelectionBoxItem = self.parentItem()  # type: ignore[assignment]
-        if overlay is None:
-            return
-        if index == 0:
-            overlay.copy_selected()
-        elif index == 1:
-            overlay.cut_selected()
-        elif index == 2:
-            overlay.delete_selected()
-
-
-class SelectionBoxItem(QGraphicsItem):
+class SelectionBoxItem(SelectionTransformMixin, QGraphicsItem):
     """Unified overlay providing selection frames, handles, and undo transaction management."""
 
     MIN_SIZE: float = 16.0
@@ -215,6 +89,15 @@ class SelectionBoxItem(QGraphicsItem):
         self.setZValue(499)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        self.setAcceptHoverEvents(True)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+        self._is_corner_rotating: bool = False
+        self._rotation_center: QPointF = QPointF()
+        self._start_angle: float = 0.0
+
+        self._is_box_moving: bool = False
+        self._drag_start_scene_pos: QPointF | None = None
 
     def attach(self, items: list[QGraphicsItem], scene: QGraphicsScene) -> None:
         """Attach overlay to one or more selectable items."""
@@ -227,8 +110,6 @@ class SelectionBoxItem(QGraphicsItem):
 
         is_single = len(self._managed_items) == 1
         single_item = self._managed_items[0] if is_single else None
-
-
 
         # Linear mode: single line/arrow
         if is_single and isinstance(single_item, ILinearItem) and single_item.is_linear():
@@ -268,8 +149,7 @@ class SelectionBoxItem(QGraphicsItem):
 
         self._rotate_handle.setVisible(False)
         self._move_handle.setVisible(False)
-        if hasattr(self, "_options_handle"):
-            self._options_handle.update_position(self._bounding_rect)
+        self._options_handle.setVisible(False)
 
         self.setVisible(True)
         self.update()
@@ -353,20 +233,14 @@ class SelectionBoxItem(QGraphicsItem):
             if pos in positions:
                 h.set_is_endpoint(False)
                 h.setPos(positions[pos])
+                h.update_cursor()
                 h.setVisible(True)
             else:
                 h.setVisible(False)
 
-        is_single = len(self._managed_items) == 1
-        if is_single:
-            self._rotate_handle.update_position(padded)
-            self._rotate_handle.setVisible(True)
-        else:
-            self._rotate_handle.setVisible(False)
-        self._move_handle.update_position(padded)
-        self._move_handle.setVisible(True)
-        if hasattr(self, "_options_handle"):
-            self._options_handle.update_position(padded)
+        self._rotate_handle.setVisible(False)
+        self._move_handle.setVisible(False)
+        self._options_handle.setVisible(False)
 
     def update_from_items(
         self, items: list[QGraphicsItem], scene: QGraphicsScene
@@ -377,13 +251,234 @@ class SelectionBoxItem(QGraphicsItem):
     def _set_all_handles_visible(self, visible: bool) -> None:
         for h in self._handles.values():
             h.setVisible(visible)
-        self._rotate_handle.setVisible(visible)
-        self._move_handle.setVisible(visible)
-        self._options_handle.setVisible(visible)
+        self._rotate_handle.setVisible(False)
+        self._move_handle.setVisible(False)
+        self._options_handle.setVisible(False)
+
+    def _corner_positions(self) -> dict[str, QPointF]:
+        padded = self._bounding_rect.adjusted(-self.PADDING, -self.PADDING, self.PADDING, self.PADDING)
+        return {
+            "tl": padded.topLeft(),
+            "tr": padded.topRight(),
+            "bl": padded.bottomLeft(),
+            "br": padded.bottomRight(),
+        }
+
+    def get_rotation_corner(self, scene_pos: QPointF) -> str | None:
+        """Return the corner key ('tl', 'tr', 'bl', 'br') if scene_pos is in its rotation zone."""
+        if self._is_linear_mode or not self._managed_items or len(self._managed_items) != 1 or self._bounding_rect.isNull():
+            return None
+        local_pos = self.mapFromScene(scene_pos)
+        for key, corner_pt in self._corner_positions().items():
+            dx = local_pos.x() - corner_pt.x()
+            dy = local_pos.y() - corner_pt.y()
+            dist = math.hypot(dx, dy)
+            if 6.0 <= dist <= 26.0:
+                return key
+        return None
+
+    def is_in_rotation_zone(self, scene_pos: QPointF) -> bool:
+        """Check if scene_pos is in any corner rotation zone."""
+        return self.get_rotation_corner(scene_pos) is not None
+
+    def _is_any_item_editing(self) -> bool:
+        """Return True if any managed item is currently being edited."""
+        for item in self._managed_items:
+            if getattr(item, "_is_editing", False):
+                return True
+        return False
+
+    def is_in_move_zone(self, scene_pos: QPointF) -> bool:
+        """Check if scene_pos is in the move zone."""
+        if not self._managed_items or self._bounding_rect.isNull():
+            return False
+
+        # If in corner rotation zone, rotation takes precedence
+        if self.is_in_rotation_zone(scene_pos):
+            return False
+
+        # If on any visible resize handle, resize takes precedence
+        for h in self._handles.values():
+            if h.isVisible() and h.sceneBoundingRect().contains(scene_pos):
+                return False
+
+        local_pos = self.mapFromScene(scene_pos)
+
+        # 1. Linear mode (lines / arrows)
+        if self._is_linear_mode:
+            if len(self._managed_items) == 1 and isinstance(self._managed_items[0], ILinearItem):
+                item = self._managed_items[0]
+                p1 = self.mapFromScene(item.get_start_point())
+                p2 = self.mapFromScene(item.get_end_point())
+                line_vec = p2 - p1
+                length = math.hypot(line_vec.x(), line_vec.y())
+                if length < 1.0:
+                    return False
+                t = max(0.0, min(1.0, ((local_pos.x() - p1.x()) * line_vec.x() + (local_pos.y() - p1.y()) * line_vec.y()) / (length * length)))
+                proj = p1 + line_vec * t
+                dist = math.hypot(local_pos.x() - proj.x(), local_pos.y() - proj.y())
+                return dist <= 12.0
+            return False
+
+        # 2. Standard box mode
+        box_rect = self._bounding_rect.adjusted(-self.PADDING, -self.PADDING, self.PADDING, self.PADDING)
+
+        if self._is_any_item_editing():
+            # In text edit mode: only the border frame (14px thickness) is the move zone,
+            # leaving the interior free for text cursor & selection.
+            outer_rect = box_rect.adjusted(-7.0, -7.0, 7.0, 7.0)
+            inner_rect = box_rect.adjusted(7.0, 7.0, -7.0, -7.0)
+            if inner_rect.width() > 0 and inner_rect.height() > 0:
+                return outer_rect.contains(local_pos) and not inner_rect.contains(local_pos)
+            return outer_rect.contains(local_pos)
+
+        # When not in text edit mode: the entire selection box (interior + border) is draggable to move
+        return box_rect.adjusted(7.0, 7.0, 7.0, 7.0).contains(local_pos)
 
     def boundingRect(self) -> QRectF:
-        pad = self.PADDING + 10.0
+        pad = self.PADDING + 28.0
         return self._bounding_rect.adjusted(-pad, -pad, pad, pad)
+
+    def shape(self) -> QPainterPath:
+        path = QPainterPath()
+        if self._bounding_rect.isNull() or not self._managed_items:
+            return path
+
+        # 1. Linear mode
+        if self._is_linear_mode:
+            if len(self._managed_items) == 1 and isinstance(self._managed_items[0], ILinearItem):
+                item = self._managed_items[0]
+                p1 = self.mapFromScene(item.get_start_point())
+                p2 = self.mapFromScene(item.get_end_point())
+                line_path = QPainterPath()
+                line_path.moveTo(p1)
+                line_path.lineTo(p2)
+                stroker = QPainterPathStroker()
+                stroker.setWidth(14.0)
+                return stroker.createStroke(line_path)
+            return super().shape()
+
+        # 2. Corner rotation zones (only active for single item selection)
+        if len(self._managed_items) == 1:
+            for corner_pt in self._corner_positions().values():
+                path.addEllipse(corner_pt, 26.0, 26.0)
+
+        # 3. Border stroke or filled rect
+        box_rect = self._bounding_rect.adjusted(-self.PADDING, -self.PADDING, self.PADDING, self.PADDING)
+        if self._is_any_item_editing():
+            stroker = QPainterPathStroker()
+            stroker.setWidth(14.0)
+            rect_path = QPainterPath()
+            rect_path.addRect(box_rect)
+            path.addPath(stroker.createStroke(rect_path))
+        else:
+            path.addRect(box_rect.adjusted(-4.0, -4.0, 4.0, 4.0))
+
+        return path
+
+    def _angle_to(self, scene_pos: QPointF) -> float:
+        dx = scene_pos.x() - self._rotation_center.x()
+        dy = scene_pos.y() - self._rotation_center.y()
+        return math.degrees(math.atan2(dy, dx))
+
+    def hoverMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        pos = event.scenePos()
+        if self.is_in_rotation_zone(pos):
+            self.setCursor(get_rotation_cursor())
+        elif self.is_in_move_zone(pos):
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().hoverMoveEvent(event)
+
+    def hoverLeaveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
+
+        pos = event.scenePos()
+
+        # 1. Corner rotation
+        if self.is_in_rotation_zone(pos):
+            self._is_corner_rotating = True
+            self._ensure_transform_origin_at_center()
+            center = self._bounding_rect.center()
+            self._rotation_center = self.mapToScene(center)
+            self._start_angle = self._angle_to(pos)
+            self._on_handle_press()
+            self.setCursor(get_rotation_cursor())
+            event.accept()
+            return
+
+        # 2. Drag-move
+        if self.is_in_move_zone(pos):
+            self._is_box_moving = True
+            self._drag_start_scene_pos = pos
+            self._on_handle_press()
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+            event.accept()
+            return
+
+        event.ignore()
+
+    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self._is_corner_rotating:
+            delta_angle = self._angle_to(event.scenePos()) - self._start_angle
+            raw_target_angle = self._drag_start_overlay_rotation + delta_angle
+
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                target_angle = round(raw_target_angle / 45.0) * 45.0
+                total_angle = target_angle - self._drag_start_overlay_rotation
+            else:
+                total_angle = delta_angle
+
+            self._apply_rotation_from_start(total_angle)
+            self.update()
+            event.accept()
+            return
+
+        if getattr(self, "_is_box_moving", False):
+            if self._drag_start_scene_pos is not None:
+                delta = event.scenePos() - self._drag_start_scene_pos
+                self._drag_start_scene_pos = event.scenePos()
+                self.apply_group_move(delta)
+                self.update()
+            event.accept()
+            return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self._is_corner_rotating:
+            self._is_corner_rotating = False
+            self.update()
+            self._on_handle_release("Rotieren")
+            event.accept()
+            return
+
+        if getattr(self, "_is_box_moving", False):
+            self._is_box_moving = False
+            self._drag_start_scene_pos = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
+            self._on_handle_release("Verschieben")
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if len(self._managed_items) == 1 and hasattr(self._managed_items[0], "start_editing"):
+            self._managed_items[0].start_editing()
+            self.prepareGeometryChange()
+            self.update()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def paint(
         self,
@@ -399,8 +494,8 @@ class SelectionBoxItem(QGraphicsItem):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         if self._is_linear_mode:
-            pen = QPen(QColor("#3B7BF5"), 2.0, Qt.PenStyle.DashLine)
-            pen.setDashPattern([6, 4])
+            pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
+            pen.setDashPattern([5, 4])
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             if len(self._managed_items) == 1 and isinstance(self._managed_items[0], ILinearItem):
@@ -408,383 +503,12 @@ class SelectionBoxItem(QGraphicsItem):
                 p2 = self._managed_items[0].get_end_point()
                 painter.drawLine(p1, p2)
         else:
-            sel_pen = QPen(QColor("#3B7BF5"), 1.5, Qt.PenStyle.DashLine)
-            sel_pen.setDashPattern([6, 4])
+            sel_pen = QPen(QColor("#3B7BF5"), 1.2, Qt.PenStyle.SolidLine)
             painter.setPen(sel_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setBrush(QBrush(QColor(59, 123, 245, 10)))
             painter.setOpacity(1.0)
             box_rect = self._bounding_rect.adjusted(-self.PADDING, -self.PADDING, self.PADDING, self.PADDING)
             painter.drawRect(box_rect)
-
-    # ==================================================================
-    # Handle Drag & Undo Management
-    # ==================================================================
-
-    def _on_handle_press(self) -> None:
-        """Capture item states and overlay transform at start of handle drag."""
-        self._drag_before_state = {
-            item: item.capture_state()
-            for item in self._managed_items
-            if isinstance(item, IInteractiveItem)
-        }
-        # Save overlay transform for restore-and-reapply
-        self._drag_start_overlay_pos = QPointF(self.pos())
-        self._drag_start_overlay_rotation = self.rotation()
-        self._drag_start_overlay_origin = QPointF(self.transformOriginPoint())
-
-    def _restore_to_start(self) -> None:
-        """Restore all items and overlay to their drag-start state."""
-        for item, state in self._drag_before_state.items():
-            if hasattr(item, "restore_state"):
-                item.restore_state(state)
-        self.setPos(self._drag_start_overlay_pos)
-        self.setRotation(self._drag_start_overlay_rotation)
-        self.setTransformOriginPoint(self._drag_start_overlay_origin)
-
-    def _on_handle_release(self, action_name: str) -> None:
-        """Capture item states at end of handle drag and push TransformItemsCommand."""
-        if not self._drag_before_state:
-            return
-
-        after_state = {
-            item: item.capture_state()
-            for item in self._managed_items
-            if isinstance(item, IInteractiveItem)
-        }
-
-        has_changed = False
-        for item, b_state in self._drag_before_state.items():
-            a_state = after_state.get(item)
-            if a_state != b_state:
-                has_changed = True
-                break
-
-        if has_changed and self.scene() is not None:
-            from core.undo_stack import get_stack
-            cmd = TransformItemsCommand(
-                items_before=self._drag_before_state,
-                items_after=after_state,
-                scene=self.scene(),
-                text=action_name,
-            )
-            get_stack().push(cmd)
-
-        self._drag_before_state = {}
-
-    def _on_resize_handle_drag(
-        self,
-        handle_pos: HandlePosition,
-        start_rect: QRectF,
-        scene_start: QPointF,
-        scene_current: QPointF,
-        shift: bool,
-    ) -> None:
-        """Handle dragging of resize / endpoint handles."""
-        # 1. Restore everything to start state
-        self._restore_to_start()
-
-        # 2. Linear mode endpoint drag
-        if self._is_linear_mode and len(self._managed_items) == 1 and isinstance(self._managed_items[0], ILinearItem):
-            self._apply_linear_drag(handle_pos, scene_start, scene_current)
-            return
-
-        # 3. Compute delta in overlay-local coordinates
-        local_delta = self.mapFromScene(scene_current) - self.mapFromScene(scene_start)
-
-        # 4. Compute new local rect
-        new_rect = QRectF(start_rect)
-        match handle_pos:
-            case HandlePosition.TOP_LEFT:
-                new_rect.setTopLeft(start_rect.topLeft() + local_delta)
-            case HandlePosition.TOP_CENTER:
-                new_rect.setTop(start_rect.top() + local_delta.y())
-            case HandlePosition.TOP_RIGHT:
-                new_rect.setTopRight(start_rect.topRight() + local_delta)
-            case HandlePosition.MID_LEFT:
-                new_rect.setLeft(start_rect.left() + local_delta.x())
-            case HandlePosition.MID_RIGHT:
-                new_rect.setRight(start_rect.right() + local_delta.x())
-            case HandlePosition.BOT_LEFT:
-                new_rect.setBottomLeft(start_rect.bottomLeft() + local_delta)
-            case HandlePosition.BOT_CENTER:
-                new_rect.setBottom(start_rect.bottom() + local_delta.y())
-            case HandlePosition.BOT_RIGHT:
-                new_rect.setBottomRight(start_rect.bottomRight() + local_delta)
-
-        # Force aspect ratio for multi-selection, shift key, or text box corner drag
-        is_corner = handle_pos in (
-            HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT,
-            HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT,
-        )
-        has_font_scale = (
-            self._is_single_rect_mode and len(self._managed_items) == 1 and hasattr(self._managed_items[0], "apply_font_scale")
-        )
-        force_aspect = shift or len(self._managed_items) > 1 or (has_font_scale and is_corner)
-
-        if force_aspect and handle_pos in (
-            HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT,
-            HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT,
-            HandlePosition.MID_LEFT, HandlePosition.MID_RIGHT,
-        ):
-            orig_w = max(self.MIN_SIZE, start_rect.width())
-            orig_h = max(self.MIN_SIZE, start_rect.height())
-            aspect = orig_w / orig_h
-            w = max(self.MIN_SIZE, new_rect.width())
-            h = max(self.MIN_SIZE, new_rect.height())
-
-            if handle_pos in (HandlePosition.MID_LEFT, HandlePosition.MID_RIGHT):
-                h = w / aspect
-                cy = start_rect.center().y()
-                new_rect.setTop(cy - h / 2.0)
-                new_rect.setBottom(cy + h / 2.0)
-            else:
-                if abs(w - orig_w) > abs(h - orig_h):
-                    h = w / aspect
-                else:
-                    w = h * aspect
-
-                if handle_pos == HandlePosition.TOP_LEFT:
-                    new_rect.setTopLeft(QPointF(start_rect.right() - w, start_rect.bottom() - h))
-                elif handle_pos == HandlePosition.TOP_RIGHT:
-                    new_rect.setTopRight(QPointF(start_rect.left() + w, start_rect.bottom() - h))
-                elif handle_pos == HandlePosition.BOT_LEFT:
-                    new_rect.setBottomLeft(QPointF(start_rect.right() - w, start_rect.top() + h))
-                elif handle_pos == HandlePosition.BOT_RIGHT:
-                    new_rect.setBottomRight(QPointF(start_rect.left() + w, start_rect.top() + h))
-
-        new_rect = new_rect.normalized()
-        if new_rect.width() < self.MIN_SIZE:
-            new_rect.setWidth(self.MIN_SIZE)
-        if new_rect.height() < self.MIN_SIZE:
-            new_rect.setHeight(self.MIN_SIZE)
-
-        # 5. Apply to items
-        if self._is_single_rect_mode and len(self._managed_items) == 1:
-            self._apply_single_rect_resize(handle_pos, start_rect, new_rect)
-        else:
-            self._apply_multi_resize(handle_pos, start_rect, new_rect)
-
-    def _apply_linear_drag(self, handle_pos: HandlePosition, scene_start: QPointF, scene_current: QPointF) -> None:
-        """Apply linear endpoint drag using start state + scene delta."""
-        linear_item = self._managed_items[0]
-        if not isinstance(linear_item, ILinearItem):
-            return
-        scene_delta = scene_current - scene_start
-        if handle_pos == HandlePosition.TOP_LEFT:
-            linear_item.set_start_point(linear_item.get_start_point() + scene_delta)
-        elif handle_pos == HandlePosition.BOT_RIGHT:
-            linear_item.set_end_point(linear_item.get_end_point() + scene_delta)
-        self._attach_linear(linear_item)
-
-    def _apply_single_rect_resize(
-        self, handle_pos: HandlePosition, start_rect: QRectF, new_rect: QRectF
-    ) -> None:
-        """Resize a single item without drift."""
-        item = self._managed_items[0]
-        if isinstance(item, IRectResizable):
-            # Scale font size for text box when dragging corner handles
-            if (
-                handle_pos in (
-                    HandlePosition.TOP_LEFT, HandlePosition.TOP_RIGHT,
-                    HandlePosition.BOT_LEFT, HandlePosition.BOT_RIGHT,
-                )
-                and hasattr(item, "apply_font_scale")
-                and start_rect.height() > 0.01
-            ):
-                scale_factor = new_rect.height() / start_rect.height()
-                item.apply_font_scale(scale_factor)
-                if hasattr(item, "PADDING"):
-                    start_text_w = max(1.0, start_rect.width() - item.PADDING * 2)
-                    new_text_w = max(1.0, start_text_w * scale_factor + 3.0)
-                    new_rect.setWidth(new_text_w + item.PADDING * 2)
-
-            target_scene_tl = item.mapToScene(QPointF(new_rect.left(), new_rect.top()))
-            w = max(self.MIN_SIZE, new_rect.width())
-            h = max(self.MIN_SIZE, new_rect.height())
-
-            item.set_transform_origin(QPointF(0, 0))
-            item.setPos(target_scene_tl)
-            item.set_geometry_rect(QRectF(target_scene_tl.x(), target_scene_tl.y(), w, h))
-
-            center_origin = QPointF(w / 2.0, h / 2.0)
-            p1 = item.mapToScene(QPointF(0, 0))
-            item.set_transform_origin(center_origin)
-            p2 = item.mapToScene(QPointF(0, 0))
-            item.setPos(item.pos() + (p1 - p2))
-
-            self._attach_single_item(item)
-        elif isinstance(item, IInteractiveItem):
-            if self._bounding_rect.width() > 0.01 and self._bounding_rect.height() > 0.01:
-                sx = new_rect.width() / self._bounding_rect.width()
-                sy = new_rect.height() / self._bounding_rect.height()
-                pivot = self._bounding_rect.center()
-                item.apply_scale(sx, sy, pivot)
-            self._attach_single_item(item)
-
-    def _apply_multi_resize(self, handle_pos: HandlePosition, start_rect: QRectF, new_rect: QRectF) -> None:
-        """Resize multiple items via scale from start_rect to new_rect."""
-        if start_rect.width() < 0.01 or start_rect.height() < 0.01:
-            return
-
-        sx = new_rect.width() / start_rect.width()
-        sy = new_rect.height() / start_rect.height()
-        pivot = self._get_resize_pivot(handle_pos, start_rect)
-
-        for item in self._managed_items:
-            item.apply_scale(sx, sy, pivot)
-
-        # Update overlay bounding box from actual item bounding rects
-        combined = QRectF()
-        for item in self._managed_items:
-            if isinstance(item, QGraphicsItem):
-                if isinstance(item, IRectResizable):
-                    geo = item.get_geometry_rect()
-                    local_r = QRectF(0, 0, geo.width(), geo.height())
-                    scene_poly = item.mapToScene(local_r)
-                    combined = combined.united(scene_poly.boundingRect())
-                else:
-                    item_rect = item.mapToScene(item.boundingRect()).boundingRect()
-                    combined = combined.united(item_rect)
-
-        self.prepareGeometryChange()
-        self._bounding_rect = combined if not combined.isNull() else new_rect
-        self._position_standard_handles(self._bounding_rect)
-        self.update()
-
-    @staticmethod
-    def _get_resize_pivot(handle_pos: HandlePosition, rect: QRectF) -> QPointF:
-        """Return the fixed anchor point (opposite corner/edge) for a resize drag."""
-        match handle_pos:
-            case HandlePosition.TOP_LEFT:
-                return rect.bottomRight()
-            case HandlePosition.TOP_RIGHT:
-                return rect.bottomLeft()
-            case HandlePosition.BOT_LEFT:
-                return rect.topRight()
-            case HandlePosition.BOT_RIGHT:
-                return rect.topLeft()
-            case HandlePosition.MID_LEFT:
-                return QPointF(rect.right(), rect.center().y())
-            case HandlePosition.MID_RIGHT:
-                return QPointF(rect.left(), rect.center().y())
-            case HandlePosition.TOP_CENTER:
-                return QPointF(rect.center().x(), rect.bottom())
-            case HandlePosition.BOT_CENTER:
-                return QPointF(rect.center().x(), rect.top())
-        return rect.center()
-
-    # ==================================================================
-    # Transformations
-    # ==================================================================
-
-    def _ensure_transform_origin_at_center(self) -> None:
-        """Ensure overlay and single items have transform origin at center."""
-        center = self._bounding_rect.center()
-        if center != self.transformOriginPoint():
-            old_scene = self.mapToScene(QPointF(0, 0))
-            self.setTransformOriginPoint(center)
-            new_scene = self.mapToScene(QPointF(0, 0))
-            self.setPos(self.pos() + (old_scene - new_scene))
-
-        if self._is_single_rect_mode and len(self._managed_items) == 1:
-            item = self._managed_items[0]
-            if isinstance(item, QGraphicsItem):
-                if isinstance(item, IRectResizable):
-                    item_center = QPointF(
-                        item.get_geometry_rect().width() / 2.0,
-                        item.get_geometry_rect().height() / 2.0,
-                    )
-                else:
-                    item_center = item.boundingRect().center()
-
-                if hasattr(item, "set_transform_origin") and item.get_transform_origin() != item_center:
-                    old_s = item.mapToScene(QPointF(0, 0))
-                    item.set_transform_origin(item_center)
-                    new_s = item.mapToScene(QPointF(0, 0))
-                    item.setPos(item.pos() + (old_s - new_s))
-
-    def _apply_rotation_from_start(self, total_angle: float) -> None:
-        """Apply rotation using restore-and-reapply with total angle from start."""
-        if not self._managed_items:
-            return
-
-        self._restore_to_start()
-        self._ensure_transform_origin_at_center()
-
-        if len(self._managed_items) == 1:
-            item = self._managed_items[0]
-            start_state = self._drag_before_state.get(item)
-            start_rot = start_state.get("rotation", item.get_rotation_angle() if hasattr(item, "get_rotation_angle") else item.rotation()) if start_state else (item.get_rotation_angle() if hasattr(item, "get_rotation_angle") else item.rotation())
-            if hasattr(item, "set_rotation_angle"):
-                item.set_rotation_angle(start_rot + total_angle)
-            else:
-                item.setRotation(start_rot + total_angle)
-            self.setRotation(self._drag_start_overlay_rotation + total_angle)
-        else:
-            pivot_scene = self._bounding_rect.center()
-            transform = QTransform()
-            transform.translate(pivot_scene.x(), pivot_scene.y())
-            transform.rotate(total_angle)
-            transform.translate(-pivot_scene.x(), -pivot_scene.y())
-
-            for item in self._managed_items:
-                if isinstance(item, QGraphicsItem):
-                    start_state = self._drag_before_state.get(item)
-                    start_rot = start_state.get("rotation", item.get_rotation_angle() if hasattr(item, "get_rotation_angle") else item.rotation()) if start_state else (item.get_rotation_angle() if hasattr(item, "get_rotation_angle") else item.rotation())
-                    if hasattr(item, "set_rotation_angle"):
-                        item.set_rotation_angle(start_rot + total_angle)
-                    else:
-                        item.setRotation(start_rot + total_angle)
-
-                    origin_scene = item.mapToScene(item.get_transform_origin() if hasattr(item, "get_transform_origin") else item.transformOriginPoint())
-                    target_scene = transform.map(origin_scene)
-                    delta_pos = target_scene - origin_scene
-                    item.setPos(item.pos() + delta_pos)
-
-            # Rotate multi-selection overlay around its center
-            self.setTransformOriginPoint(pivot_scene)
-            self.setRotation(self._drag_start_overlay_rotation + total_angle)
-
-        padded = self._bounding_rect.adjusted(-self.PADDING, -self.PADDING, self.PADDING, self.PADDING)
-        self._rotate_handle.update_position(padded)
-        self.update()
-
-    def apply_group_rotation(self, delta_angle: float) -> None:
-        """Rotate managed items by delta_angle (incremental). Legacy API."""
-        if not self._managed_items:
-            return
-        if len(self._managed_items) == 1:
-            item = self._managed_items[0]
-            if hasattr(item, "set_rotation_angle"):
-                item.set_rotation_angle(item.get_rotation_angle() + delta_angle)
-            else:
-                item.setRotation(item.rotation() + delta_angle)
-        else:
-            pivot_scene = self._bounding_rect.center()
-            transform = QTransform()
-            transform.translate(pivot_scene.x(), pivot_scene.y())
-            transform.rotate(delta_angle)
-            transform.translate(-pivot_scene.x(), -pivot_scene.y())
-
-            for item in self._managed_items:
-                if isinstance(item, QGraphicsItem):
-                    rot = item.get_rotation_angle() if hasattr(item, "get_rotation_angle") else item.rotation()
-                    if hasattr(item, "set_rotation_angle"):
-                        item.set_rotation_angle(rot + delta_angle)
-                    else:
-                        item.setRotation(rot + delta_angle)
-                    origin_scene = item.mapToScene(item.get_transform_origin() if hasattr(item, "get_transform_origin") else item.transformOriginPoint())
-                    target_scene = transform.map(origin_scene)
-                    item.setPos(item.pos() + (target_scene - origin_scene))
-
-        self.attach(list(self._managed_items), self.scene())
-
-    def apply_group_move(self, delta: QPointF) -> None:
-        """Move all managed items by delta."""
-        for item in self._managed_items:
-            if isinstance(item, QGraphicsItem):
-                item.setPos(item.pos() + delta)
-        self.attach(list(self._managed_items), self.scene())
 
     # ==================================================================
     # Options Actions (Copy / Cut / Delete)

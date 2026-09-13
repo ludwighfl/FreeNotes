@@ -363,7 +363,15 @@ class PageScene(
                         break
 
             if not has_textbox:
-                self.deselect_all_textboxes()
+                overlay = self._selection_overlay
+                overlay_hit = False
+                if overlay is not None and overlay.isVisible():
+                    try:
+                        overlay_hit = overlay.shape().contains(overlay.mapFromScene(pos))
+                    except Exception:
+                        pass
+                if not overlay_hit:
+                    self.deselect_all_textboxes()
 
         if self._active_tool is not None:
             self._active_tool.on_press(event, self)
@@ -458,7 +466,27 @@ class PageScene(
             return
 
         from PySide6.QtGui import QKeySequence
-        if event.matches(QKeySequence.StandardKey.Copy):
+        if (
+            event.matches(QKeySequence.StandardKey.Undo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Z)
+        ):
+            from core import undo_stack
+            undo_stack.undo()
+            event.accept()
+            return
+        elif (
+            event.matches(QKeySequence.StandardKey.Redo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Y)
+            or (
+                event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+                and event.key() == Qt.Key.Key_Z
+            )
+        ):
+            from core import undo_stack
+            undo_stack.redo()
+            event.accept()
+            return
+        elif event.matches(QKeySequence.StandardKey.Copy):
             self.copy_selected()
             event.accept()
             return

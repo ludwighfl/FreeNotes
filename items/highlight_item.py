@@ -40,11 +40,20 @@ class HighlightItem(QGraphicsItem, IPathScalable):
         self._outline_mode: bool = False  # True after pixel-erase
         self._is_selected: bool = False
         self._cached_br: QRectF | None = None
+        self._solid_color: QColor = self._compute_solid_color()
 
         self.setZValue(5)
-        self.setAcceptHoverEvents(True)
+        self.setAcceptHoverEvents(False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+
+    def _compute_solid_color(self) -> QColor:
+        c = QColor(self._style.color)
+        opacity = self.DEFAULT_OPACITY
+        r = 1.0 - opacity * (1.0 - c.redF())
+        g = 1.0 - opacity * (1.0 - c.greenF())
+        b = 1.0 - opacity * (1.0 - c.blueF())
+        return QColor.fromRgbF(r, g, b, 1.0)
 
     # ------------------------------------------------------------------
     # Stroke lifecycle
@@ -113,14 +122,6 @@ class HighlightItem(QGraphicsItem, IPathScalable):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        scene = self.scene()
-        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
-            page_rect = scene.get_page_rect(self._page_index)
-            if page_rect.isValid() and not page_rect.isEmpty():
-                p_path = QPainterPath()
-                p_path.addRect(page_rect)
-                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
-
         # Live selection preview glow
         if getattr(self, "_is_preview_highlight", False):
             glow_pen = QPen(QColor(59, 123, 245, 140), max(4.0, self._style.width + 4.0))
@@ -132,13 +133,7 @@ class HighlightItem(QGraphicsItem, IPathScalable):
         # Use Darken mode so overlapping highlighter strokes do not add their opacity
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Darken)
 
-        # Simulate opacity by blending the color with white into an opaque pastel color
-        c = QColor(self._style.color)
-        opacity = self.DEFAULT_OPACITY
-        r = 1.0 - opacity * (1.0 - c.redF())
-        g = 1.0 - opacity * (1.0 - c.greenF())
-        b = 1.0 - opacity * (1.0 - c.blueF())
-        solid_color = QColor.fromRgbF(r, g, b, 1.0)
+        solid_color = self._solid_color
 
         if self._outline_mode:
             # After pixel-erase: path IS the filled outline, just fill it
@@ -316,7 +311,7 @@ class HighlightItem(QGraphicsItem, IPathScalable):
         self.setTransformOriginPoint(origin)
 
     def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
-        """Scale highlight stroke around a pivot point."""
+        """Scale highlight stroke around pivot point."""
         old_br = self.mapToScene(self.boundingRect()).boundingRect()
         if old_br.width() < 0.01 or old_br.height() < 0.01:
             return
@@ -345,34 +340,32 @@ class HighlightItem(QGraphicsItem, IPathScalable):
     # ------------------------------------------------------------------
 
     def apply_bounding_box_resize(self, new_br: QRectF) -> None:
-        """Scale the path so its scene bounding box matches *new_br*."""
-        from PySide6.QtGui import QTransform
+        """Scale the highlight so its visual bounding rect matches new_br exactly."""
+        h = max(2.0, new_br.height())
+        w = max(2.0, new_br.width())
 
-        old_br = self.mapToScene(self.boundingRect()).boundingRect()
-        if old_br.width() < 0.01 or old_br.height() < 0.01:
-            return
+        new_stroke_w = max(2.0, h - 8.0)
+        self._style.width = new_stroke_w
+        padding = new_stroke_w / 2.0 + 4.0
 
-        sx = new_br.width() / old_br.width()
-        sy = new_br.height() / old_br.height()
+        y_center = new_br.center().y()
 
-        path_scene = self.mapToScene(self._path)
+        p_left_scene = QPointF(new_br.left() + padding, y_center)
+        p_right_scene = QPointF(new_br.right() - padding, y_center)
 
-        transform = QTransform()
-        transform.translate(new_br.left(), new_br.top())
-        transform.scale(sx, sy)
-        transform.translate(-old_br.left(), -old_br.top())
+        if p_right_scene.x() < p_left_scene.x():
+            p_left_scene = QPointF(new_br.center().x(), y_center)
+            p_right_scene = QPointF(new_br.center().x(), y_center)
 
-        new_path_scene = transform.map(path_scene)
-        new_path_local = self.mapFromScene(new_path_scene)
+        p_left_local = self.mapFromScene(p_left_scene)
+        p_right_local = self.mapFromScene(p_right_scene)
+
+        new_path = QPainterPath()
+        new_path.moveTo(p_left_local)
+        new_path.lineTo(p_right_local)
 
         self.prepareGeometryChange()
-        self._path = new_path_local
-        
-        # Scale the width proportionally to the new bounding box height
-        self._style.width *= sy
-        if self._style.width < 1.0:
-            self._style.width = 1.0
-            
+        self._path = new_path
         self._cached_br = None
         self.update()
 

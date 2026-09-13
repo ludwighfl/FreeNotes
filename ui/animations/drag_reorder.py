@@ -379,6 +379,8 @@ class DragReorderController(QObject):
         self._saved_order = []
         self._ghost_x = 0
         self._busy = False
+        if hasattr(self, '_sidebar') and self._sidebar:
+            self._sidebar.setFocus()
 
     def _find_gap_card_index(self) -> int:
         layout = self._sidebar._layout

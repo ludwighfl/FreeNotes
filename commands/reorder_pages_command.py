@@ -33,7 +33,6 @@ class ReorderPagesCommand(QUndoCommand):
         self._scene_ref = weakref.ref(scene)
         self._doc_manager_ref = weakref.ref(doc_manager)
         self._sidebar_ref = weakref.ref(sidebar)
-        self._first_redo = False
 
     def undo(self) -> None:
         # Compute inverse permutation: if new_order moved page X to position Y,
@@ -44,9 +43,6 @@ class ReorderPagesCommand(QUndoCommand):
         self._apply_order(inv_order)
 
     def redo(self) -> None:
-        if self._first_redo:
-            self._first_redo = False
-            return
         self._apply_order(self._new_order)
 
     def _apply_order(self, order: list[int]) -> None:
@@ -67,3 +63,13 @@ class ReorderPagesCommand(QUndoCommand):
 
         # 4. Update sidebar
         sidebar.refresh_order(order)
+
+        # 5. Track active page following reorder
+        try:
+            from app.app_state import AppState
+            curr = AppState().current_page
+            new_active = order.index(curr)
+            AppState().current_page = new_active
+            sidebar.set_active_page(new_active)
+        except (ValueError, IndexError):
+            pass

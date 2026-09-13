@@ -479,11 +479,8 @@ class TileRenderer(QObject):
     # ------------------------------------------------------------------
 
     def _on_tile_rendered(self, key: TileKey) -> None:
-        """Bridge from worker thread → main-thread signal.
-
-        Called directly by :class:`TileRenderTask` from its worker
-        thread.  Emitting :pyattr:`_SignalRelay.tile_ready` from a
-        non-main thread is safe — Qt auto-queues the delivery because
-        the relay QObject lives on the main thread.
-        """
-        self._relay.tile_ready.emit(key)
+        """Bridge from worker thread -> main-thread signal."""
+        try:
+            self._relay.tile_ready.emit(key)
+        except RuntimeError:
+            pass

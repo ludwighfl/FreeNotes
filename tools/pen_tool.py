@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPointF, QObject, QRectF
@@ -151,7 +152,8 @@ class PenTool(BaseTool):
     def _finalize_stroke(self, scene: PageScene) -> None:
         """Apply smoothing and create the final StrokeItem."""
         if self._current_path is not None and len(self._points) >= 2:
-            smoothed = self._smooth_path(self._smoothed_points)
+            simplified = self._rdp_simplify(self._smoothed_points, epsilon=0.5)
+            smoothed = self._smooth_path(simplified)
             
             style = ToolStyle(
                 color=self.style.color,
@@ -174,6 +176,43 @@ class PenTool(BaseTool):
         self._points.clear()
         self._smoothed_points.clear()
         self.tool_action_completed.emit()
+
+    @staticmethod
+    def _rdp_simplify(points: list[QPointF], epsilon: float = 0.5) -> list[QPointF]:
+        """Ramer-Douglas-Peucker algorithm to reduce point density while preserving curvature."""
+        if len(points) <= 2:
+            return points
+
+        p1 = points[0]
+        p2 = points[-1]
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
+        norm = math.hypot(dx, dy)
+
+        dmax = 0.0
+        index = 0
+
+        if norm < 0.001:
+            for i in range(1, len(points) - 1):
+                p = points[i]
+                d = math.hypot(p.x() - p1.x(), p.y() - p1.y())
+                if d > dmax:
+                    index = i
+                    dmax = d
+        else:
+            for i in range(1, len(points) - 1):
+                p = points[i]
+                d = abs(dy * p.x() - dx * p.y() + p2.x() * p1.y() - p2.y() * p1.x()) / norm
+                if d > dmax:
+                    index = i
+                    dmax = d
+
+        if dmax > epsilon:
+            rec1 = PenTool._rdp_simplify(points[:index + 1], epsilon)
+            rec2 = PenTool._rdp_simplify(points[index:], epsilon)
+            return rec1[:-1] + rec2
+        else:
+            return [p1, p2]
 
     @staticmethod
     def _gaussian_smooth(points: list[QPointF]) -> QPointF:

@@ -11,7 +11,9 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QPainter,
+    QPainterPath,
     QPen,
+    QPolygonF,
 )
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -87,44 +89,64 @@ class RotateHandleItem(QGraphicsItem):
     ) -> None:
         if getattr(self.scene(), "_is_rendering_thumbnail", False):
             return
+
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         r = self.RADIUS
 
-        # Connecting line from circle top to box bottom edge
-        painter.setPen(QPen(QColor("#3B7BF5"), 1.5))
-        # This item is positioned at (center_x, box_bottom + RADIUS + OFFSET_Y)
-        # Line from circle top (-RADIUS) up to box bottom edge
-        line_top = -(self.RADIUS + self.OFFSET_Y)  # relative to our center
+        # 1. Connecting line from circle top to box bottom edge
+        painter.setPen(QPen(QColor("#3B7BF5"), 1.2))
+        line_top = -(self.RADIUS + self.OFFSET_Y)
         painter.drawLine(
             QPointF(0, -r),
             QPointF(0, line_top),
         )
 
-        # Circle
+        # 2. Soft drop shadow
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(0, 0, 0, 45)))
+        painter.drawEllipse(QPointF(0, 1.2), r + 0.3, r + 0.3)
+
+        # 3. Circle styling
         if self._dragging:
             fill = QColor("#3B7BF5")
+            border = QColor("#1D4ED8")
             icon_color = QColor("#ffffff")
         elif self._hovered:
-            fill = QColor("#5a9bf8")
-            icon_color = QColor("#ffffff")
+            fill = QColor("#edf4ff")
+            border = QColor("#2563EB")
+            icon_color = QColor("#2563EB")
         else:
             fill = QColor("#ffffff")
+            border = QColor("#3B7BF5")
             icon_color = QColor("#3B7BF5")
 
         painter.setBrush(QBrush(fill))
-        painter.setPen(QPen(QColor("#3B7BF5"), 1.5))
+        painter.setPen(QPen(border, 1.5))
         painter.drawEllipse(QPointF(0, 0), r, r)
 
-        # ↻ icon
-        font = QFont()
-        font.setPixelSize(max(int(r * 1.1), 1))
-        painter.setFont(font)
-        painter.setPen(QPen(icon_color))
-        painter.drawText(
-            QRectF(-r, -r, r * 2, r * 2),
-            Qt.AlignmentFlag.AlignCenter,
-            "↻",
-        )
+        # 4. Pixel-perfect vector rotation icon (curved arrow)
+        arc_rect = QRectF(-4.5, -4.5, 9.0, 9.0)
+        arc_pen = QPen(icon_color, 1.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        arc_path = QPainterPath()
+        arc_path.arcMoveTo(arc_rect, 40)
+        arc_path.arcTo(arc_rect, 40, 260)
+        painter.drawPath(arc_path)
+
+        # Arrowhead
+        arrow = QPolygonF([
+            QPointF(1.5, -5.8),
+            QPointF(4.8, -3.2),
+            QPointF(1.2, -2.4),
+        ])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(icon_color))
+        painter.drawPolygon(arrow)
+
+        painter.restore()
 
     # ==================================================================
     # Hover

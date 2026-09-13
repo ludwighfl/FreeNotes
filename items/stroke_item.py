@@ -39,7 +39,13 @@ class StrokeItem(QGraphicsItem, IPathScalable):
 
         # Always above PDF pages
         self.setZValue(10)
-        self.setAcceptHoverEvents(True)
+        self.setAcceptHoverEvents(False)
+
+        # Precompute cached pen & brush to avoid per-frame allocations
+        self._pen: QPen = QPen(QColor(self._style.color), self._style.width, Qt.PenStyle.SolidLine)
+        self._pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        self._pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        self._brush: QBrush = QBrush(QColor(self._style.color))
 
         # Not selectable/movable via Qt's built-in system
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
@@ -81,14 +87,6 @@ class StrokeItem(QGraphicsItem, IPathScalable):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setOpacity(self._style.opacity)
 
-        scene = self.scene()
-        if scene and hasattr(scene, "get_page_rect") and self._page_index >= 0:
-            page_rect = scene.get_page_rect(self._page_index)
-            if page_rect.isValid() and not page_rect.isEmpty():
-                p_path = QPainterPath()
-                p_path.addRect(page_rect)
-                painter.setClipPath(self.mapFromScene(p_path), Qt.ClipOperation.IntersectClip)
-
         # Live selection preview glow
         if getattr(self, "_is_preview_highlight", False):
             from PySide6.QtGui import QColor
@@ -101,15 +99,12 @@ class StrokeItem(QGraphicsItem, IPathScalable):
         if self._outline_mode:
             # After pixel-erase: path IS the filled outline, just fill it
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(self._style.color))
+            painter.setBrush(self._brush)
             painter.drawPath(self._path)
         else:
-            # Normal stroke rendering
-            pen = QPen(self._style.color, self._style.width, Qt.PenStyle.SolidLine)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            # Normal stroke rendering using precomputed pen
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.strokePath(self._path, pen)
+            painter.strokePath(self._path, self._pen)
 
         painter.restore()
 
@@ -225,19 +220,21 @@ class StrokeItem(QGraphicsItem, IPathScalable):
         self.setTransformOriginPoint(origin)
 
     def apply_scale(self, sx: float, sy: float, pivot: QPointF) -> None:
-        """Scale stroke around a pivot point."""
-        old_br = self.mapToScene(self.boundingRect()).boundingRect()
-        if old_br.width() < 0.01 or old_br.height() < 0.01:
+        """Scale stroke path around a pivot point in scene coordinates."""
+        from PySide6.QtGui import QTransform
+        if self._path.isEmpty():
             return
-        new_left = pivot.x() + (old_br.left() - pivot.x()) * sx
-        new_right = pivot.x() + (old_br.right() - pivot.x()) * sx
-        new_top = pivot.y() + (old_br.top() - pivot.y()) * sy
-        new_bottom = pivot.y() + (old_br.bottom() - pivot.y()) * sy
-        new_br = QRectF(
-            QPointF(min(new_left, new_right), min(new_top, new_bottom)),
-            QPointF(max(new_left, new_right), max(new_top, new_bottom)),
-        )
-        self.apply_bounding_box_resize(new_br)
+        path_scene = self.mapToScene(self._path)
+        t = QTransform()
+        t.translate(pivot.x(), pivot.y())
+        t.scale(sx, sy)
+        t.translate(-pivot.x(), -pivot.y())
+        new_path_scene = t.map(path_scene)
+        new_path_local = self.mapFromScene(new_path_scene)
+        self.prepareGeometryChange()
+        self._path = new_path_local
+        self._cached_br = None
+        self.update()
 
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         from app.app_state import AppState

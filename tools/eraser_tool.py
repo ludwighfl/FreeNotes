@@ -201,38 +201,17 @@ class EraserTool(BaseTool):
         # 2. Thicken this line to the exact width and shape of the eraser radius
         eraser_path = self._stroker.createStroke(line_path)
 
-        # 3. Find candidates via page-scoped registry search instead of
-        #    scene.items() which is O(all_scene_items) with NoIndex.
-        #    Determine affected page(s) from the eraser bounding rect.
+        # 3. Find candidates via scene.items(eraser_br) utilizing Qt's spatial BSP-tree index
         eraser_br = eraser_path.boundingRect()
-        page_indices: set[int] = set()
-        page_idx = scene.get_page_index_at(pos)
-        if page_idx >= 0:
-            page_indices.add(page_idx)
-        if self._last_erase_pos is not None:
-            alt_idx = scene.get_page_index_at(self._last_erase_pos)
-            if alt_idx >= 0:
-                page_indices.add(alt_idx)
-
-        if not page_indices:
+        raw_items = scene.items(eraser_br)
+        if not raw_items:
             self._last_erase_pos = pos
             return
 
-        items: list[QGraphicsItem] = []
-        for pidx in page_indices:
-            for registry in (
-                scene._stroke_items,
-                scene._highlight_items,
-                scene._shape_items,
-                scene._image_items,
-            ):
-                # Snapshot with list() — _erase_pixel_mode may mutate the registry
-                for item in list(registry.get(pidx, [])):
-                    try:
-                        if item.sceneBoundingRect().intersects(eraser_br):
-                            items.append(item)
-                    except RuntimeError:
-                        pass
+        items: list[QGraphicsItem] = [
+            it for it in raw_items
+            if isinstance(it, (StrokeItem, HighlightItem, ShapeItem, ImageItem))
+        ]
 
         if items:
             if self._mode == EraserMode.OBJECT:

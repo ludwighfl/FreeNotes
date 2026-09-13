@@ -54,6 +54,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
 
         from app.app_state import AppState
         AppState().theme_updated.connect(self._on_theme_updated)
+        AppState().language_changed.connect(self._on_language_changed)
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -67,10 +68,10 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         sidebar_outer.setContentsMargins(12, 16, 12, 12)
         sidebar_outer.setSpacing(4)
 
-        title_label = QLabel(tr("manager.notes"))
-        title_label.setFont(QFont("Roboto", 16, QFont.Weight.Bold))
-        title_label.setObjectName("managerTitleLabel")
-        sidebar_outer.addWidget(title_label)
+        self._title_label = QLabel(tr("manager.notes"))
+        self._title_label.setFont(QFont("Roboto", 16, QFont.Weight.Bold))
+        self._title_label.setObjectName("managerTitleLabel")
+        sidebar_outer.addWidget(self._title_label)
         sidebar_outer.addSpacing(12)
 
         # Scrollable sidebar content
@@ -163,7 +164,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         multi_select_btn.setIconSize(QSize(20, 20))
         multi_select_btn.setObjectName("multiSelectBtn")
         multi_select_btn.setFixedSize(36, 36)
-        multi_select_btn.setToolTip("Mehrfachauswahl umschalten")
+        multi_select_btn.setToolTip(tr("manager.multi_select_tooltip"))
         multi_select_btn.clicked.connect(self.toggle_multi_select)
         self._default_header_right_layout.addWidget(multi_select_btn)
 
@@ -175,7 +176,7 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
         settings_btn.setIconSize(QSize(20, 20))
         settings_btn.setObjectName("settingsBtn")
         settings_btn.setFixedSize(36, 36)
-        settings_btn.setToolTip("Einstellungen")
+        settings_btn.setToolTip(tr("settings.title"))
         settings_btn.clicked.connect(
             self.settings_requested.emit)
         self._default_header_right_layout.addWidget(settings_btn)
@@ -367,6 +368,29 @@ class ManagerView(QWidget, ManagerActionBarMixin, ManagerSidebarMixin, ManagerGr
             
         if hasattr(self, "_btn_merge"):
             self._btn_merge.setIcon(IconFactory.create("merge", color="#fffffe", size=18))
+
+    def _on_language_changed(self) -> None:
+        """Update translated texts in ManagerView when language changes."""
+        if hasattr(self, "_title_label"):
+            self._title_label.setText(tr("manager.notes"))
+        if hasattr(self, "_search_input"):
+            self._search_input.setPlaceholderText(tr("manager.search_placeholder"))
+        if hasattr(self, "_create_btn"):
+            self._create_btn.setText(tr("menu.create"))
+        if hasattr(self, "_act_note"):
+            self._act_note.setText(tr("menu.file.new_note"))
+        if hasattr(self, "_act_import"):
+            self._act_import.setText(tr("menu.file.import_pdf"))
+        if hasattr(self, "_act_folder"):
+            self._act_folder.setText(tr("menu.file.new_folder"))
+        if hasattr(self, "_multi_select_btn"):
+            self._multi_select_btn.setToolTip(tr("manager.multi_select_tooltip"))
+        if hasattr(self, "_settings_btn"):
+            self._settings_btn.setToolTip(tr("settings.title"))
+
+        self.load_sidebar()
+        self.retranslate_action_bar()
+
 
 
 

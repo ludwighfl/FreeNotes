@@ -170,23 +170,30 @@ class OptionsHandleItem(QGraphicsItem):
     ) -> None:
         if getattr(self.scene(), "_is_rendering_thumbnail", False):
             return
+
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         w = self._bar_width()
         h = self.BAR_HEIGHT
 
         bar_rect = QRectF(-w / 2, -h, w, h)
 
-        # White fill + blue border
+        # 1. Soft drop shadow
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(0, 0, 0, 45)))
+        painter.drawRoundedRect(bar_rect.translated(0, 2.0), self.CORNER_RADIUS, self.CORNER_RADIUS)
+
+        # 2. Card background + border
         painter.setBrush(QBrush(QColor("#ffffff")))
-        painter.setPen(QPen(QColor("#3B7BF5"), 1.5))
+        painter.setPen(QPen(QColor("#3B7BF5"), 1.2))
         painter.drawRoundedRect(bar_rect, self.CORNER_RADIUS, self.CORNER_RADIUS)
 
-        # Separator line before delete
+        # 3. Separator line before delete
         sep_x = -w / 2 + 4 + 2 * self.BTN_SIZE + self.SEP_GAP / 2
-        painter.setPen(QPen(QColor("#d0d0d0"), 1.0))
+        painter.setPen(QPen(QColor("#E2E8F0"), 1.0))
         painter.drawLine(QPointF(sep_x, -h + 5), QPointF(sep_x, -5))
 
-        # Hover highlight
+        # 4. Hover highlight
         if self._hovered_index >= 0:
             hr = self._btn_rect(self._hovered_index)
             if self._hovered_index == 2:
@@ -196,10 +203,12 @@ class OptionsHandleItem(QGraphicsItem):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(hr, 4, 4)
 
-        # Icons
+        # 5. Icons
         for i, draw_fn in enumerate([_draw_copy_icon, _draw_scissors_icon, _draw_trash_icon]):
             r = self._btn_rect(i)
             draw_fn(painter, r.center().x(), r.center().y())
+
+        painter.restore()
 
     # ------------------------------------------------------------------
     # Hover

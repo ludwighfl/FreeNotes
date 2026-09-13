@@ -78,10 +78,10 @@ class ManagerActionBarMixin:
 
         # Action Buttons
         self._btn_merge = self._create_action_btn("merge", tr("dialog.merge.button"), self._on_action_merge)
-        self._btn_rename = self._create_action_btn("pen", "Umbenennen", self._on_action_rename)
-        self._btn_duplicate = self._create_action_btn("copy", "Duplizieren", self._on_action_duplicate)
-        self._btn_export = self._create_action_btn("download", "Exportieren", self._on_action_export)
-        self._btn_delete = self._create_action_btn("trash", "Löschen", self._on_action_delete)
+        self._btn_rename = self._create_action_btn("pen", tr("menu.rename"), self._on_action_rename)
+        self._btn_duplicate = self._create_action_btn("copy", tr("menu.duplicate"), self._on_action_duplicate)
+        self._btn_export = self._create_action_btn("download", tr("settings.library.export"), self._on_action_export)
+        self._btn_delete = self._create_action_btn("trash", tr("menu.delete"), self._on_action_delete)
 
         action_layout.addWidget(self._btn_merge)
         action_layout.addWidget(self._btn_rename)
@@ -89,10 +89,22 @@ class ManagerActionBarMixin:
         action_layout.addWidget(self._btn_export)
         action_layout.addWidget(self._btn_delete)
 
-
         self._header_stack.addWidget(self._default_header)
         self._header_stack.addWidget(self._action_bar)
         header_layout.addWidget(self._header_stack)
+
+    def retranslate_action_bar(self) -> None:
+        """Update action bar tooltips on language change."""
+        if hasattr(self, "_btn_merge"):
+            self._btn_merge.setToolTip(tr("dialog.merge.button"))
+        if hasattr(self, "_btn_rename"):
+            self._btn_rename.setToolTip(tr("menu.rename"))
+        if hasattr(self, "_btn_duplicate"):
+            self._btn_duplicate.setToolTip(tr("menu.duplicate"))
+        if hasattr(self, "_btn_export"):
+            self._btn_export.setToolTip(tr("settings.library.export"))
+        if hasattr(self, "_btn_delete"):
+            self._btn_delete.setToolTip(tr("menu.delete"))
 
     def _create_action_btn(self, icon_name: str, tooltip: str, callback: object) -> QToolButton:
         btn = QToolButton()

@@ -79,32 +79,43 @@ class MoveHandleItem(QGraphicsItem):
     ) -> None:
         if getattr(self.scene(), "_is_rendering_thumbnail", False):
             return
+
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # Pill background
-        if self._hovered or self._dragging:
-            fill = QColor("#5a9bf8")
-        else:
-            fill = QColor("#3B7BF5")
-
-        painter.setBrush(QBrush(fill))
-        painter.setPen(Qt.PenStyle.NoPen)
         rect = QRectF(
             -self.WIDTH / 2, -self.HEIGHT / 2, self.WIDTH, self.HEIGHT,
         )
+
+        # 1. Soft drop shadow
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(0, 0, 0, 45)))
+        painter.drawRoundedRect(rect.translated(0, 1.5), self.RADIUS, self.RADIUS)
+
+        # 2. Pill background & subtle top highlight
+        if self._dragging:
+            fill = QColor("#1D4ED8")
+            border_pen = QPen(QColor(255, 255, 255, 100), 1.0)
+        elif self._hovered:
+            fill = QColor("#2563EB")
+            border_pen = QPen(QColor(255, 255, 255, 90), 1.0)
+        else:
+            fill = QColor("#3B7BF5")
+            border_pen = QPen(QColor(255, 255, 255, 50), 1.0)
+
+        painter.setBrush(QBrush(fill))
+        painter.setPen(border_pen)
         painter.drawRoundedRect(rect, self.RADIUS, self.RADIUS)
 
-        # III grip icon (three horizontal lines)
-        painter.setPen(QPen(
-            QColor("#ffffff"), 1.5,
-            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
-        ))
-        line_w = self.WIDTH * 0.45
-        for y_off in (-3.5, 0.0, 3.5):
-            painter.drawLine(
-                QPointF(-line_w / 2, y_off),
-                QPointF(line_w / 2, y_off),
-            )
+        # 3. Modern 6-dot grip icon
+        painter.setBrush(QBrush(QColor("#ffffff")))
+        painter.setPen(Qt.PenStyle.NoPen)
+        dot_r = 1.3
+        for x_off in (-6.0, 0.0, 6.0):
+            for y_off in (-2.5, 2.5):
+                painter.drawEllipse(QPointF(x_off, y_off), dot_r, dot_r)
+
+        painter.restore()
 
     # ==================================================================
     # Hover

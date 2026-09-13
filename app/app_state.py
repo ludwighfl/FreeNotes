@@ -23,6 +23,7 @@ class AppState(QObject):
     tool_changed = Signal(str)
     style_changed = Signal(object)  # ToolStyle (object for QObject signal compat)
     theme_updated = Signal()
+    language_changed = Signal()
     library_ready = Signal()
     total_pages_changed = Signal(int)
     document_renamed = Signal()

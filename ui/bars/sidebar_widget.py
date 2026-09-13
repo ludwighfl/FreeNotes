@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import deque
 from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QKeyEvent, QKeySequence
 from PySide6.QtWidgets import (
     QScrollArea,
     QWidget,
@@ -428,3 +429,27 @@ class SidebarWidget(SidebarContextMenuMixin, SidebarRenderMixin, QScrollArea):
 
     def _on_card_clicked(self, page_index: int) -> None:
         self.page_clicked.emit(page_index)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Handle Undo / Redo shortcuts when sidebar has focus."""
+        if (
+            event.matches(QKeySequence.StandardKey.Undo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Z)
+        ):
+            from core import undo_stack
+            undo_stack.undo()
+            event.accept()
+            return
+        elif (
+            event.matches(QKeySequence.StandardKey.Redo)
+            or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Y)
+            or (
+                event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+                and event.key() == Qt.Key.Key_Z
+            )
+        ):
+            from core import undo_stack
+            undo_stack.redo()
+            event.accept()
+            return
+        super().keyPressEvent(event)
